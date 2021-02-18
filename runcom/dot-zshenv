@@ -1,0 +1,43 @@
+setopt no_global_rcs
+
+export LANG=en_US
+export LC_ALL=en_US.UTF-8
+export XAPIAN_CJK_NGRAM=yes
+
+export XDG_CONFIG_HOME=$HOME/.config
+export XDG_CACHE_HOME=$HOME/.cache
+export XDG_DATA_HOME=$HOME/.local/share
+
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+export MANPATH=/usr/local/share/man:/usr/share/man
+export INFOPATH=/usr/local/share/info:/usr/share/info
+
+export PATH=$HOME/.local/bin:$PATH
+
+if [[ `uname` == "Darwin" ]]; then
+    # for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar"; do
+    #     export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
+    # done
+
+    export PATH=$PATH:/Library/TeX/texbin:/Library/Apple/usr/bin
+    export PATH=/usr/local/anaconda3/bin:$PATH
+
+    export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
+
+    export ANACONDA_HOME=/usr/local/anaconda3/
+else
+    export PATH=$HOME/.anaconda3/bin:$PATH
+
+    export ANACONDA_HOME=$HOME/.anaconda3/
+fi
+
+ZDOTDIR=$HOME/.config/zsh
+
+export CONDARC=$XDG_CONFIG_HOME/conda/condarc
+export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
+export GNUPGHOME=$XDG_CONFIG_HOME/gnupg
+export MACHINE_STORAGE_PATH=$XDG_DATA_HOME/docker-machine
+export NPM_CONFIG_USERCONFIG=$XDG_CONFIG_HOME/npm/npmrc
+export VIMINIT="set nocp | source ${XDG_CONFIG_HOME:-$HOME/.config}/vim/vimrc"
+export WAKATIME_HOME=$XDG_DATA_HOME/wakatime
+export LESSHISTFILE=-

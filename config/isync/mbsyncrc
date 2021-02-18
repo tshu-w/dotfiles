@@ -1,0 +1,58 @@
+Create Both
+Expunge Both
+
+IMAPAccount fastmail
+Host imap.fastmail.com
+User wangtianshu@fastmail.com
+Passcmd "gpg -q --for-your-eyes-only --no-tty -d ~/.authinfo.gpg | awk '$2==\"smtp.fastmail.com\" {print $8;exit(0)}'"
+SSLType IMAPS
+
+IMAPStore fastmail-remote
+Account fastmail
+
+MaildirStore fastmail-local
+Path ~/.local/share/mail/fastmail/
+Inbox ~/.local/share/mail/fastmail/Inbox
+SubFolders Verbatim
+
+Channel fastmail
+Far :fastmail-remote:
+Near :fastmail-local:
+Patterns * !Notes
+CopyArrivalDate yes
+SyncState *
+
+IMAPAccount iscas
+Host mail.cstnet.cn
+User tianshu2020@iscas.ac.cn
+PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.authinfo.gpg | awk '$2==\"mail.cstnet.cn\" {print $8;exit(0)}'"
+SSLType IMAPS
+
+IMAPStore iscas-remote
+Account iscas
+
+MaildirStore iscas-local
+Path ~/.local/share/mail/iscas/
+Inbox ~/.local/share/mail/iscas/Inbox
+SubFolders Verbatim
+
+Channel iscas-default
+Far :iscas-remote:
+Near :iscas-local:
+Patterns INBOX Archive Drafts Trash
+SyncState *
+
+Channel iscas-sent
+Far :iscas-remote:"Sent Items"
+Near :iscas-local:Sent
+SyncState *
+
+Channel iscas-spam
+Far :iscas-remote:"Junk E-mail"
+Near :iscas-local:Spam
+SyncState *
+
+Group iscas
+Channel iscas-default
+Channel iscas-sent
+Channel iscas-spam

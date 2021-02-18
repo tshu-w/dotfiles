@@ -1,0 +1,14 @@
+[user]
+	name = wangtianshu
+	email = wang@tianshu.me
+	signingkey = 4525DA7EEF2D7C56
+
+[commit]
+	gpgsign = true
+
+[alias]
+	last = log -1
+	unstage = reset HEAD
+	lg = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+	random = !"git commit -am \"$(echo $(curl -s http://whatthecommit.com/index.txt)\"\")\""
+	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+chmod a-x /Applications/Thunder.app/Contents/PlugIns/*
+
+for name in "applications" "details" "downloadhistory" "preferences" "searchtask" "subtitle" "userlogin"; do
+    chmod a+x /Applications/Thunder.app/Contents/PlugIns/$name.xlplugin
+done

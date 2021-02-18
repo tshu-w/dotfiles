@@ -1,0 +1,121 @@
+#!/usr/bin/env sh
+# for more info, see https://github.com/koekeishiya/skhd#configuration
+# example: /usr/local/opt/skhd/share/skhd/examples/skhdrc
+#          https://github.com/koekeishiya/dotfiles/blob/master/skhd/skhdrc
+
+# mode declaration
+# 1) default: all keybindings are available
+# 2) disable: all keybindings are unavailable. (If some keybindings conflict with some application, we can turn off skhd)
+:: default : osascript -e "display notification \"skhd enabled!\" with title \"skhd\""
+
+:: disable : osascript -e "display notification \"skhd disabled!\" with title \"skhd\""
+
+# Mode switching
+alt - 0x2C; disable
+disable < alt - 0x2C; default
+
+# reload yabai
+ctrl + alt + cmd - r : launchctl kickstart -k "gui/${UID}/homebrew.mxcl.yabai"
+
+# focus window
+cmd + alt - x : yabai -m window --focus recent
+cmd + alt - h : yabai -m window --focus west
+cmd + alt - j : yabai -m window --focus south || yabai -m window --focus stack.next || yabai -m window --focus stack.first
+cmd + alt - k : yabai -m window --focus north || yabai -m window --focus stack.prev || yabai -m window --focus stack.last
+cmd + alt - l : yabai -m window --focus east
+cmd + alt - z : yabai -m window --focus stack.prev || yabai -m window --focus stack.last
+cmd + alt - c : yabai -m window --focus stack.next || yabai -m window --focus stack.first
+
+# swap window
+shift + alt - x : yabai -m window --swap recent
+shift + alt - h : yabai -m window --swap west
+shift + alt - j : yabai -m window --swap south
+shift + alt - k : yabai -m window --swap north
+shift + alt - l : yabai -m window --swap east
+
+# stack or moved managed window
+# TODO: https://github.com/koekeishiya/yabai/issues/832
+shift + cmd - h : yabai -m window --stack west || yabai -m window --warp west \
+    || (yabai -m window --toggle float; yabai -m window --toggle float; yabai -m window --warp west)
+shift + cmd - j : yabai -m window --stack south || yabai -m window --warp south \
+    || (yabai -m window --toggle float; yabai -m window --toggle float; yabai -m window --warp south)
+shift + cmd - k : yabai -m window --stack north || yabai -m window --warp north \
+    || (yabai -m window --toggle float; yabai -m window --toggle float; yabai -m window --warp north)
+shift + cmd - l : yabai -m window --stack east || yabai -m window --warp east \
+    || (yabai -m window --toggle float; yabai -m window --toggle float; yabai -m window --warp east)
+
+# set insertion point in focused container
+shift + alt - a : yabai -m window --insert west
+shift + alt - s : yabai -m window --insert south
+shift + alt - w : yabai -m window --insert north
+shift + alt - d : yabai -m window --insert east
+shift + alt - f : yabai -m window --insert stack
+
+# balance size of windows
+shift + alt - 0 : yabai -m space --balance
+
+# Make Floating window fill screen
+shift + alt - up    : yabai -m window --grid 1:1:0:0:1:1
+
+# make floating window fill left-half of screen
+shift + alt - left  : yabai -m window --grid 1:2:0:0:1:1
+
+# make floating window fill right-half of screen
+shift + alt - right : yabai -m window --grid 1:2:1:0:1:1
+
+# make floating window center screen
+shift + alt - down  : ~/.config/yabai/scripts/center-float-window.sh
+
+# rotate tree
+  cmd + alt - r : yabai -m space --rotate 270
+shift + alt - r : yabai -m space --rotate 90
+
+# mirror tree y-axis
+cmd + alt - y : yabai -m space --mirror y-axis
+
+# mirror tree x-axis
+cmd + alt - x : yabai -m space --mirror x-axis
+
+# toggle window parent zoom
+cmd + alt - d : yabai -m window --toggle zoom-parent
+
+# toggle window fullscreen zoom
+cmd + alt - f : yabai -m window --toggle zoom-fullscreen
+
+# toggle window split type
+cmd + alt - e : yabai -m window --toggle split
+
+# float / unfloat window and center on screen
+cmd + alt - t : yabai -m window --toggle float; \
+                yabai -m window --grid 30:30:2:2:26:26
+
+
+# send window to desktop and follow focus
+ctrl + alt - left  : yabai -m window --space prev   && yabai -m space --focus prev || skhd -k "ctrl - left"
+ctrl + alt - right : yabai -m window --space next   && yabai -m space --focus next || skhd -k "ctrl - right"
+ctrl + alt - 1     : yabai -m window --space 1      && yabai -m space --focus 1    || skhd -k "ctrl - 1"
+ctrl + alt - 2     : yabai -m window --space 2      && yabai -m space --focus 2    || skhd -k "ctrl - 2"
+ctrl + alt - 3     : yabai -m window --space 3      && yabai -m space --focus 3    || skhd -k "ctrl - 3"
+
+# focus monitor
+ctrl + alt - x : yabai -m display --focus recent
+ctrl + alt - z : yabai -m display --focus prev
+ctrl + alt - c : yabai -m display --focus next
+ctrl + alt - h : yabai -m display --focus west
+ctrl + alt - j : yabai -m display --focus south
+ctrl + alt - k : yabai -m display --focus north
+ctrl + alt - l : yabai -m display --focus east
+
+# send window to monitor and follow focus
+shift + ctrl + alt - x : yabai -m window --display recent && yabai -m display --focus recent
+shift + ctrl + alt - z : yabai -m window --display prev   && yabai -m display --focus prev
+shift + ctrl + alt - c : yabai -m window --display next   && yabai -m display --focus next
+shift + ctrl + alt - h : yabai -m window --display west   && yabai -m display --focus west
+shift + ctrl + alt - j : yabai -m window --display south  && yabai -m display --focus south
+shift + ctrl + alt - k : yabai -m window --display north  && yabai -m display --focus north
+shift + ctrl + alt - l : yabai -m window --display east   && yabai -m display --focus east
+
+# change layout of desktop
+ctrl + alt - a : yabai -m space --layout bsp
+ctrl + alt - s : yabai -m space --layout stack
+ctrl + alt - d : yabai -m space --layout $(yabai -m query --spaces --space | jq -r 'if .type == "bsp" then "stack" else "bsp" end')

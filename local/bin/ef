@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+emacsclient -cn "$@" && emacsclient -eu "(select-frame-set-input-focus (selected-frame))"
