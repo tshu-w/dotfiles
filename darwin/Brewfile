@@ -1,0 +1,95 @@
+tap "buo/cask-upgrade"
+tap "d12frosted/emacs-plus"
+tap "homebrew/bundle"
+tap "homebrew/cask"
+tap "homebrew/cask-fonts"
+tap "homebrew/cask-versions"
+tap "homebrew/core"
+tap "homebrew/services"
+tap "koekeishiya/formulae"
+tap "railwaycat/emacsmacport"
+brew "aspell"
+brew "autossh"
+brew "blueutil"
+brew "python@3.9"
+brew "coreutils"
+brew "direnv"
+brew "fcitx-remote-for-osx"
+brew "findutils"
+brew "fzf"
+brew "gawk"
+brew "git"
+brew "gnupg"
+brew "gnu-sed"
+brew "gnu-tar"
+brew "isync"
+brew "jq"
+brew "jsonnet"
+brew "mackup"
+brew "mas"
+brew "moreutils"
+brew "mu"
+brew "node"
+brew "pandoc"
+brew "pinentry-mac"
+brew "ripgrep"
+brew "stow"
+brew "switchaudio-osx"
+brew "terminal-notifier"
+brew "tesseract"
+brew "tesseract-lang"
+brew "tldr"
+brew "trash"
+brew "tree"
+brew "vim"
+brew "wakatime-cli"
+brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-native-comp"]
+brew "koekeishiya/formulae/skhd"
+brew "koekeishiya/formulae/yabai"
+cask "adguard", args: { appdir: "/Applications" }
+cask "anaconda"
+cask "bartender", args: { appdir: "/Applications" }
+cask "bitwarden"
+cask "bob"
+cask "calibre", args: { appdir: "/Applications" }
+cask "dash", args: { appdir: "/Applications" }
+cask "dropbox", args: { appdir: "/Applications" }
+cask "font-source-code-pro"
+cask "google-chrome"
+cask "hammerspoon"
+cask "iina", args: { appdir: "/Applications" }
+cask "iterm2"
+cask "kap", args: { appdir: "/Applications" }
+cask "karabiner-elements", args: { appdir: "/Applications" }
+cask "launchbar", args: { appdir: "/Applications" }
+cask "mactex-no-gui"
+cask "maczip"
+cask "microsoft-auto-update"
+cask "microsoft-excel"
+cask "microsoft-powerpoint"
+cask "microsoft-word"
+cask "moneywiz", args: { appdir: "/Applications" }
+cask "omnidisksweeper", args: { appdir: "/Applications" }
+cask "omnigraffle", args: { appdir: "/Applications" }
+cask "onedrive"
+cask "pdf-expert"
+cask "qqmusic", args: { appdir: "/Applications" }
+cask "skim", args: { appdir: "/Applications" }
+cask "squirrel", args: { appdir: "/Applications" }
+cask "sublime-text", args: { appdir: "/Applications" }
+cask "telegram"
+cask "thunder", args: { appdir: "/Applications" }
+cask "typora", args: { appdir: "/Applications" }
+cask "zoom"
+cask "zotero", args: { appdir: "/Applications" }
+mas "Grammarly for Safari", id: 1462114288
+mas "iMovie", id: 408981434
+mas "Keynote", id: 409183694
+mas "Numbers", id: 409203825
+mas "Octotree", id: 1457450145
+mas "Pages", id: 409201541
+mas "QQ", id: 451108668
+mas "Take a Break", id: 1457158844
+mas "Tampermonkey", id: 1482490089
+mas "WeChat", id: 836500024
+mas "Xcode", id: 497799835

@@ -1,0 +1,56 @@
+Host *
+	PasswordAuthentication yes
+	ChallengeResponseAuthentication no
+	HashKnownHosts yes
+	TCPKeepAlive yes
+	ServerAliveInterval 60
+	ServerAliveCountMax 10
+	Compression yes
+	# Proxycommand nc -X 5 -x 127.0.0.1:6153 %h %p
+	ControlMaster auto
+	ControlPath ~/.cache/ssh/%r@%h:%p
+	ControlPersist 1h
+HOST mac
+	Hostname localhost
+	User wangtianshu
+	Port 2048
+Host Vultr
+	Hostname 45.76.54.99
+	User admin
+	port 27000
+HOST 208
+	Hostname 124.16.139.208
+	User wts
+	port 1422
+Host 14
+	Hostname 192.168.14.14
+	User wts
+	port 22
+Host 16
+	Hostname 192.168.14.16
+	User wts
+	port 22
+Host 51
+	Hostname 192.168.15.51
+	User wts
+	port 22
+Host 74
+	Hostname 192.168.14.74
+	User wangtianshu
+	port 22
+Host 109
+	Hostname 192.168.14.109
+	User tianshu
+	port 22
+Host 141
+	Hostname 124.16.138.141
+	User wts
+	port 22
+Host 143
+	Hostname 124.16.138.143
+	User wts
+	port 22
+Host 144
+	Hostname 124.16.138.144
+	User wts
+	port 22

@@ -1,0 +1,10 @@
+### SSH ###
+**/dot-ssh/id_*
+**/dot-ssh/*_id_*
+**/dot-ssh/known_hosts
+
+### GPG ###
+**/gnupg/*
+!**/gnupg/dirmngr.conf
+!**/gnupg/gpg.conf
+!**/gnupg/gpg-agent.conf

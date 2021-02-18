@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+cd /tmp
+git clone --depth=1 https://github.com/MustangYM/WeChatExtension-ForMac
+(cd WeChatExtension-ForMac/WeChatExtension/Rely && ./Install.sh)
+rm -rf WeChatExtension-ForMac
