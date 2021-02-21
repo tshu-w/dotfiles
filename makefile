@@ -1,3 +1,4 @@
+SHELL = /bin/bash
 DOTFILES_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 OS := $(shell uname -s | tr A-Z a-z)
 
@@ -6,12 +7,20 @@ export XDG_CONFIG_HOME = $(HOME)/.config
 export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
+ifeq ($(OS),darwin)
+export PATH := /usr/local/anaconda3/bin:$(PATH)
+else
+export PATH := $(HOME)/.linuxbrew/bin/:$(PATH)
+export PATH := $(HOME)/.anaconda3/bin/:$(PATH)
+endif
+
 all: $(OS)
 	crontab $(XDG_CONFIG_HOME)/crontab
 
-darwin: setup link reboot
+darwin: setup link packages
 
-linux: setup link
+linux: setup link packages
+	[ -f $(HOME)/.hushlogin ] || touch $(HOME)/.hushlogin
 
 setup:
 	cd $(DOTFILES_DIR)/$(OS) && . ./setup.sh
@@ -23,7 +32,7 @@ link:
 			mv -v $$tf{,.bak}; \
 		fi \
 	done
-	mkdir -p $(XDG_CONFIG_HOME)
+	mkdir -p $(XDG_CONFIG_HOME) $(HOME)/.local
 	stow -v --dotfiles -t $(HOME) runcom
 	stow -v -t $(XDG_CONFIG_HOME) config
 	stow -v -t $(HOME)/.local local
@@ -42,10 +51,7 @@ unlink:
 packages: python-packages node-packages
 
 python-packages:
-	echo pip install flake8 black flake8-black autoflake
+	pip install flake8 black flake8-black autoflake
 
 node-packages:
-	echo npm install -g pyright
-
-reboot:
-	echo sudo /sbin/reboot
+	npm install -g pyright
