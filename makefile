@@ -1,4 +1,4 @@
-SHELL = /bin/bash
+SHELL := /bin/bash
 DOTFILES_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 OS := $(shell uname -s | tr A-Z a-z)
 
@@ -51,7 +51,7 @@ unlink:
 packages: python-packages node-packages
 
 python-packages:
-	pip install flake8 black flake8-black autoflake
+	: ; pip install flake8 black flake8-black autoflake
 
 node-packages:
 	npm install -g pyright
