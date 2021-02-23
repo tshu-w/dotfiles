@@ -70,9 +70,6 @@ zstyle ':completion::complete:*' cache-path $ZSH_CACHE_DIR/zcompcache
 # emacs completion
 declare -f compdef &>/dev/null && compdef _gnu_generic emacs emacsclient
 
-# direnv
-eval "$(direnv hook zsh)"
-
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
 if [[ ! -f $XDG_CONFIG_HOME/fzf/fzf.zsh ]]; then
