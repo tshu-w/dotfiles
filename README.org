@@ -4,6 +4,11 @@ git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git
 #+end_src
 
 ** macOS
+*** install Command Line Tools
+#+begin_src sh
+xcode-select --install
+#+end_src
+
 *** *grant terminal and cron with Full Disk Access*
 #+begin_src sh
 defaults read ~/Library/Preferences/com.apple.universalaccessAuthWarning.plist
