@@ -9,24 +9,6 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 # Prevent sleeping during script execution, as long as the machine is on AC power
 caffeinate -s -w $$ &
 
-# Install command line tools
-if [ ! -e "/Library/Developer/CommandLineTools/usr/bin/git" ]; then
-  clt_placeholder="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
-  sudo touch $clt_placeholder
-
-  clt_package=$(softwareupdate -l | \
-                grep -B 1 "Command Line Tools" | \
-                awk -F"*" '/^ *\*/ {print $2}' | \
-                sed -e 's/^ *Label: //' -e 's/^ *//' | \
-                sort -V |
-                tail -n1)
-  sudo softwareupdate -i $clt_package
-  sudo rm -f $clt_placeholder
-
-  [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ] || \
-      xcode-select --install
-fi
-
 # Check for Homebrew, install if we don't have it
 command -v brew >/dev/null || \
     curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash

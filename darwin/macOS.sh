@@ -466,7 +466,7 @@ defaults write com.apple.dock show-recents -bool false
 # Disable the Launchpad gesture (pinch with thumb and three fingers)
 #defaults write com.apple.dock showLaunchpadGestureEnabled -int 0
 
-# NOTE: Reset icon on the Launchpad
+# TODO: Reset icon on the Launchpad
 # defaults write com.apple.dock ResetLaunchPad -bool true
 
 # Reset Launchpad, but keep the desktop wallpaper intact
