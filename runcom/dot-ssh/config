@@ -1,15 +1,15 @@
 Host *
-	PasswordAuthentication yes
-	ChallengeResponseAuthentication no
+	Compression yes
 	HashKnownHosts yes
-	TCPKeepAlive yes
+	# Proxycommand nc -X 5 -x 127.0.0.1:6153 %h %p
 	ServerAliveInterval 60
 	ServerAliveCountMax 10
-	Compression yes
-	# Proxycommand nc -X 5 -x 127.0.0.1:6153 %h %p
+	TCPKeepAlive yes
 	ControlMaster auto
 	ControlPath ~/.cache/ssh/%r@%h:%p
 	ControlPersist 1h
+	PermitLocalCommand yes
+	LocalCommand gpg_forward %n &
 HOST mac
 	Hostname localhost
 	User wangtianshu
