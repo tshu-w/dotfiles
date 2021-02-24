@@ -7,11 +7,8 @@ export XDG_CONFIG_HOME = $(HOME)/.config
 export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
-ifeq ($(OS),darwin)
-export PATH := /usr/local/anaconda3/bin:$(PATH)
-else
+ifeq ($(OS),linux)
 export PATH := $(HOME)/.linuxbrew/bin/:$(PATH)
-export PATH := $(HOME)/.anaconda3/bin/:$(PATH)
 endif
 
 all: $(OS)
@@ -51,7 +48,7 @@ unlink:
 packages: python-packages node-packages
 
 python-packages:
-	: ; pip install flake8 black flake8-black autoflake
+	pip3 install flake8 black flake8-black autoflake
 
 node-packages:
 	npm install -g pyright
