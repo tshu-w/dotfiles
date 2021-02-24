@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+local_extra_socket=`gpgconf --list-dirs agent-extra-socket`
+local_ssh_socket=`gpgconf --list-dirs agent-ssh-socket`
+remote_agent_socket=`ssh $1 "gpgconf --list-dirs agent-socket"`
+remote_ssh_socket=`ssh $1 "gpgconf --list-dirs agent-ssh-socket"`
+ssh $1 "\rm -rf $remote_agent_socket $remote_ssh_socket"
+ssh -fnNT -R $remote_agent_socket:$local_extra_socket -R $remote_ssh_socket:$local_ssh_socket $1
