@@ -8,7 +8,10 @@ export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
 ifeq ($(OS),linux)
-export PATH := $(HOME)/.linuxbrew/bin/:$(PATH)
+export JUNEST_HOME := $(XDG_DATA_HOME)/junest_home
+export PATH := $(XDG_DATA_HOME)/junest/bin:$(PATH)
+export PATH := $(PATH):$(JUNEST_HOME)/usr/bin_wrappers
+export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
 all: $(OS)
@@ -32,7 +35,7 @@ link:
 	mkdir -p $(XDG_CONFIG_HOME) $(HOME)/.local
 	stow -v --dotfiles -t $(HOME) runcom
 	stow -v -t $(XDG_CONFIG_HOME) config
-	stow -v -t $(HOME)/.local local
+	stow -v --no-folding -t $(HOME)/.local local
 
 unlink:
 	stow -v -D -t $(HOME) --dotfiles runcom
