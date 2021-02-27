@@ -14,12 +14,11 @@ export PATH := $(PATH):$(JUNEST_HOME)/usr/bin_wrappers
 export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
-all: $(OS)
-	crontab $(XDG_CONFIG_HOME)/crontab
+all: $(OS) setup link crontab packages
 
-darwin: setup link packages
+darwin:
 
-linux: setup link packages
+linux:
 	[ -f $(HOME)/.hushlogin ] || touch $(HOME)/.hushlogin
 
 setup:
@@ -47,6 +46,9 @@ unlink:
 			mv -v $tf{.bak,}; \
 		fi \
 	done
+
+crontab:
+	crontab $(XDG_CONFIG_HOME)/crontab
 
 packages: python-packages node-packages
 
