@@ -176,6 +176,15 @@ fi
 #     ec () { ssh mac "emacsclient --no-wait /ssh:hostname:$(readlink -f $1)"; }
 # fi
 
+# wrap command `ls` into a function
+_ls_on_pwd_change() { ls }
+
+# load add-zsh-hook if it's not available yet
+(( $+functions[add-zsh-hook] )) || autoload -Uz add-zsh-hook
+
+# hook _ls_on_cwd_change onto `chpwd`
+add-zsh-hook chpwd _ls_on_pwd_change
+
 cl () { cd "$@" && ls; }
 
 mk () { mkdir -p "$@" && cd "$_"; }
