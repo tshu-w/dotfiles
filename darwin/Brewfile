@@ -46,6 +46,7 @@ brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-na
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "adguard", args: { appdir: "/Applications" }
+cask "aldente"
 cask "anaconda"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bitwarden"
@@ -69,7 +70,6 @@ cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "moneywiz", args: { appdir: "/Applications" }
 cask "omnidisksweeper", args: { appdir: "/Applications" }
-cask "omnigraffle", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "pdf-expert"
 cask "qqmusic", args: { appdir: "/Applications" }
