@@ -87,11 +87,8 @@ defaults write com.apple.helpviewer DevMode -bool true
 # Disable Notification Center and remove the menu bar icon
 # launchctl unload -w /System/Library/LaunchAgents/com.apple.notificationcenterui.plist 2> /dev/null
 
-# Show battery percentage on menu bar
-defaults write com.apple.menuextra.battery ShowPercent YES
-
-# Set menubar datetime format(EEE MMM d H:mm)
-defaults write com.apple.menuextra.clock DateFormat -string 'EEE H:mm'
+# FIXME: Show battery percentage on menu bar
+# defaults write com.apple.menuextra.battery ShowPercent YES
 
 # Disable automatic capitalization as it’s annoying when typing code
 defaults write NSGlobalDomain NSAutomaticCapitalizationEnabled -bool false
@@ -142,7 +139,7 @@ defaults write com.apple.dock showAppExposeGestureEnabled -int 1
 # Trackpad: enable tap to click for this user and for the login screen
 defaults write com.apple.AppleMultitouchTrackpad Clicking -bool true
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
-defaults -currentHost write 'Apple Global Domain' com.apple.mouse.tapBehavior 1
+defaults -currentHost write NSGlobalDomain com.apple.mouse.tapBehavior 1
 
 # Trackpad: click or tap two finger to right-click
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadCornerSecondaryClick -int 0
