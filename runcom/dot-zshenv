@@ -21,6 +21,8 @@ if [[ `uname` == "Darwin" ]]; then
     export PATH=/usr/local/anaconda3/bin:$PATH
 
     export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
+
+    export ANACONDA_HOME=/usr/local/anaconda3/
 else
     export JUNEST_HOME=$XDG_DATA_HOME/junest_home
     export PATH=$XDG_DATA_HOME/junest/bin:$PATH
@@ -29,6 +31,8 @@ else
     export PATH=$XDG_DATA_HOME/anaconda3/bin:$PATH
 
     export NPM_CONFIG_PREFIX=$HOME/.local
+
+    export ANACONDA_HOME=$XDG_DATA_HOME/anaconda3/
 fi
 
 ZDOTDIR=$HOME/.config/zsh
