@@ -16,10 +16,11 @@ defaults read ~/Library/Preferences/com.apple.universalaccessAuthWarning.plist
 
 *** *ensure iCloud mackup downloaded*
 *** ~TODO~ and ~FIXME~ in [[file:darwin/macOS.sh][macOS.sh]]
-*** make Documents link to Dropbox Documents and lock it
+*** link Documents to Dropbox and lock it
 #+begin_src sh
 sudo rm -rf ~/Documents && ln -s ~/Dropbox/Documents ~
 SetFileIcon -image ~/Pictures/icons/macOS_Documents.icns -file ~/Documents
+sudo chflags -h uchg ~/Documents
 #+end_src
 
 *** set apps icons
