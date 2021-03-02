@@ -397,6 +397,9 @@ defaults write com.apple.dock mouse-over-hilite-stack -bool false
 # Set the icon size of Dock items to 40 pixels
 defaults write com.apple.dock tilesize -int 40
 
+# Lock the Dock size
+defaults write com.apple.Dock size-immutable -bool yes
+
 # Disable Dock icons Bounce
 defaults write com.apple.dock no-bouncing -bool false
 
