@@ -157,7 +157,8 @@ alias pbspaces="pbpaste | expand | pbcopy"
 if [[ `uname` == "Darwin" ]]; then
     alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
     alias cleanupad="find . -type d -name '.AppleD*' -ls -exec /bin/rm -r {} \;"
-    alias flushdns='dscacheutil -flushcache && killall -HUP mDNSResponder'
+    alias flushdns="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
+    alias resetlaunchpad="defaults write com.apple.dock ResetLaunchPad -bool true"
     alias log='/usr/bin/log'
     alias ofd='open $PWD'
     alias subl='open -a "Sublime text"'
