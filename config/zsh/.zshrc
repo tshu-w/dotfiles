@@ -219,9 +219,9 @@ ip () {
 http_port=6152
 socks_port=6153
 proxy () {
-  export http_proxy="http://127.0.0.1:$http_port"
-  export https_proxy="http://127.0.0.1:$http_port"
-  export all_proxy="socks5://127.0.0.1:$socks_port"
+  export http_proxy=http://127.0.0.1:$http_port
+  export https_proxy=http://127.0.0.1:$http_port
+  export all_proxy=socks5://127.0.0.1:$socks_port
   echo "Proxy on"
 }
 noproxy () {
@@ -230,10 +230,9 @@ noproxy () {
   unset all_proxy
   echo "Proxy off"
 }
-remote_proxy () {
-    ssh -fnNT -R :"$http_port":localhost:"$http_port" $1
-    ssh -fnNT -R :"$socks_port":localhost:"$socks_port" $1
-}
+export http_proxy=http://127.0.0.1:$http_port
+export https_proxy=http://127.0.0.1:$http_port
+export all_proxy=socks5://127.0.0.1:$socks_port
 
 # cdd - cd into the directory of the selected file
 cdd () {
