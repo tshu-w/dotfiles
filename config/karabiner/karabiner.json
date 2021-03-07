@@ -200,7 +200,7 @@
                         ]
                     },
                     {
-                        "description": "Quit Safari by pressing command-q twice",
+                        "description": "Quit application by pressing command-q twice",
                         "manipulators": [
                             {
                                 "conditions": [
@@ -208,12 +208,6 @@
                                         "name": "command-q",
                                         "type": "variable_if",
                                         "value": 1
-                                    },
-                                    {
-                                        "bundle_identifiers": [
-                                            "^com\\.apple\\.Safari$"
-                                        ],
-                                        "type": "frontmost_application_if"
                                     }
                                 ],
                                 "from": {
@@ -236,14 +230,6 @@
                                 "type": "basic"
                             },
                             {
-                                "conditions": [
-                                    {
-                                        "bundle_identifiers": [
-                                            "^com\\.apple\\.Safari$"
-                                        ],
-                                        "type": "frontmost_application_if"
-                                    }
-                                ],
                                 "from": {
                                     "key_code": "q",
                                     "modifiers": {
