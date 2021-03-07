@@ -47,8 +47,8 @@ if [[ ! -f $ZINIT_HOME/bin/zinit.zsh ]]; then
 fi
 source $ZINIT_HOME/bin/zinit.zsh
 
-zinit light zsh-users/zsh-autosuggestions
 zinit light zsh-users/zsh-completions
+zinit light zsh-users/zsh-autosuggestions
 zinit light zdharma/fast-syntax-highlighting
 
 zinit light alexrochas/zsh-extract
@@ -66,6 +66,15 @@ zinit ice depth=1; zinit light romkatv/powerlevel10k
 
 autoload -Uz compinit; compinit -D $ZINIT[ZCOMPDUMP_PATH] && zinit cdreplay -q
 zstyle ':completion::complete:*' cache-path $ZSH_CACHE_DIR/zcompcache
+
+zinit light Aloxaf/fzf-tab
+zstyle ':fzf-tab:*' default-color $''
+# disable sort when completing `git checkout`
+zstyle ':completion:*:git-checkout:*' sort false
+# set descriptions format to enable group support
+zstyle ':completion:*:descriptions' format '[%d]'
+# switch group using `,` and `.`
+zstyle ':fzf-tab:*' switch-group ',' '.'
 
 # emacs completion
 declare -f compdef &>/dev/null && compdef _gnu_generic emacs emacsclient
