@@ -1,3 +1,4 @@
+# -*- mode: sh -*-
 setopt no_global_rcs
 
 export LANG=en_US
