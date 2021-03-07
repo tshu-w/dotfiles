@@ -138,7 +138,6 @@ alias 7='cd -7'
 alias 8='cd -8'
 alias 9='cd -9'
 alias cpwd="pwd|tr -d '\n'|clipcopy"
-alias ip="curl https://ipinfo.io/$1 ; echo"
 alias ipl="ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'"
 alias la='ls -Ah'
 alias ll='ls -lh'
@@ -211,6 +210,10 @@ fs () {
   else
     du $arg .[^.]* *
   fi
+}
+
+ip () {
+  curl https://ipinfo.io/$1 ; echo
 }
 
 http_port=6152
