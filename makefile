@@ -53,7 +53,7 @@ crontab:
 packages: python-packages node-packages
 
 python-packages:
-	pip3 install flake8 black flake8-black autoflake
+	command -v pip3 &>/dev/null && pip3 install flake8 black flake8-black autoflake || true
 
 node-packages:
 	npm install -g pyright
