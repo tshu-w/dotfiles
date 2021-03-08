@@ -8,3 +8,4 @@
 !**/gnupg/dirmngr.conf
 !**/gnupg/gpg.conf
 !**/gnupg/gpg-agent.conf
+!**/gnupg/public.asc
