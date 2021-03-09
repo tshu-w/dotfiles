@@ -154,8 +154,6 @@ alias lla='ls -lAh'
 alias magit='ec -e "(magit-status \"$PWD\")"'
 alias md='mkdir -p'
 alias paths='echo -e ${PATH//:/\\n}'
-alias sshr='ssh -fnNT -R :2048:localhost:22'
-alias asshr='autossh -M 0 -f -nNT -R :2048:localhost:22'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ts='trash'
 

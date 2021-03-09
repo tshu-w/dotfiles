@@ -1,7 +1,40 @@
+HOST mac
+  Hostname localhost
+  User wangtianshu
+  Port 2048
+  ProxyCommand none
+Host 14
+  Hostname 192.168.14.14
+  User wts
+Host 16
+  Hostname 192.168.14.16
+  User wts
+Host 51
+  Hostname 192.168.15.51
+  User wts
+Host 74
+  Hostname 192.168.14.74
+  User wangtianshu
+HOST 208
+  Hostname 124.16.139.208
+  User wts
+  Port 1422
+Host 109
+  Hostname 192.168.14.109
+  User tianshu
+Host 141
+  Hostname 124.16.138.141
+  User wts
+Host 143
+  Hostname 124.16.138.143
+  User wts
+Host 144
+  Hostname 124.16.138.144
+  User wts
 Host *
   Compression yes
   HashKnownHosts yes
-  Proxycommand nc -X 5 -x 127.0.0.1:6153 %h %p
+  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
   ServerAliveInterval 60
   ServerAliveCountMax 10
   TCPKeepAlive yes
@@ -12,43 +45,4 @@ Host *
   LocalCommand gpg_forward %n &
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
-HOST mac
-  Hostname localhost
-  User wangtianshu
-  Port 2048
-Host 14
-  Hostname 192.168.14.14
-  User wts
-  port 22
-Host 16
-  Hostname 192.168.14.16
-  User wts
-  port 22
-Host 51
-  Hostname 192.168.15.51
-  User wts
-  port 22
-Host 74
-  Hostname 192.168.14.74
-  User wangtianshu
-  port 22
-HOST 208
-  Hostname 124.16.139.208
-  User wts
-  port 1422
-Host 109
-  Hostname 192.168.14.109
-  User tianshu
-  port 22
-Host 141
-  Hostname 124.16.138.141
-  User wts
-  port 22
-Host 143
-  Hostname 124.16.138.143
-  User wts
-  port 22
-Host 144
-  Hostname 124.16.138.144
-  User wts
-  port 22
+  RemoteForward 2048 localhost:22
