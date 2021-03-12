@@ -29,24 +29,28 @@ yabai -m config --space misc layout float
 yabai -m rule --add app="^System Preferences|System Information$" manage=off
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off
 yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge" manage=off
-yabai -m rule --add app="QQ|WeChat|Telegram" manage=off space=^misc
+yabai -m rule --add app="QQ|WeChat|Telegram" manage=off
+yabai -m rule --add app="QQ|WeChat|Telegram" space=misc
 
 # signals
 focus_available_window="yabai -m query --windows --window &> /dev/null ||
 yabai -m window --focus mouse &> /dev/null ||
 yabai -m window --focus $(yabai -m query --windows --space | jq 'map(select(.visible == 1)) | .[0].id') &> /dev/null"
+yabai -m signal --add event=application_terminated action="$focus_available_window"
 yabai -m signal --add event=window_destroyed       action="$focus_available_window"
 yabai -m signal --add event=window_minimized       action="$focus_available_window"
-yabai -m signal --add event=application_terminated action="$focus_available_window"
 
 chinese_app_regex="^QQ|WeChat$"
 yabai -m signal --add event=application_activated app="$chinese_app_regex" action="/usr/local/bin/fcitx-remote -o"
 yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="/usr/local/bin/fcitx-remote -c"
 
 float_script="if [ \$(yabai -m query --windows --window | jq '.resizable == 0 and .floating != 1') = 'true' ]; then
-  yabai -m window --toggle float; ~/.config/yabai/scripts/center-float-window.sh;
+  yabai -m window --toggle float;
 fi"
-yabai -m signal --add event=window_created       action="$float_script"
-yabai -m signal --add event=application_launched action="$float_script"
+center_float_window="if [ \$(yabai -m query --windows --window | jq '.floating == 1') == 'true' ]; then
+  ~/.config/yabai/scripts/center-float-window.sh;
+fi"
+yabai -m signal --add event=application_launched action="$float_script && $center_float_window"
+yabai -m signal --add event=window_created       action="$float_script && $center_float_window"
 
 echo "yabai configuration loaded.."

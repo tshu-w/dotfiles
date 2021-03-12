@@ -11,8 +11,8 @@
 :: disable : osascript -e "display notification \"skhd disabled!\" with title \"skhd\""
 
 # Mode switching
-alt - 0x2C; disable
-disable < alt - 0x2C; default
+alt - escape; disable
+disable < alt - escape; default
 
 # reload yabai
 ctrl + alt + cmd - r : launchctl kickstart -k "gui/${UID}/homebrew.mxcl.yabai"
