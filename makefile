@@ -15,6 +15,8 @@ export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
 all: $(OS) setup link crontab packages
+	mkdir -p $(XDG_DATA_HOME)/wakatime
+	wakatime --config-write api_key 3fd63845-ecde-47ea-bd1a-7042221d1046
 
 darwin:
 
