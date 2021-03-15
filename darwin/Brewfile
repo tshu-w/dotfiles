@@ -42,7 +42,7 @@ brew "trash"
 brew "tree"
 brew "vim"
 brew "wakatime-cli"
-brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-native-comp"]
+brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-native-comp"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "adguard", args: { appdir: "/Applications" }
