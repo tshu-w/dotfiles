@@ -23,10 +23,6 @@ SetFileIcon -image ~/Pictures/icons/macOS_Documents.icns -file ~/Documents
 #+end_src
 
 *** set apps icons
-#+begin_src sh
-SetFileIcon -image ~/Pictures/icons/emacs.icns -file /usr/local/opt/emacs-plus@28/Emacs.app
-#+end_src
-
 *** [[https://vimacapp.com/][vimac]]
 *** set youdao appID and key for Launchbar
 *** import GPG subkeys
