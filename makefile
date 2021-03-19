@@ -8,9 +8,7 @@ export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
 ifeq ($(OS),linux)
-export JUNEST_HOME := $(XDG_DATA_HOME)/junest_home
-export PATH := $(XDG_DATA_HOME)/junest/bin:$(PATH)
-export PATH := $(PATH):$(JUNEST_HOME)/usr/bin_wrappers
+export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:$(PATH)
 export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 

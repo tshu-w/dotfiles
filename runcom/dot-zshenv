@@ -25,10 +25,8 @@ if [[ `uname` == "Darwin" ]]; then
 
     export ANACONDA_HOME=/usr/local/anaconda3/
 else
-    export JUNEST_HOME=$XDG_DATA_HOME/junest_home
-    export PATH=$XDG_DATA_HOME/junest/bin:$PATH
-    export PATH=$PATH:$JUNEST_HOME/usr/bin_wrappers
-
+    [ -d /home/linuxbrew/.linuxbrew ] && eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
+    [ -d $XDG_DATA_HOME/linuxbrew ] && eval $($XDG_DATA_HOME/linuxbrew/bin/brew shellenv)
     export PATH=$XDG_DATA_HOME/anaconda3/bin:$PATH
 
     export NPM_CONFIG_PREFIX=$HOME/.local

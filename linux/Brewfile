@@ -1,0 +1,10 @@
+tap "homebrew/bundle"
+tap "homebrew/core"
+brew "emacs", args: ["HEAD"]
+brew "fzf"
+brew "node"
+brew "ripgrep"
+brew "screen"
+brew "stow"
+brew "trash-cli"
+brew "wakatime-cli"
