@@ -3,6 +3,7 @@ HOST mac
   User wangtianshu
   Port 2048
   ProxyCommand none
+  LocalCommand none
 Host 14
   Hostname 192.168.14.14
   User wts
@@ -34,15 +35,15 @@ Host 144
 Host *
   Compression yes
   HashKnownHosts yes
-  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
   ServerAliveInterval 60
   ServerAliveCountMax 10
   TCPKeepAlive yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 1h
+  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
   PermitLocalCommand yes
-  LocalCommand gpg_forward %n &
+  LocalCommand  { gpg_forward %n; emacs_forward %n } &
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
   RemoteForward 2048 localhost:22

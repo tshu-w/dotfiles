@@ -1,0 +1,9 @@
+#!/usr/bin/env zsh
+
+local_socket=${XDG_RUNTIME_DIR:-${${TMPDIR%/}:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server
+remote_socket=$(ssh $1 'echo ${XDG_RUNTIME_DIR:-${${TMPDIR%/}:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server')
+ssh $1 "\rm -rf $remote_socket"
+ssh -o PermitLocalCommand=no -fNT -R $remote_socket:$local_socket $1
+
+echo $1 > /tmp/hostname
+scp -q /tmp/hostname $1:~/.cache/ssh/hostname
