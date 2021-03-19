@@ -1,0 +1,27 @@
+{
+  "title": "Use Emacs built-in input method",
+  "rules": [
+    {
+      "description": "Change cmd-space to ctrl-\\ in Emacs",
+      "manipulators": [
+        {
+          "from": {
+            "key_code": "spacebar",
+            "modifiers": {
+              "mandatory": [ "command" ]
+            }
+          },
+          "to": [{
+              "key_code": "backslash",
+              "modifiers": "control"
+          }],
+          "conditions": [{
+              "type": "frontmost_application_if",
+              "bundle_identifiers": [ "^org\\.gnu\\.Emacs$" ]
+          }],
+          "type": "basic"
+        }
+      ]
+    }
+  ]
+}
