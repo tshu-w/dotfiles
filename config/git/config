@@ -6,9 +6,21 @@
 [commit]
 	gpgsign = true
 
+[push]
+	default = simple
+
 [alias]
 	last = log -1
 	unstage = reset HEAD
 	lg = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
 	random = !"git commit -am \"$(echo $(curl -s http://whatthecommit.com/index.txt)\"\")\""
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
+
+[http]
+	proxy = http://127.0.0.1:6152
+
+[https]
+	proxy = http://127.0.0.1:6152
+
+[github]
+	user = tshu-w
