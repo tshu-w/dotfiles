@@ -32,6 +32,15 @@ change_focus() {
   emacsclient -n -e "(select-frame-set-input-focus (selected-frame))" > /dev/null
 }
 
+# Preferred edit file at local emacs via tramp
+if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+    [ -z $hostname ] && export hostname=`cat $XDG_CACHE_HOME/ssh/hostname`
+    for arg in "$@"; do
+        [[ -d $arg || -f $arg ]] && set -- $@ /ssh:$hostname:$(readlink -f -- $arg) || set -- $@ $arg
+        shift
+    done
+fi
+
 # try switching to the frame incase it is just minimized
 # will start a server if not running
 test "$(visible_frames)" -eq "1" && change_focus

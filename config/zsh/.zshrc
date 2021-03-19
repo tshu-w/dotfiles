@@ -171,11 +171,6 @@ fi
 #                                  functions                                  #
 ###############################################################################
 
-# Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#     ec () { ssh mac "emacsclient --no-wait /ssh:hostname:$(readlink -f $1)"; }
-# fi
-
 # wrap command `ls` into a function
 _ls_on_pwd_change() { ls }
 
