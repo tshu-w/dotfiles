@@ -81,14 +81,10 @@ declare -f compdef &>/dev/null && compdef _gnu_generic emacs emacsclient
 
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
-if  command -v brew &> /dev/null ; then
-    [ -f $XDG_CONFIG_HOME/fzf/fzf.zsh ] \
-        || $(brew --prefix)/opt/fzf/install --xdg --key-bindings --completion --no-update-rc --no-bash --no-fish
-    source $XDG_CONFIG_HOME/fzf/fzf.zsh
-else
-    source $JUNEST_HOME/usr/share/fzf/key-bindings.zsh
-    source $JUNEST_HOME/usr/share/fzf/completion.zsh
-fi
+[ -f $XDG_CONFIG_HOME/fzf/fzf.zsh ] \
+    || $(brew --prefix)/opt/fzf/install --xdg --key-bindings --completion --no-update-rc --no-bash --no-fish >/dev/null
+source $XDG_CONFIG_HOME/fzf/fzf.zsh
+
 
 ###############################################################################
 #                                  appearance                                 #
@@ -169,9 +165,6 @@ if [[ `uname` == "Darwin" ]]; then
     alias ofd='open $PWD'
     alias subl='open -a "Sublime text"'
     alias typora='open -a typora'
-else
-    alias j="junest"
-    alias jf="junest -f"
 fi
 
 ###############################################################################
