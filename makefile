@@ -12,7 +12,9 @@ export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:$
 export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
-all: $(OS) setup link crontab packages
+.PHONY: darwin linux
+
+all: setup link crontab packages $(OS)
 	mkdir -p $(XDG_DATA_HOME)/wakatime
 	wakatime --config-write api_key 3fd63845-ecde-47ea-bd1a-7042221d1046
 
