@@ -69,10 +69,10 @@ cask "microsoft-excel"
 cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "moneywiz", args: { appdir: "/Applications" }
+cask "neteasemusic"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "pdf-expert"
-cask "qqmusic", args: { appdir: "/Applications" }
 cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
 cask "sublime-text", args: { appdir: "/Applications" }
