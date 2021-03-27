@@ -29,8 +29,8 @@ yabai -m config --space misc layout float
 yabai -m rule --add app="^System Preferences|System Information$" manage=off
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off
 yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge" manage=off
-yabai -m rule --add app="QQ|WeChat|Telegram" manage=off
-yabai -m rule --add app="QQ|WeChat|Telegram" space=misc
+yabai -m rule --add app="QQ|WeChat|Telegram|Music" manage=off
+yabai -m rule --add app="QQ|WeChat|Telegram|Music" space=misc
 
 # signals
 focus_available_window="yabai -m query --windows --window &> /dev/null ||
