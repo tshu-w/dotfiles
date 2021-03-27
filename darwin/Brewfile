@@ -49,7 +49,6 @@ cask "adguard", args: { appdir: "/Applications" }
 cask "aldente"
 cask "anaconda"
 cask "bartender", args: { appdir: "/Applications" }
-cask "bitwarden"
 cask "bob"
 cask "calibre", args: { appdir: "/Applications" }
 cask "dash", args: { appdir: "/Applications" }
@@ -81,6 +80,7 @@ cask "thunder", args: { appdir: "/Applications" }
 cask "typora", args: { appdir: "/Applications" }
 cask "zoom"
 cask "zotero", args: { appdir: "/Applications" }
+mas "Bitwarden", id: 1352778147
 mas "Grammarly for Safari", id: 1462114288
 mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
