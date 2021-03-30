@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
-* 10 * * * crontab -l > ~/.config/crontab
-00 12 * * 1 command -v zsh &> /dev/null && zsh -c "brew bundle dump --file ~/dotfiles/`uname -s | tr A-Z a-z`/Brewfile -f &>/dev/null"
+00 11 * * * crontab -l > ~/.config/crontab
+00 10 * * 5 command -v zsh &> /dev/null && zsh -c "brew bundle dump --file ~/dotfiles/`uname -s | tr A-Z a-z`/Brewfile -f &>/dev/null"
 00 12 * * 7 [ `uname` = "Darwin" ] && ~/Library/Mobile\ Documents/iCloud~com~nssurge~inc/Documents/gen.sh >/dev/null
 * * * * * [ `uname` = "Darwin" ] && open -gj -a TakeABreak &>/dev/null
