@@ -12,6 +12,7 @@ brew "aspell"
 brew "autossh"
 brew "blueutil"
 brew "python@3.9"
+brew "glib"
 brew "coreutils"
 brew "fcitx-remote-for-osx"
 brew "findutils"
@@ -24,6 +25,7 @@ brew "gnu-tar"
 brew "isync"
 brew "jq"
 brew "jsonnet"
+brew "pango"
 brew "mackup"
 brew "mas"
 brew "moreutils"
@@ -33,6 +35,7 @@ brew "pandoc"
 brew "pinentry-mac"
 brew "ripgrep"
 brew "stow"
+brew "subversion"
 brew "switchaudio-osx"
 brew "tealdeer"
 brew "terminal-notifier"
@@ -42,7 +45,7 @@ brew "trash"
 brew "tree"
 brew "vim"
 brew "wakatime-cli"
-brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-native-comp"]
+brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-native-comp", "without-imagemagick"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "adguard", args: { appdir: "/Applications" }
@@ -52,9 +55,10 @@ cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
 cask "calibre", args: { appdir: "/Applications" }
 cask "dash", args: { appdir: "/Applications" }
+cask "discord"
 cask "dropbox", args: { appdir: "/Applications" }
+cask "firefox"
 cask "font-source-code-pro"
-cask "google-chrome"
 cask "hammerspoon"
 cask "iina", args: { appdir: "/Applications" }
 cask "iterm2"
@@ -71,7 +75,6 @@ cask "moneywiz", args: { appdir: "/Applications" }
 cask "neteasemusic"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
-cask "pdf-expert"
 cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
 cask "sublime-text", args: { appdir: "/Applications" }
