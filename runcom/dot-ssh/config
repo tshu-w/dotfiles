@@ -2,8 +2,6 @@ HOST mac
   Hostname localhost
   User wangtianshu
   Port 2048
-  ProxyCommand none
-  LocalCommand none
 Host 14
   Hostname 192.168.14.14
   User wts
@@ -16,13 +14,16 @@ Host 51
 Host 74
   Hostname 192.168.14.74
   User wangtianshu
+Host 75
+  Hostname 192.168.14.75
+  User wangtianshu
+Host 109
+  Hostname 192.168.14.109
+  User tianshu
 HOST 208
   Hostname 124.16.139.208
   User wts
   Port 1422
-Host 109
-  Hostname 192.168.14.109
-  User tianshu
 Host 141
   Hostname 124.16.138.141
   User wts
@@ -32,6 +33,10 @@ Host 143
 Host 144
   Hostname 124.16.138.144
   User wts
+Match exec "echo %h | grep -q '192\|124'"
+  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
+  LocalCommand  { gpg_forward %n; emacs_forward %n } &
+  RemoteForward 2048 localhost:22
 Host *
   Compression yes
   HashKnownHosts yes
@@ -41,9 +46,6 @@ Host *
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 1h
-  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
   PermitLocalCommand yes
-  LocalCommand  { gpg_forward %n; emacs_forward %n } &
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
-  RemoteForward 2048 localhost:22
