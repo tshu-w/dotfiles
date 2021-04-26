@@ -232,8 +232,14 @@ export http_proxy=http://127.0.0.1:$http_port
 export https_proxy=http://127.0.0.1:$http_port
 export all_proxy=socks5://127.0.0.1:$socks_port
 
-# cdd - cd into the directory of the selected file
-cdd () {
+# fd - cd to selected directory
+fd () {
+  local dir
+  dir=$(find ${1:-.} -type d 2> /dev/null | fzf +m) && cd $dir
+}
+
+# fcd - cd into the directory of the selected file
+fcd () {
     local file
     local dir
     file=$(fzf +m -q "$1") && dir=$(dirname "$file") && cd "$dir"
@@ -248,8 +254,7 @@ fkill () {
         pid=$(ps -ef | sed 1d | fzf -m | awk '{print $2}')
     fi
 
-    if [ "x$pid" != "x" ]
-    then
+    if [ "x$pid" != "x" ]; then
         echo $pid | xargs kill -${1:-9}
     fi
 }
