@@ -85,6 +85,9 @@ export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
     || $(brew --prefix)/opt/fzf/install --xdg --key-bindings --completion --no-update-rc --no-bash --no-fish >/dev/null
 source $XDG_CONFIG_HOME/fzf/fzf.zsh
 
+# gpg
+gpg-connect-agent /bye &>/dev/null
+
 
 ###############################################################################
 #                                  appearance                                 #
