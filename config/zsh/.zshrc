@@ -53,7 +53,6 @@ zinit light zdharma/fast-syntax-highlighting
 
 zinit light alexrochas/zsh-extract
 zinit light sobolevn/wakatime-zsh-plugin
-# zinit light sukkaw/zsh-osx-autoproxy
 
 # OMZ
 zinit snippet OMZ::lib/clipboard.zsh
@@ -62,9 +61,10 @@ zinit snippet OMZ::lib/key-bindings.zsh
 # p10k
 zinit ice depth=1; zinit light romkatv/powerlevel10k
 # To customize prompt, run `p10k configure` or edit $ZDOTDIR/p10k.zsh.
-[[ ! -f $ZDOTDIR/p10k.zsh ]] || source $ZDOTDIR/p10k.zsh
+[ ! -f $ZDOTDIR/p10k.zsh ] || source $ZDOTDIR/p10k.zsh
 
-autoload -Uz compinit; compinit -D $ZINIT[ZCOMPDUMP_PATH] && zinit cdreplay -q
+zinit snippet $ZDOTDIR/plugins/completion.zsh
+autoload -Uz compinit; compinit -d $ZINIT[ZCOMPDUMP_PATH]; zinit cdreplay -q
 zstyle ':completion::complete:*' cache-path $ZSH_CACHE_DIR/zcompcache
 
 zinit light Aloxaf/fzf-tab
@@ -76,9 +76,6 @@ zstyle ':completion:*:descriptions' format '[%d]'
 # switch group using `,` and `.`
 zstyle ':fzf-tab:*' switch-group ',' '.'
 
-# emacs completion
-declare -f compdef &>/dev/null && compdef _gnu_generic emacs emacsclient
-
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
 [ -f $XDG_CONFIG_HOME/fzf/fzf.zsh ] \
@@ -87,7 +84,6 @@ source $XDG_CONFIG_HOME/fzf/fzf.zsh
 
 # gpg
 gpg-connect-agent /bye &>/dev/null
-
 
 ###############################################################################
 #                                  appearance                                 #
@@ -159,7 +155,7 @@ alias ts='trash'
 alias pbtext="pbpaste | textutil -convert txt -stdin -stdout -encoding 30 | pbcopy"
 alias pbspaces="pbpaste | expand | pbcopy"
 
-if [[ `uname` == "Darwin" ]]; then
+if [ `uname` = "Darwin" ]; then
     alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
     alias cleanupad="find . -type d -name '.AppleD*' -ls -exec /bin/rm -r {} \;"
     alias flushdns="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
