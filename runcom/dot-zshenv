@@ -36,6 +36,10 @@ fi
 
 ZDOTDIR=$HOME/.config/zsh
 
+export ZSH_DISABLE_COMPFIX="true" # disable compinit warning
+# Skip the not really helping Ubuntu global compinit
+skip_global_compinit=1
+
 export CONDARC=$XDG_CONFIG_HOME/conda/condarc
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
 export GNUPGHOME=$XDG_CONFIG_HOME/gnupg
