@@ -28,9 +28,10 @@ brew "jsonnet"
 brew "pango"
 brew "mackup"
 brew "mas"
+brew "node"
+brew "mermaid-cli"
 brew "moreutils"
 brew "mu"
-brew "node"
 brew "pandoc"
 brew "pinentry-mac"
 brew "ripgrep"
@@ -79,6 +80,7 @@ cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
 cask "sublime-text", args: { appdir: "/Applications" }
 cask "telegram"
+cask "tencent-meeting"
 cask "thunder", args: { appdir: "/Applications" }
 cask "typora", args: { appdir: "/Applications" }
 cask "zoom"
