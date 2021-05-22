@@ -14,7 +14,7 @@ brew bundle -v --no-lock || true
 
 # Installing Anaconda
 if [ ! -d $XDG_DATA_HOME/anaconda3 ]; then
-    anaconda_script=Anaconda3-2020.11-Linux-x86_64.sh
+    anaconda_script=`wget -O - https://www.anaconda.com/distribution/ 2>/dev/null | sed -ne 's@.*\(Anaconda3-.*-Linux-x86_64\.sh\)\">64-Bit (x86) Installer.*@\1@p'`
     curl https://repo.anaconda.com/archive/$anaconda_script -o ~/$anaconda_script
     (cd ~ && echo | bash $anaconda_script -b -p $XDG_DATA_HOME/anaconda3)
 fi
