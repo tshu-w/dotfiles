@@ -221,17 +221,20 @@ proxy () {
   export http_proxy=http://127.0.0.1:$http_port
   export https_proxy=http://127.0.0.1:$http_port
   export all_proxy=socks5://127.0.0.1:$socks_port
+  export no_proxy=localhost,127.0.0.0/8,*.local
   echo "Proxy on"
 }
 noproxy () {
   unset http_proxy
   unset https_proxy
   unset all_proxy
+  unset no_proxy
   echo "Proxy off"
 }
 export http_proxy=http://127.0.0.1:$http_port
 export https_proxy=http://127.0.0.1:$http_port
 export all_proxy=socks5://127.0.0.1:$socks_port
+export no_proxy=localhost,127.0.0.0/8,*.local
 
 # fd - cd to selected directory
 fd () {
