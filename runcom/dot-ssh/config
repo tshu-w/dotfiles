@@ -34,9 +34,10 @@ Host 144
   Hostname 124.16.138.144
   User wts
 Match exec "echo %h | grep -q '192\|124'"
-  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
   LocalCommand  { gpg_forward %n; emacs_forward %n } &
   RemoteForward 2048 localhost:22
+Match exec "echo %h | grep '192\|124' | grep -q -v '208' && ! nc -z -G 1 %h %p &> /dev/null"
+  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
   HashKnownHosts yes
