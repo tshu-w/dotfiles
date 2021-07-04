@@ -56,11 +56,6 @@ zinit light zdharma/fast-syntax-highlighting
 zinit light alexrochas/zsh-extract
 zinit light sobolevn/wakatime-zsh-plugin
 
-zinit from"gh-r" as"program" mv"direnv.`uname -s | tr A-Z a-z`-amd64 -> direnv" \
-      atclone"./direnv hook zsh > zhook.zsh" atpull"%atclone" \
-      pick"direnv" src="zhook.zsh" for \
-      direnv/direnv
-
 # OMZ
 zinit snippet OMZ::lib/clipboard.zsh
 zinit snippet OMZ::lib/key-bindings.zsh
