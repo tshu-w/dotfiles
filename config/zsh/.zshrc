@@ -26,6 +26,8 @@ setopt hist_ignore_space      # ignore commands that start with space
 setopt hist_verify            # show command with history expansion to user before running it
 setopt share_history          # share command history data
 
+zle_highlight=('paste:none')
+
 export HISTFILE="$XDG_DATA_HOME/zsh/history"
 [ ! -d "$XDG_DATA_HOME/zsh" ] && mkdir -p "$XDG_DATA_HOME/zsh"
 [ "$HISTSIZE" -lt 50000 ] && HISTSIZE=50000
