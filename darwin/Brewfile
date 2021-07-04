@@ -51,6 +51,7 @@ brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "adguard", args: { appdir: "/Applications" }
 cask "aldente"
+cask "alt-tab"
 cask "anaconda"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
