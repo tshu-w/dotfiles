@@ -34,7 +34,7 @@ export HISTFILE="$XDG_DATA_HOME/zsh/history"
 [ "$SAVEHIST" -lt 10000 ] && SAVEHIST=10000
 
 ###############################################################################
-#                                   ZZINIT                                    #
+#                                    ZINIT                                    #
 ###############################################################################
 declare -A ZINIT
 
@@ -129,7 +129,6 @@ zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#) ([0-9a-z-
 ###############################################################################
 #                                    alias                                    #
 ###############################################################################
-
 alias _='sudo'
 alias ...='cd ../..'
 alias ....='cd ../../..'
@@ -143,19 +142,18 @@ alias 6='cd -6'
 alias 7='cd -7'
 alias 8='cd -8'
 alias 9='cd -9'
+alias cp='cp -i'
 alias cpwd="pwd|tr -d '\n'|clipcopy"
+alias df='df -hT'
 alias ipl="ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'"
 alias la='ls -Ah'
 alias ll='ls -lh'
 alias lla='ls -lAh'
-alias magit='ec -e "(magit-status \"$PWD\")"'
 alias md='mkdir -p'
+alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ts='trash'
-
-alias pbtext="pbpaste | textutil -convert txt -stdin -stdout -encoding 30 | pbcopy"
-alias pbspaces="pbpaste | expand | pbcopy"
 
 if [ `uname` = "Darwin" ]; then
     alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
@@ -164,14 +162,12 @@ if [ `uname` = "Darwin" ]; then
     alias resetlaunchpad="defaults write com.apple.dock ResetLaunchPad -bool true"
     alias log='/usr/bin/log'
     alias ofd='open $PWD'
-    alias subl='open -a "Sublime text"'
     alias typora='open -a typora'
 fi
 
 ###############################################################################
 #                                  functions                                  #
 ###############################################################################
-
 # wrap command `ls` into a function
 _ls_on_pwd_change() { ls }
 
