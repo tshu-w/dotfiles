@@ -26,6 +26,14 @@ setopt hist_ignore_space      # ignore commands that start with space
 setopt hist_verify            # show command with history expansion to user before running it
 setopt share_history          # share command history data
 
+zshaddhistory() {
+  local line=${1%%$'\n'}
+  local cmd=${line%% *}
+  [[ ${#line} -ge 5
+     && ${cmd} != (rm|\\rm|\"rm\")
+  ]]
+}
+
 zle_highlight=('paste:none')
 
 export HISTFILE="$XDG_DATA_HOME/zsh/history"
