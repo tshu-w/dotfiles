@@ -61,7 +61,7 @@ zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
 zinit light zdharma/fast-syntax-highlighting
 
-zinit light alexrochas/zsh-extract
+zinit light le0me55i/zsh-extract
 zinit light sobolevn/wakatime-zsh-plugin
 
 # OMZ
