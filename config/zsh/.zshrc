@@ -77,14 +77,19 @@ zinit snippet $ZDOTDIR/plugins/completion.zsh
 autoload -Uz compinit; compinit -d $ZINIT[ZCOMPDUMP_PATH]; zinit cdreplay -q
 zstyle ':completion::complete:*' cache-path $ZSH_CACHE_DIR/zcompcache
 
-zinit light Aloxaf/fzf-tab
-zstyle ':fzf-tab:*' default-color $''
-# disable sort when completing `git checkout`
-zstyle ':completion:*:git-checkout:*' sort false
-# set descriptions format to enable group support
-zstyle ':completion:*:descriptions' format '[%d]'
-# switch group using `,` and `.`
-zstyle ':fzf-tab:*' switch-group ',' '.'
+# zsh-autocomplete
+zstyle ':autocomplete:*' min-input 1
+zstyle ':autocomplete:*' insert-unambiguous yes
+zstyle ':autocomplete:*' fzf-completion yes
+zinit light marlonrichert/zsh-autocomplete
+zle -A {.,}history-incremental-search-forward
+zle -A {.,}history-incremental-search-backward
+
+zinit ice as"command" from"gh-r" lucid \
+  mv"zoxide*/zoxide -> zoxide" \
+  atclone"./zoxide init zsh --cmd j > init.zsh" \
+  atpull"%atclone" src"init.zsh" nocompile'!'
+zinit light ajeetdsouza/zoxide
 
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
