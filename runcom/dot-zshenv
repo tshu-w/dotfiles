@@ -14,9 +14,9 @@ export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
 export INFOPATH=$HOME/.local/share/info:/usr/local/share/info:/usr/share/info
 
 if [[ `uname` == "Darwin" ]]; then
-    # for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar"; do
-    #     export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
-    # done
+    for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar"; do
+        export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
+    done
 
     export PATH=$PATH:/Library/TeX/texbin:/Library/Apple/usr/bin
     export PATH=/usr/local/anaconda3/bin:$PATH
@@ -39,8 +39,7 @@ fi
 ZDOTDIR=$HOME/.config/zsh
 
 export ZSH_DISABLE_COMPFIX="true" # disable compinit warning
-# Skip the not really helping Ubuntu global compinit
-skip_global_compinit=1
+[[ $VENDOR == ubuntu ]] && export skip_global_compinit=1
 
 export CONDARC=$XDG_CONFIG_HOME/conda/condarc
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker

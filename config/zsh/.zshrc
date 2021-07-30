@@ -1,4 +1,5 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
+[ ! -d $XDG_DATA_HOME/zsh ] && mkdir -p $XDG_DATA_HOME/zsh
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -7,24 +8,13 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-setopt auto_cd
-setopt multios
-setopt prompt_subst
-setopt long_list_jobs
-setopt interactivecomments
+export HISTFILE=$XDG_DATA_HOME/zsh/history
+HISTSIZE=60000
+SAVEHIST=50000
 
-# changing/making/removing directory
-setopt auto_pushd
-setopt pushd_ignore_dups
-setopt pushdminus
-
-## history command configuration
-setopt extended_history       # record timestamp of command in HISTFILE
-setopt hist_expire_dups_first # delete duplicates first when HISTFILE size exceeds HISTSIZE
-setopt hist_ignore_all_dups   # ignore all duplicated commands in history list
-setopt hist_ignore_space      # ignore commands that start with space
-setopt hist_verify            # show command with history expansion to user before running it
-setopt share_history          # share command history data
+setopt extended_history
+setopt hist_expire_dups_first hist_ignore_all_dups
+setopt hist_ignore_space hist_verify share_history
 
 zshaddhistory() {
   local line=${1%%$'\n'}
@@ -34,62 +24,49 @@ zshaddhistory() {
   ]]
 }
 
-zle_highlight=('paste:none')
-
-export HISTFILE="$XDG_DATA_HOME/zsh/history"
-[ ! -d "$XDG_DATA_HOME/zsh" ] && mkdir -p "$XDG_DATA_HOME/zsh"
-[ "$HISTSIZE" -lt 50000 ] && HISTSIZE=50000
-[ "$SAVEHIST" -lt 10000 ] && SAVEHIST=10000
+setopt auto_cd auto_pushd pushd_ignore_dups pushdminus
+setopt interactivecomments long_list_jobs multios prompt_subst
 
 ###############################################################################
-#                                    ZINIT                                    #
+#                                     Znap                                    #
 ###############################################################################
-declare -A ZINIT
+ZNAP_HOME=$XDG_DATA_HOME/zsh/zsh-snap
 
-ZSH_CACHE_DIR=$XDG_CACHE_HOME/zsh
-ZINIT_HOME=$XDG_DATA_HOME/zinit
-ZINIT[HOME_DIR]=$ZINIT_HOME
-ZINIT[ZCOMPDUMP_PATH]=$ZSH_CACHE_DIR/zcompdump
-
-if [[ ! -f $ZINIT_HOME/bin/zinit.zsh ]]; then
-  git clone https://github.com/zdharma/zinit.git $ZINIT_HOME/bin
-	zcompile $ZINIT_HOME/bin/zinit.zsh
+if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
+    git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git $ZNAP_HOME
 fi
-source $ZINIT_HOME/bin/zinit.zsh
+source $ZNAP_HOME/znap.zsh
 
-zinit light zsh-users/zsh-completions
-zinit light zsh-users/zsh-autosuggestions
-zinit light zdharma/fast-syntax-highlighting
-
-zinit light le0me55i/zsh-extract
-zinit light sobolevn/wakatime-zsh-plugin
-
-# OMZ
-zinit snippet OMZ::lib/clipboard.zsh
-zinit snippet OMZ::lib/key-bindings.zsh
-
-# p10k
-zinit ice depth=1; zinit light romkatv/powerlevel10k
-# To customize prompt, run `p10k configure` or edit $ZDOTDIR/p10k.zsh.
+znap source romkatv/powerlevel10k
 [ ! -f $ZDOTDIR/p10k.zsh ] || source $ZDOTDIR/p10k.zsh
 
-zinit snippet $ZDOTDIR/plugins/completion.zsh
-autoload -Uz compinit; compinit -d $ZINIT[ZCOMPDUMP_PATH]; zinit cdreplay -q
-zstyle ':completion::complete:*' cache-path $ZSH_CACHE_DIR/zcompcache
+znap source zsh-users/zsh-completions
+znap source zsh-users/zsh-autosuggestions
+znap source zdharma/fast-syntax-highlighting
 
-# zsh-autocomplete
+znap source ohmyzsh/ohmyzsh lib/clipboard.zsh lib/key-bindings.zsh
+
+(( $+commands[dircolors] )) && eval "$(dircolors -b $ZDOTDIR/dir_colors)"
+znap source marlonrichert/zcolors
+znap eval   marlonrichert/zcolors "zcolors ${(q)LS_COLORS}"
+zle_highlight+=(suffix:none)
+
+znap source marlonrichert/zsh-autocomplete
+zstyle ':completion:*:paths' path-completion yes
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 zstyle ':autocomplete:*' fzf-completion yes
-zinit light marlonrichert/zsh-autocomplete
+bindkey $key[Up] up-line-or-beginning-search
+bindkey "^_" list-expand
+bindkey -M menuselect "^m" accept-and-hold
 zle -A {.,}history-incremental-search-forward
 zle -A {.,}history-incremental-search-backward
 
-zinit ice as"command" from"gh-r" lucid \
-  mv"zoxide*/zoxide -> zoxide" \
-  atclone"./zoxide init zsh --cmd j > init.zsh" \
-  atpull"%atclone" src"init.zsh" nocompile'!'
-zinit light ajeetdsouza/zoxide
+znap source marlonrichert/zsh-edit
+znap source le0me55i/zsh-extract
+znap source sobolevn/wakatime-zsh-plugin
+
+compdef _gnu_generic emacs emacsclient
 
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
@@ -101,60 +78,17 @@ source $XDG_CONFIG_HOME/fzf/fzf.zsh
 gpg-connect-agent /bye &>/dev/null
 
 ###############################################################################
-#                                  appearance                                 #
-###############################################################################
-# https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/theme-and-appearance.zsh
-autoload -U colors && colors
-export LSCOLORS="Gxfxcxdxbxegedabagacad"
-
-{ls --color -d . &>/dev/null && alias ls='ls --color=tty'} \
-    || { [[ -n "$LS_COLORS" ]] && gls -G . &>/dev/null && alias ls='gls --color=tty' } \
-    || { ls -G . &>/dev/null && alias ls='ls -G' }
-
-# Take advantage of $LS_COLORS for completion as well.
-[[ -n "$LS_COLORS" ]] && zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
-
-# enable diff color if possible.
-if command diff --color . . &>/dev/null; then
-  alias diff='diff --color'
-fi
-
-# tell grep to highlight matches
-grep --color a <<< a &>/dev/null && GREP_OPTIONS+=" --color=auto"
-
-# avoid VCS folders
-echo | grep --exclude-dir=.cvs '' &>/dev/null && \
-    for PATTERN in .cvs .git .hg .svn; do
-        GREP_OPTIONS+=" --exclude-dir=$PATTERN"
-    done
-echo | grep --exclude=.cvs '' &>/dev/null && \
-    for PATTERN in .cvs .git .hg .svn; do
-        GREP_OPTIONS+=" --exclude=$PATTERN"
-    done
-
-unset PATTERN
-alias grep="grep $GREP_OPTIONS"
-export GREP_COLOR='1;32'
-
-zstyle ':completion:*' list-colors ''
-zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#) ([0-9a-z-]#)*=01;34=0=01'
-
-###############################################################################
 #                                    alias                                    #
 ###############################################################################
+{ls --color -d . &>/dev/null && alias ls='ls --l --color'} \
+    || { gls -G . &>/dev/null && alias ls='gls --l --color' } \
+    || { ls -G . &>/dev/null && alias ls='ls -G' }
+
+grep --color a <<< a &>/dev/null && alias grep="grep --color=auto"
+
 alias _='sudo'
 alias ...='cd ../..'
 alias ....='cd ../../..'
-alias -- -="cd -"
-alias 1='cd -'
-alias 2='cd -2'
-alias 3='cd -3'
-alias 4='cd -4'
-alias 5='cd -5'
-alias 6='cd -6'
-alias 7='cd -7'
-alias 8='cd -8'
-alias 9='cd -9'
 alias cp='cp -i'
 alias cpwd="pwd|tr -d '\n'|clipcopy"
 alias df='df -hT'
@@ -181,15 +115,6 @@ fi
 ###############################################################################
 #                                  functions                                  #
 ###############################################################################
-# wrap command `ls` into a function
-_ls_on_pwd_change() { ls }
-
-# load add-zsh-hook if it's not available yet
-(( $+functions[add-zsh-hook] )) || autoload -Uz add-zsh-hook
-
-# hook _ls_on_cwd_change onto `chpwd`
-add-zsh-hook chpwd _ls_on_pwd_change
-
 cl () { cd "$@" && ls; }
 
 mk () { mkdir -p "$@" && cd "$_"; }
