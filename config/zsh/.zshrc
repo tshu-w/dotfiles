@@ -68,11 +68,8 @@ zstyle ':completion:*:paths' path-completion yes
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 zstyle ':autocomplete:*' fzf-completion yes
-bindkey $key[Up] up-line-or-beginning-search
-bindkey "^_" list-expand
-bindkey -M menuselect "^m" accept-and-hold
-zle -A {.,}history-incremental-search-forward
-zle -A {.,}history-incremental-search-backward
+bindkey "?" list-expand
+bindkey -M menuselect "^[m" accept-and-hold
 
 znap source marlonrichert/zsh-edit
 znap source le0me55i/zsh-extract
@@ -83,7 +80,7 @@ compdef _gnu_generic emacs emacsclient
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
 [ -f $XDG_CONFIG_HOME/fzf/fzf.zsh ] \
-    || $(brew --prefix)/opt/fzf/install --xdg --key-bindings --completion --no-update-rc --no-bash --no-fish >/dev/null
+    || $(brew --prefix)/opt/fzf/install --xdg --no-key-bindings --completion --no-update-rc --no-bash --no-fish >/dev/null
 source $XDG_CONFIG_HOME/fzf/fzf.zsh
 
 # gpg
