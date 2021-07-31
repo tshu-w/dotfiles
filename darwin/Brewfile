@@ -22,13 +22,14 @@ brew "git"
 brew "gnupg"
 brew "gnu-sed"
 brew "gnu-tar"
+brew "node"
+brew "iconsur"
 brew "isync", restart_service: true
 brew "jq"
 brew "jsonnet"
 brew "pango"
 brew "mackup"
 brew "mas"
-brew "node"
 brew "mermaid-cli"
 brew "moreutils"
 brew "mu"
@@ -48,7 +49,6 @@ brew "wakatime-cli"
 brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-native-comp", "without-imagemagick"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
-cask "adguard", args: { appdir: "/Applications" }
 cask "aldente"
 cask "alt-tab"
 cask "anaconda"
@@ -56,6 +56,7 @@ cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
 cask "calibre", args: { appdir: "/Applications" }
 cask "dash", args: { appdir: "/Applications" }
+cask "dingtalk"
 cask "discord"
 cask "dropbox", args: { appdir: "/Applications" }
 cask "firefox"
