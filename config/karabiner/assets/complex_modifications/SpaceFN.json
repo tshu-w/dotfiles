@@ -72,54 +72,6 @@
       ]
     },
     {
-      "description": "SpaceFN: Space+h to Hyper (control+command+option)",
-      "manipulators": [
-        {
-          "type": "basic",
-          "from": {
-            "key_code": "h",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
-          },
-          "to": [
-            {
-                "key_code": "left_control",
-                "modifiers": [
-                    "left_command",
-                    "left_option"
-                ],
-                "lazy": true
-            },
-            {
-              "sticky_modifier": {
-                "left_control": "toggle"
-              }
-            },
-            {
-              "sticky_modifier": {
-                "left_command": "toggle"
-              }
-            },
-            {
-              "sticky_modifier": {
-                "left_option": "toggle"
-              }
-            }
-          ],
-          "conditions": [
-            {
-              "type": "variable_if",
-              "name": "spacefn_mode",
-              "value": 1
-            }
-          ]
-        }
-      ]
-    },
-    {
       "description": "SpaceFN: Space+[hjkl] to Left, Down, Up, Right",
       "manipulators": [
         {
