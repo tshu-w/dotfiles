@@ -27,6 +27,18 @@ zshaddhistory() {
 setopt auto_cd auto_pushd pushd_ignore_dups pushdminus
 setopt interactivecomments long_list_jobs multios prompt_subst
 
+bindkey '\ew' kill-region                             # [Esc-w] - Kill from the cursor to the mark
+bindkey -s '\el' 'ls\n'                               # [Esc-l] - run command: ls
+bindkey ' ' magic-space                               # [Space] - don't do history expansion
+
+# Edit the current command line in $EDITOR
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line
+
+# file rename magick
+bindkey "^[m" copy-prev-shell-word
+
 ###############################################################################
 #                                     Znap                                    #
 ###############################################################################
@@ -44,7 +56,7 @@ znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
 znap source zdharma/fast-syntax-highlighting
 
-znap source ohmyzsh/ohmyzsh lib/clipboard.zsh lib/key-bindings.zsh
+znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
 
 (( $+commands[dircolors] )) && eval "$(dircolors -b $ZDOTDIR/dir_colors)"
 znap source marlonrichert/zcolors
