@@ -91,6 +91,9 @@ source $XDG_CONFIG_HOME/fzf/fzf.zsh
 # gpg
 gpg-connect-agent /bye &>/dev/null
 
+# zoxide
+(( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
+
 ###############################################################################
 #                                    alias                                    #
 ###############################################################################
