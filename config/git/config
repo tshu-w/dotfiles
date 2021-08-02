@@ -24,43 +24,44 @@
 
 [github]
 	user = tshu-w
+
 [color "decorate"]
-	HEAD = 14 normal italic
-	remotebranch = 13 normal
-	grafted = 1 normal italic
-	tag = 3 normal bold
-	stash = 8 normal
-	branch = 14 normal
+	HEAD = 6 normal bold italic
+	remotebranch = 5 normal bold
+	grafted = 1 0 bold
+	tag = 3 0 bold
+	stash = normal
+	branch = 6 normal bold
 [color "diff"]
 	whitespace = normal
-	commit = 3 normal
-	func = 10 normal
+	commit = 3 0
+	func = 2 normal bold
 [color "grep"]
-	filename = 7 normal
-	function = 10 normal
-	column = 8 normal
-	linenumber = 8 normal
+	filename = normal
+	function = 2 normal bold
+	column = normal
+	linenumber = normal
 [color "interactive"]
 	header = normal
-	help = 8 normal
-	error = 1 normal italic
+	help = normal
+	error = 1 0 bold
 [color "status"]
 	changed = 3 normal
 	unmerged = 1 normal
-	nobranch = 1 normal italic
+	nobranch = 1 0 bold
 	updated = 2 normal
-	localbranch = 14 normal
+	localbranch = 6 normal bold
 	added = 2 normal
 	untracked = normal dim
 	header = normal
-	remotebranch = 13 normal
-	branch = 14 normal
+	remotebranch = 5 normal bold
+	branch = 6 normal bold
 [color "branch"]
-	remote = 13 normal
-	upstream = 13 normal
-	plain = 14 normal
-	current = 14 normal reverse
-	local = 14 normal
+	remote = 5 normal bold
+	upstream = 5 normal bold
+	plain = 6 normal bold
+	current = 6 normal bold reverse
+	local = 6 normal bold
 [color "remote"]
 	success = 2 normal
 	error = 1 normal

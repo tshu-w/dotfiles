@@ -56,13 +56,6 @@ znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
 znap source zdharma/fast-syntax-highlighting
 
-znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
-
-(( $+commands[dircolors] )) && eval "$(dircolors -b $ZDOTDIR/dir_colors)"
-znap source marlonrichert/zcolors
-znap eval   marlonrichert/zcolors "zcolors ${(q)LS_COLORS}"
-zle_highlight+=(suffix:none)
-
 znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':autocomplete:*' min-input 1
@@ -71,8 +64,20 @@ zstyle ':autocomplete:*' fzf-completion yes
 bindkey "?" list-expand
 bindkey -M menuselect "^[m" accept-and-hold
 
-znap source marlonrichert/zsh-edit
+(( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
+znap source marlonrichert/zcolors
+znap eval zcolors "zcolors ${(q)LS_COLORS}"
+zle_highlight=(
+    isearch:fg=black,bg=11  # bright yellow
+    special:fg=14           # bright cyan
+    paste:bold
+    region:bg=blue,fg=15    # bright white
+    # suffix:bg=blue,fg=15    # bright white
+)
+
 znap source le0me55i/zsh-extract
+znap source marlonrichert/zsh-edit
+znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
 znap source sobolevn/wakatime-zsh-plugin
 
 compdef _gnu_generic emacs emacsclient
