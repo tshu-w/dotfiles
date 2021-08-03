@@ -82,6 +82,9 @@ znap source sobolevn/wakatime-zsh-plugin
 
 compdef _gnu_generic emacs emacsclient
 
+# direnv
+(( $+commands[direnv] )) && znap eval direnv 'direnv hook zsh'
+
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
 [ -f $XDG_CONFIG_HOME/fzf/fzf.zsh ] \
