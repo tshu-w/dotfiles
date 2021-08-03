@@ -57,6 +57,7 @@ znap source zsh-users/zsh-autosuggestions
 znap source zdharma/fast-syntax-highlighting
 
 znap source marlonrichert/zsh-autocomplete
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
