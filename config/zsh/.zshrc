@@ -8,37 +8,6 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-export HISTFILE=$XDG_DATA_HOME/zsh/history
-HISTSIZE=60000
-SAVEHIST=50000
-
-setopt extended_history
-setopt hist_expire_dups_first hist_ignore_all_dups
-setopt hist_ignore_space hist_verify share_history
-
-zshaddhistory() {
-  local line=${1%%$'\n'}
-  local cmd=${line%% *}
-  [[ ${#line} -ge 5
-     && ${cmd} != (rm|\\rm|\"rm\")
-  ]]
-}
-
-setopt auto_cd auto_pushd pushd_ignore_dups pushdminus
-setopt interactivecomments long_list_jobs multios prompt_subst
-
-bindkey '\ew' kill-region                             # [Esc-w] - Kill from the cursor to the mark
-bindkey -s '\el' 'ls\n'                               # [Esc-l] - run command: ls
-bindkey ' ' magic-space                               # [Space] - don't do history expansion
-
-# Edit the current command line in $EDITOR
-autoload -U edit-command-line
-zle -N edit-command-line
-bindkey '\C-x\C-e' edit-command-line
-
-# file rename magick
-bindkey "^[m" copy-prev-shell-word
-
 ###############################################################################
 #                                     Znap                                    #
 ###############################################################################
@@ -97,6 +66,40 @@ gpg-connect-agent /bye &>/dev/null
 
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
+
+###############################################################################
+#                                     Misc                                    #
+###############################################################################
+export HISTFILE=$XDG_DATA_HOME/zsh/history
+HISTSIZE=60000
+SAVEHIST=50000
+
+setopt extended_history
+setopt hist_expire_dups_first hist_ignore_all_dups
+setopt hist_ignore_space hist_verify share_history
+
+zshaddhistory() {
+  local line=${1%%$'\n'}
+  local cmd=${line%% *}
+  [[ ${#line} -ge 5
+     && ${cmd} != (rm|\\rm|\"rm\")
+  ]]
+}
+
+setopt auto_cd auto_pushd pushd_ignore_dups pushdminus
+setopt interactivecomments long_list_jobs multios prompt_subst
+
+bindkey '\ew' kill-region                             # [Esc-w] - Kill from the cursor to the mark
+bindkey -s '\el' 'ls\n'                               # [Esc-l] - run command: ls
+bindkey ' ' magic-space                               # [Space] - don't do history expansion
+
+# Edit the current command line in $EDITOR
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line
+
+# file rename magick
+bindkey "^[m" copy-prev-shell-word
 
 ###############################################################################
 #                                    alias                                    #
