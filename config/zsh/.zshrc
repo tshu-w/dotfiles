@@ -45,6 +45,7 @@ zle_highlight=(
     # suffix:bg=blue,fg=15    # bright white
 )
 
+znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
 znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
