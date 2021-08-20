@@ -27,6 +27,9 @@ HOST 208
 Host 141
   Hostname 124.16.138.141
   User wts
+Host 142
+  Hostname 124.16.138.142
+  User wts
 Host 143
   Hostname 124.16.138.143
   User wts
