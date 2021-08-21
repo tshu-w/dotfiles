@@ -29,7 +29,7 @@
 	HEAD = 6 normal bold italic
 	remotebranch = 5 normal bold
 	grafted = 1 0 bold
-	tag = 3 0 bold
+	tag = 3 0
 	stash = normal
 	branch = 6 normal bold
 [color "diff"]
@@ -46,12 +46,12 @@
 	help = normal
 	error = 1 0 bold
 [color "status"]
-	changed = 3 normal
-	unmerged = 1 normal
+	changed = 11 normal
+	unmerged = 9 normal
 	nobranch = 1 0 bold
-	updated = 2 normal
+	updated = 10 normal
 	localbranch = 6 normal bold
-	added = 2 normal
+	added = 10 normal
 	untracked = normal dim
 	header = normal
 	remotebranch = 5 normal bold
