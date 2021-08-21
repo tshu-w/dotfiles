@@ -2,6 +2,7 @@
 setopt no_global_rcs
 
 export LANG=en_US
+export LANGUAGE=en # for Ubuntu
 export LC_ALL=en_US.UTF-8
 export XAPIAN_CJK_NGRAM=yes
 
