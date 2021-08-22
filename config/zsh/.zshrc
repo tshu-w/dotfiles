@@ -68,6 +68,9 @@ gpg-connect-agent /bye &>/dev/null
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
 
+# iterm2_shell_integration
+[ ! -e $ZDOTDIR/iterm2_shell_integration.zsh ] || source $ZDOTDIR/iterm2_shell_integration.zsh
+
 ###############################################################################
 #                                     Misc                                    #
 ###############################################################################
