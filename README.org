@@ -38,6 +38,7 @@ gpg> trust
 #+begin_src sh
 gpg --search-keys mail@address
 gpg --export-ssh-key mail@address > ~/.ssh/authorized_keys
+gpg --import .config/gnupg/public.asc
 #+end_src
 
 
