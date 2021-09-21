@@ -1,13 +1,16 @@
 tap "buo/cask-upgrade"
 tap "d12frosted/emacs-plus"
+tap "daviderestivo/emacs-head"
 tap "homebrew/bundle"
 tap "homebrew/cask"
 tap "homebrew/cask-fonts"
 tap "homebrew/cask-versions"
 tap "homebrew/core"
 tap "homebrew/services"
+tap "jimeh/emacs-builds"
 tap "koekeishiya/formulae"
 tap "railwaycat/emacsmacport"
+tap "sunnyyoung/repo"
 brew "aspell"
 brew "autossh"
 brew "blueutil"
@@ -41,6 +44,7 @@ brew "showkey"
 brew "stow"
 brew "switchaudio-osx"
 brew "tealdeer"
+brew "telnet"
 brew "terminal-notifier"
 brew "tesseract"
 brew "tesseract-lang"
@@ -50,10 +54,9 @@ brew "tree"
 brew "vim"
 brew "wakatime-cli"
 brew "zoxide"
-brew "d12frosted/emacs-plus/emacs-plus@28", args: ["with-elrumo1-icon", "with-native-comp", "without-imagemagick"]
+brew "daviderestivo/emacs-head/emacs-head@28", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-comp"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
-cask "aldente"
 cask "alt-tab"
 cask "anaconda"
 cask "bartender", args: { appdir: "/Applications" }
@@ -70,6 +73,7 @@ cask "iina", args: { appdir: "/Applications" }
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements", args: { appdir: "/Applications" }
+cask "keycastr"
 cask "launchbar", args: { appdir: "/Applications" }
 cask "mactex-no-gui"
 cask "maczip"
@@ -88,6 +92,7 @@ cask "telegram"
 cask "tencent-meeting"
 cask "thunder", args: { appdir: "/Applications" }
 cask "typora", args: { appdir: "/Applications" }
+cask "wechattweak-cli"
 cask "zoom"
 cask "zotero", args: { appdir: "/Applications" }
 mas "Bitwarden", id: 1352778147
@@ -97,6 +102,7 @@ mas "Keynote", id: 409183694
 mas "Numbers", id: 409203825
 mas "Octotree", id: 1457450145
 mas "Pages", id: 409201541
+mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
 mas "Take a Break", id: 1457158844
 mas "Tampermonkey", id: 1482490089
