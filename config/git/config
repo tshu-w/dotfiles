@@ -35,7 +35,7 @@
 [color "diff"]
 	whitespace = normal reverse
 	commit = 3 0
-	func = normal
+	func = normal ul
 	newMoved = 14 normal
 	oldMovedAlternativeDimmed = 4 normal dim
 	frag = 3 0 ul
