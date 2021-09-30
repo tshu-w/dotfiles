@@ -18,7 +18,7 @@ Host 75
   Hostname 192.168.14.75
   User wangtianshu
 Host 77
-  Hostname 192.169.14.77
+  Hostname 192.168.14.77
   User wts
 Host 109
   Hostname 192.168.14.109
