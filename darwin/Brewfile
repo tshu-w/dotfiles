@@ -16,6 +16,7 @@ brew "autossh"
 brew "blueutil"
 brew "python@3.9"
 brew "glib"
+brew "pkg-config"
 brew "coreutils"
 brew "direnv"
 brew "fcitx-remote-for-osx"
@@ -61,14 +62,12 @@ cask "alt-tab"
 cask "anaconda"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
-cask "calibre", args: { appdir: "/Applications" }
 cask "dash", args: { appdir: "/Applications" }
 cask "dingtalk"
 cask "discord"
 cask "dropbox", args: { appdir: "/Applications" }
 cask "firefox"
 cask "font-source-code-pro"
-cask "hammerspoon"
 cask "iina", args: { appdir: "/Applications" }
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
@@ -87,11 +86,9 @@ cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
-cask "sublime-text", args: { appdir: "/Applications" }
 cask "telegram"
 cask "tencent-meeting"
 cask "thunder", args: { appdir: "/Applications" }
-cask "typora", args: { appdir: "/Applications" }
 cask "wechattweak-cli"
 cask "zoom"
 cask "zotero", args: { appdir: "/Applications" }
@@ -100,7 +97,6 @@ mas "Grammarly for Safari", id: 1462114288
 mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
 mas "Numbers", id: 409203825
-mas "Octotree", id: 1457450145
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
