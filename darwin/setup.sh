@@ -18,14 +18,13 @@ brew bundle -v --no-lock || true
 
 brew services start yabai
 brew services start skhd
-ln -sf /usr/local/opt/emacs-plus@28/Emacs.app /Applications
+ln -sf /usr/local/opt/emacs-head@29/Emacs.app /Applications
 
 for dir in "fastmail" "iscas"; do
     mkdir -p $XDG_DATA_HOME/mail/$dir
 done
 
 sudo rm -rf /Applications/Anaconda-Navigator.app
-defaults write org.hammerspoon.Hammerspoon MJConfigFile $XDG_CONFIG_HOME/hammerspoon/init.lua
 
 for app in "Bartender 4" "Dash" "Dropbox" "Emacs" "iTerm" "Karabiner-Elements" "Launchbar" "Surge"; do
     osascript <<EOF

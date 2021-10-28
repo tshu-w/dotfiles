@@ -1,5 +1,4 @@
 tap "buo/cask-upgrade"
-tap "d12frosted/emacs-plus"
 tap "daviderestivo/emacs-head"
 tap "homebrew/bundle"
 tap "homebrew/cask"
