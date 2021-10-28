@@ -93,7 +93,6 @@ cask "zoom"
 cask "zotero", args: { appdir: "/Applications" }
 mas "Bitwarden", id: 1352778147
 mas "Grammarly for Safari", id: 1462114288
-mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
@@ -102,4 +101,3 @@ mas "QQ", id: 451108668
 mas "Take a Break", id: 1457158844
 mas "Tampermonkey", id: 1482490089
 mas "WeChat", id: 836500024
-mas "Xcode", id: 497799835
