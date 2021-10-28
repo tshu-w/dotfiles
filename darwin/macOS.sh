@@ -147,6 +147,9 @@ defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadRightC
 #defaults -currentHost write NSGlobalDomain com.apple.trackpad.trackpadCornerClickBehavior -int 1
 #defaults -currentHost write NSGlobalDomain com.apple.trackpad.enableSecondaryClick -int 1
 
+# Mouse: disable mouse auto-acceleration
+defaults write .GlobalPreferences com.apple.mouse.scaling -1
+
 # Disable "natural" (Lion-style) scrolling
 defaults write NSGlobalDomain com.apple.swipescrolldirection -bool true
 
