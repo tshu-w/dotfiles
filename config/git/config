@@ -38,7 +38,7 @@
 	func = normal ul
 	newMoved = 14 normal
 	oldMovedAlternativeDimmed = 4 normal dim
-	frag = 3 0 ul
+	frag = normal ul
 	oldMovedAlternative = 12 normal dim
 	contextBold = normal bold
 	newBold = 10 normal bold
@@ -46,7 +46,7 @@
 	oldMoved = 14 normal dim
 	oldBold = 9 normal dim bold
 	newMovedDimmed = 6 normal
-	meta = 3 0
+	meta = normal
 	newDimmed = 2 normal
 	newMovedAlternative = 12 normal
 	new = 10 normal
