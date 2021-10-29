@@ -2,6 +2,7 @@ tap "buo/cask-upgrade"
 tap "daviderestivo/emacs-head"
 tap "homebrew/bundle"
 tap "homebrew/cask"
+tap "homebrew/cask-drivers"
 tap "homebrew/cask-fonts"
 tap "homebrew/cask-versions"
 tap "homebrew/core"
@@ -75,6 +76,7 @@ cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements", args: { appdir: "/Applications" }
 cask "keycastr"
 cask "launchbar", args: { appdir: "/Applications" }
+cask "logitech-options"
 cask "mactex-no-gui"
 cask "maczip"
 cask "microsoft-auto-update"
