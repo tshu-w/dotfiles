@@ -19,7 +19,8 @@ all: setup link crontab packages $(OS)
 	chmod 600 $(XDG_CONFIG_HOME)/gnupg/*
 
 	mkdir -p $(XDG_DATA_HOME)/wakatime
-	wakatime --config-write api_key 3fd63845-ecde-47ea-bd1a-7042221d1046
+	touch $(XDG_DATA_HOME)/wakatime/.wakatime.cfg
+	wakatime-cli --config-write api_key=3fd63845-ecde-47ea-bd1a-7042221d1046
 
 darwin:
 

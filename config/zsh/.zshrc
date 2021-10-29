@@ -50,6 +50,7 @@ znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
 znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
 znap source sobolevn/wakatime-zsh-plugin
+export ZSH_WAKATIME_BIN=/usr/local/bin/wakatime-cli
 
 compdef _gnu_generic emacs emacsclient
 
