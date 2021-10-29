@@ -28,7 +28,8 @@ done
 
 sudo rm -rf /Applications/Anaconda-Navigator.app
 
-for app in "Bartender 4" "Dash" "Dropbox" "Emacs" "iTerm" "Karabiner-Elements" "Launchbar" "Surge"; do
+# add login item
+for app in "Arq" "AltTab" "Bartender 4" "Dash" "Dropbox" "Emacs" "iTerm" "Karabiner-Elements" "Launchbar" "Surge"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
