@@ -45,8 +45,5 @@ else
     echo "mackup.cfg does not exist, please perform the recovery manually later."
 fi
 
-# install SF-Mono
-cp -v /System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/*.otf ~/Library/Fonts
-
 # Apply macoS system settings
 . "macOS.sh"
