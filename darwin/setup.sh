@@ -20,6 +20,8 @@ brew services start yabai
 brew services start skhd
 ln -sf /usr/local/opt/emacs-head@29/Emacs.app /Applications
 
+# mu init
+mu init -m $XDG_DATA_HOME/mail
 for dir in "fastmail" "iscas"; do
     mkdir -p $XDG_DATA_HOME/mail/$dir
 done
