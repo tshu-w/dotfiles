@@ -8,7 +8,7 @@ export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
 ifeq ($(OS),linux)
-export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:$(PATH)
+export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:/usr/local/bin:$(PATH)
 export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
@@ -21,6 +21,8 @@ all: setup link crontab packages $(OS)
 	mkdir -p $(XDG_DATA_HOME)/wakatime
 	touch $(XDG_DATA_HOME)/wakatime/.wakatime.cfg
 	wakatime-cli --config-write api_key=3fd63845-ecde-47ea-bd1a-7042221d1046
+
+	mkdir -p $(XDG_CACHE_HOME)/ssh
 
 darwin:
 
