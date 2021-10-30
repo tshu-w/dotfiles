@@ -23,7 +23,7 @@ znap source romkatv/powerlevel10k
 
 znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
-znap source zdharma/fast-syntax-highlighting
+znap source zsh-users/zsh-syntax-highlighting
 
 znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
