@@ -35,8 +35,10 @@ bindkey "?" list-expand
 bindkey -M menuselect "^[m" accept-and-hold
 
 (( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
+typeset -A HIGHLIGHT_STYLES=("${(@fkv)ZSH_HIGHLIGHT_STYLES}")
 znap source marlonrichert/zcolors
 znap eval zcolors "zcolors ${(q)LS_COLORS}"
+ZSH_HIGHLIGHT_STYLES=("${(@fkv)HIGHLIGHT_STYLES}")
 zle_highlight=(
     isearch:fg=black,bg=11  # bright yellow
     special:fg=14           # bright cyan
