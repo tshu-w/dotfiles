@@ -34,19 +34,6 @@ zstyle ':autocomplete:*' fzf-completion yes
 bindkey "?" list-expand
 bindkey -M menuselect "^[m" accept-and-hold
 
-(( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
-typeset -A HIGHLIGHT_STYLES=("${(@fkv)ZSH_HIGHLIGHT_STYLES}")
-znap source marlonrichert/zcolors
-znap eval zcolors "zcolors ${(q)LS_COLORS}"
-ZSH_HIGHLIGHT_STYLES=("${(@fkv)HIGHLIGHT_STYLES}")
-zle_highlight=(
-    isearch:fg=black,bg=11  # bright yellow
-    special:fg=14           # bright cyan
-    paste:bold
-    region:bg=blue,fg=15    # bright white
-    # suffix:bg=blue,fg=15    # bright white
-)
-
 znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
@@ -55,6 +42,9 @@ znap source sobolevn/wakatime-zsh-plugin
 export ZSH_WAKATIME_BIN=/usr/local/bin/wakatime-cli
 
 compdef _gnu_generic emacs emacsclient
+
+# dir_colors
+(( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
 
 # direnv
 (( $+commands[direnv] )) && znap eval direnv 'direnv hook zsh'
