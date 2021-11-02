@@ -38,8 +38,6 @@ znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
 znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
-znap source sobolevn/wakatime-zsh-plugin
-export ZSH_WAKATIME_BIN=/usr/local/bin/wakatime-cli
 
 compdef _gnu_generic emacs emacsclient
 
@@ -57,6 +55,9 @@ source $XDG_CONFIG_HOME/fzf/fzf.zsh
 
 # gpg
 gpg-connect-agent /bye &>/dev/null
+
+# wakatime
+(( $+commands[wakatime-cli] )) && znap source sobolevn/wakatime-zsh-plugin
 
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
