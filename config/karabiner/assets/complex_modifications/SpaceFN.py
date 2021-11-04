@@ -137,6 +137,9 @@ for key_code in key_codes:
                 }
             ]
         },
+        "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+        },
         "type": "basic"
     }
     s = json.dumps(dic, indent=2)+','

@@ -38,7 +38,8 @@
             }
           ],
           "parameters": {
-              "basic.to_if_held_down_threshold_milliseconds": 150
+            "basic.to_if_alone_timeout_milliseconds": 300,
+            "basic.to_if_held_down_threshold_milliseconds": 150
           }
         }
       ]
@@ -464,7 +465,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Emacs'"
+              "shell_command": "open -a Emacs"
             }
           ],
           "conditions": [
@@ -487,7 +488,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'iTerm'"
+              "shell_command": "open -a iTerm"
             }
           ],
           "conditions": [
@@ -510,7 +511,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Safari'"
+              "shell_command": "open -a Safari"
             }
           ],
           "conditions": [
@@ -533,7 +534,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Finder'"
+              "shell_command": "open -a Finder"
             }
           ],
           "conditions": [
@@ -561,7 +562,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'QQ'"
+              "shell_command": "open -a QQ"
             }
           ],
           "conditions": [
@@ -584,7 +585,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Wechat'"
+              "shell_command": "open -a Wechat"
             }
           ],
           "conditions": [
@@ -607,7 +608,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Telegram'"
+              "shell_command": "open -a Telegram"
             }
           ],
           "conditions": [
@@ -630,30 +631,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Preview'"
-            }
-          ],
-          "conditions": [
-            {
-              "type": "variable_if",
-              "name": "spacefn_app_mode",
-              "value": 1
-            }
-          ]
-        },
-        {
-          "type": "basic",
-          "from": {
-            "key_code": "s",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
-          },
-          "to": [
-            {
-               "shell_command": "open -a 'Sublime Text'"
+              "shell_command": "open -a Preview"
             }
           ],
           "conditions": [
@@ -676,53 +654,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'Firefox'"
-            }
-          ],
-          "conditions": [
-            {
-              "type": "variable_if",
-              "name": "spacefn_app_mode",
-              "value": 1
-            }
-          ]
-        },
-        {
-          "type": "basic",
-          "from": {
-            "key_code": "z",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
-          },
-          "to": [
-            {
-               "shell_command": "open -a 'Zotero'"
-            }
-          ],
-          "conditions": [
-            {
-              "type": "variable_if",
-              "name": "spacefn_app_mode",
-              "value": 1
-            }
-          ]
-        },
-        {
-          "type": "basic",
-          "from": {
-            "key_code": "c",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
-          },
-          "to": [
-            {
-               "shell_command": "open -a 'Google Chrome'"
+              "shell_command": "open -a Firefox"
             }
           ],
           "conditions": [
@@ -745,7 +677,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a NeteaseMusic"
+              "shell_command": "open -a NeteaseMusic"
             }
           ],
           "conditions": [
@@ -768,7 +700,7 @@
           },
           "to": [
             {
-               "shell_command": "open -a 'System Preferences'"
+              "shell_command": "open -a 'System Preferences'"
             }
           ],
           "conditions": [
@@ -839,10 +771,7 @@
               "name": "spacefn_mode",
               "value": 1
             }
-          ],
-          "parameters": {
-              "basic.to_delayed_action_delay_milliseconds": 500
-          }
+          ]
         }
       ]
     },
@@ -882,6 +811,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -916,6 +848,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -952,6 +887,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -986,6 +924,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1022,6 +963,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1056,6 +1000,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1092,6 +1039,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1126,6 +1076,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1162,6 +1115,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1196,6 +1152,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1232,6 +1191,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1266,6 +1228,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1302,6 +1267,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1336,6 +1304,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1372,6 +1343,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1406,6 +1380,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1442,6 +1419,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1476,6 +1456,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1512,6 +1495,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1546,6 +1532,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1582,6 +1571,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1616,6 +1608,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1652,6 +1647,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1686,6 +1684,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1722,6 +1723,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1756,6 +1760,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1792,6 +1799,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1826,6 +1836,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1862,6 +1875,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1896,6 +1912,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -1932,6 +1951,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -1966,6 +1988,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2002,6 +2027,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2036,6 +2064,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2072,6 +2103,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2106,6 +2140,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2142,6 +2179,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2176,6 +2216,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2212,6 +2255,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2246,6 +2292,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2282,6 +2331,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2316,6 +2368,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2352,6 +2407,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2386,6 +2444,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2422,6 +2483,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2456,6 +2520,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2492,6 +2559,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2526,6 +2596,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2562,6 +2635,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2596,6 +2672,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2632,6 +2711,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2666,6 +2748,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2702,6 +2787,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2736,6 +2824,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2772,6 +2863,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2806,6 +2900,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2842,6 +2939,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2876,6 +2976,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2912,6 +3015,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -2946,6 +3052,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -2982,6 +3091,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3016,6 +3128,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3052,6 +3167,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3086,6 +3204,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3122,6 +3243,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3156,6 +3280,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3192,6 +3319,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3226,6 +3356,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3262,6 +3395,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3296,6 +3432,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3332,6 +3471,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3366,6 +3508,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3402,6 +3547,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3436,6 +3584,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3472,6 +3623,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3506,6 +3660,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3542,6 +3699,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3576,6 +3736,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         },
@@ -3612,6 +3775,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3647,6 +3813,9 @@
               }
             ]
           },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
           "type": "basic"
         },
         {
@@ -3681,6 +3850,9 @@
                 }
               }
             ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
           },
           "type": "basic"
         }

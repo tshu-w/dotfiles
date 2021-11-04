@@ -8,8 +8,8 @@
         {
             "complex_modifications": {
                 "parameters": {
-                    "basic.simultaneous_threshold_milliseconds": 200,
-                    "basic.to_delayed_action_delay_milliseconds": 200,
+                    "basic.simultaneous_threshold_milliseconds": 50,
+                    "basic.to_delayed_action_delay_milliseconds": 500,
                     "basic.to_if_alone_timeout_milliseconds": 1000,
                     "basic.to_if_held_down_threshold_milliseconds": 500,
                     "mouse_motion_to_scroll.speed": 100
@@ -51,8 +51,7 @@
                                 ],
                                 "to_if_held_down": [
                                     {
-                                        "key_code": "left_control",
-                                        "lazy": false
+                                        "key_code": "left_control"
                                     }
                                 ],
                                 "type": "basic"
@@ -95,8 +94,7 @@
                                 ],
                                 "to_if_held_down": [
                                     {
-                                        "key_code": "left_control",
-                                        "lazy": false
+                                        "key_code": "left_control"
                                     }
                                 ],
                                 "type": "basic"
@@ -168,7 +166,7 @@
                         ]
                     },
                     {
-                        "description": "Left and Right Shift together toggle Caps Lock",
+                        "description": "Left and right shift together toggle caps_lock",
                         "manipulators": [
                             {
                                 "from": {
@@ -200,6 +198,92 @@
                         ]
                     },
                     {
+                        "description": "Swap Alt-Tab and Cmd-Tab",
+                        "manipulators": [
+                            {
+                                "from": {
+                                    "key_code": "tab",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "option"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "tab",
+                                        "modifiers": [
+                                            "command"
+                                        ]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "tab",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "tab",
+                                        "modifiers": [
+                                            "option"
+                                        ]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "Swap Alt-` and Cmd-`",
+                        "manipulators": [
+                            {
+                                "from": {
+                                    "key_code": "grave_accent_and_tilde",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "option"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "tab",
+                                        "modifiers": [
+                                            "command"
+                                        ]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "grave_accent_and_tilde",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "grave_accent_and_tilde",
+                                        "modifiers": [
+                                            "option"
+                                        ]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
                         "description": "SpaceFN: Space enables SpaceFN mode (see: https://geekhack.org/index.php?topic=51069.0)",
                         "manipulators": [
                             {
@@ -214,7 +298,8 @@
                                     "key_code": "spacebar"
                                 },
                                 "parameters": {
-                                    "basic.to_if_held_down_threshold_milliseconds": 150
+                                    "basic.to_if_alone_timeout_milliseconds": 300,
+                                    "basic.to_if_held_down_threshold_milliseconds": 0
                                 },
                                 "to_after_key_up": [
                                     {
@@ -668,7 +753,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Emacs'"
+                                        "shell_command": "open -a Emacs"
                                     }
                                 ],
                                 "type": "basic"
@@ -691,7 +776,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'iTerm'"
+                                        "shell_command": "open -a iTerm"
                                     }
                                 ],
                                 "type": "basic"
@@ -714,7 +799,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Safari'"
+                                        "shell_command": "open -a Safari"
                                     }
                                 ],
                                 "type": "basic"
@@ -737,7 +822,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Finder'"
+                                        "shell_command": "open -a Finder"
                                     }
                                 ],
                                 "type": "basic"
@@ -765,7 +850,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'QQ'"
+                                        "shell_command": "open -a QQ"
                                     }
                                 ],
                                 "type": "basic"
@@ -788,7 +873,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Wechat'"
+                                        "shell_command": "open -a Wechat"
                                     }
                                 ],
                                 "type": "basic"
@@ -811,7 +896,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Telegram'"
+                                        "shell_command": "open -a Telegram"
                                     }
                                 ],
                                 "type": "basic"
@@ -834,30 +919,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Preview'"
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "conditions": [
-                                    {
-                                        "name": "spacefn_app_mode",
-                                        "type": "variable_if",
-                                        "value": 1
-                                    }
-                                ],
-                                "from": {
-                                    "key_code": "s",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "shell_command": "open -a 'Sublime Text'"
+                                        "shell_command": "open -a Preview"
                                     }
                                 ],
                                 "type": "basic"
@@ -880,53 +942,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -a 'Firefox'"
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "conditions": [
-                                    {
-                                        "name": "spacefn_app_mode",
-                                        "type": "variable_if",
-                                        "value": 1
-                                    }
-                                ],
-                                "from": {
-                                    "key_code": "z",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "shell_command": "open -a 'Zotero'"
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "conditions": [
-                                    {
-                                        "name": "spacefn_app_mode",
-                                        "type": "variable_if",
-                                        "value": 1
-                                    }
-                                ],
-                                "from": {
-                                    "key_code": "c",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "shell_command": "open -a 'Google Chrome'"
+                                        "shell_command": "open -a Firefox"
                                     }
                                 ],
                                 "type": "basic"
@@ -993,9 +1009,6 @@
                                         ]
                                     }
                                 },
-                                "parameters": {
-                                    "basic.to_delayed_action_delay_milliseconds": 500
-                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1051,6 +1064,9 @@
                                 "from": {
                                     "key_code": "caps_lock"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1085,6 +1101,9 @@
                             {
                                 "from": {
                                     "key_code": "left_control"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1121,6 +1140,9 @@
                                 "from": {
                                     "key_code": "left_shift"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1155,6 +1177,9 @@
                             {
                                 "from": {
                                     "key_code": "left_option"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1191,6 +1216,9 @@
                                 "from": {
                                     "key_code": "left_command"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1225,6 +1253,9 @@
                             {
                                 "from": {
                                     "key_code": "right_control"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1261,6 +1292,9 @@
                                 "from": {
                                     "key_code": "right_shift"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1295,6 +1329,9 @@
                             {
                                 "from": {
                                     "key_code": "right_option"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1331,6 +1368,9 @@
                                 "from": {
                                     "key_code": "right_command"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1365,6 +1405,9 @@
                             {
                                 "from": {
                                     "key_code": "fn"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1401,6 +1444,9 @@
                                 "from": {
                                     "key_code": "return_or_enter"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1435,6 +1481,9 @@
                             {
                                 "from": {
                                     "key_code": "escape"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1471,6 +1520,9 @@
                                 "from": {
                                     "key_code": "delete_or_backspace"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1505,6 +1557,9 @@
                             {
                                 "from": {
                                     "key_code": "delete_forward"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1541,6 +1596,9 @@
                                 "from": {
                                     "key_code": "tab"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1575,6 +1633,9 @@
                             {
                                 "from": {
                                     "key_code": "spacebar"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1611,6 +1672,9 @@
                                 "from": {
                                     "key_code": "hyphen"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1645,6 +1709,9 @@
                             {
                                 "from": {
                                     "key_code": "equal_sign"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1681,6 +1748,9 @@
                                 "from": {
                                     "key_code": "open_bracket"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1715,6 +1785,9 @@
                             {
                                 "from": {
                                     "key_code": "close_bracket"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1751,6 +1824,9 @@
                                 "from": {
                                     "key_code": "backslash"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1785,6 +1861,9 @@
                             {
                                 "from": {
                                     "key_code": "non_us_pound"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1821,6 +1900,9 @@
                                 "from": {
                                     "key_code": "semicolon"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1855,6 +1937,9 @@
                             {
                                 "from": {
                                     "key_code": "quote"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1891,6 +1976,9 @@
                                 "from": {
                                     "key_code": "grave_accent_and_tilde"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1925,6 +2013,9 @@
                             {
                                 "from": {
                                     "key_code": "comma"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -1961,6 +2052,9 @@
                                 "from": {
                                     "key_code": "period"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -1995,6 +2089,9 @@
                             {
                                 "from": {
                                     "key_code": "slash"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2031,6 +2128,9 @@
                                 "from": {
                                     "key_code": "non_us_backslash"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2065,6 +2165,9 @@
                             {
                                 "from": {
                                     "key_code": "up_arrow"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2101,6 +2204,9 @@
                                 "from": {
                                     "key_code": "down_arrow"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2135,6 +2241,9 @@
                             {
                                 "from": {
                                     "key_code": "left_arrow"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2171,6 +2280,9 @@
                                 "from": {
                                     "key_code": "right_arrow"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2205,6 +2317,9 @@
                             {
                                 "from": {
                                     "key_code": "a"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2241,6 +2356,9 @@
                                 "from": {
                                     "key_code": "b"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2275,6 +2393,9 @@
                             {
                                 "from": {
                                     "key_code": "c"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2311,6 +2432,9 @@
                                 "from": {
                                     "key_code": "d"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2345,6 +2469,9 @@
                             {
                                 "from": {
                                     "key_code": "e"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2381,6 +2508,9 @@
                                 "from": {
                                     "key_code": "f"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2415,6 +2545,9 @@
                             {
                                 "from": {
                                     "key_code": "g"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2451,6 +2584,9 @@
                                 "from": {
                                     "key_code": "h"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2485,6 +2621,9 @@
                             {
                                 "from": {
                                     "key_code": "i"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2521,6 +2660,9 @@
                                 "from": {
                                     "key_code": "j"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2555,6 +2697,9 @@
                             {
                                 "from": {
                                     "key_code": "k"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2591,6 +2736,9 @@
                                 "from": {
                                     "key_code": "l"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2625,6 +2773,9 @@
                             {
                                 "from": {
                                     "key_code": "m"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2661,6 +2812,9 @@
                                 "from": {
                                     "key_code": "n"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2695,6 +2849,9 @@
                             {
                                 "from": {
                                     "key_code": "o"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2731,6 +2888,9 @@
                                 "from": {
                                     "key_code": "p"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2765,6 +2925,9 @@
                             {
                                 "from": {
                                     "key_code": "q"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2801,6 +2964,9 @@
                                 "from": {
                                     "key_code": "r"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2835,6 +3001,9 @@
                             {
                                 "from": {
                                     "key_code": "s"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2871,6 +3040,9 @@
                                 "from": {
                                     "key_code": "t"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2905,6 +3077,9 @@
                             {
                                 "from": {
                                     "key_code": "u"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -2941,6 +3116,9 @@
                                 "from": {
                                     "key_code": "v"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -2975,6 +3153,9 @@
                             {
                                 "from": {
                                     "key_code": "w"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3011,6 +3192,9 @@
                                 "from": {
                                     "key_code": "x"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3045,6 +3229,9 @@
                             {
                                 "from": {
                                     "key_code": "y"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3081,6 +3268,9 @@
                                 "from": {
                                     "key_code": "z"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3115,6 +3305,9 @@
                             {
                                 "from": {
                                     "key_code": "1"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3151,6 +3344,9 @@
                                 "from": {
                                     "key_code": "2"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3185,6 +3381,9 @@
                             {
                                 "from": {
                                     "key_code": "3"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3221,6 +3420,9 @@
                                 "from": {
                                     "key_code": "4"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3255,6 +3457,9 @@
                             {
                                 "from": {
                                     "key_code": "5"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3291,6 +3496,9 @@
                                 "from": {
                                     "key_code": "6"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3325,6 +3533,9 @@
                             {
                                 "from": {
                                     "key_code": "7"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3361,6 +3572,9 @@
                                 "from": {
                                     "key_code": "8"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3395,6 +3609,9 @@
                             {
                                 "from": {
                                     "key_code": "9"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3431,6 +3648,9 @@
                                 "from": {
                                     "key_code": "0"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3465,6 +3685,9 @@
                             {
                                 "from": {
                                     "key_code": "f1"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3501,6 +3724,9 @@
                                 "from": {
                                     "key_code": "f2"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3535,6 +3761,9 @@
                             {
                                 "from": {
                                     "key_code": "f3"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3571,6 +3800,9 @@
                                 "from": {
                                     "key_code": "f4"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3605,6 +3837,9 @@
                             {
                                 "from": {
                                     "key_code": "f5"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3641,6 +3876,9 @@
                                 "from": {
                                     "key_code": "f6"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3675,6 +3913,9 @@
                             {
                                 "from": {
                                     "key_code": "f7"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3711,6 +3952,9 @@
                                 "from": {
                                     "key_code": "f8"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3745,6 +3989,9 @@
                             {
                                 "from": {
                                     "key_code": "f9"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3781,6 +4028,9 @@
                                 "from": {
                                     "key_code": "f10"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3815,6 +4065,9 @@
                             {
                                 "from": {
                                     "key_code": "f11"
+                                },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
                                 },
                                 "to": [
                                     {
@@ -3851,6 +4104,9 @@
                                 "from": {
                                     "key_code": "f12"
                                 },
+                                "parameters": {
+                                    "basic.to_delayed_action_delay_milliseconds": 200
+                                },
                                 "to": [
                                     {
                                         "set_variable": {
@@ -3880,92 +4136,6 @@
                                         }
                                     ]
                                 },
-                                "type": "basic"
-                            }
-                        ]
-                    },
-                    {
-                        "description": "Swap Alt-Tab and Cmd-Tab",
-                        "manipulators": [
-                            {
-                                "from": {
-                                    "key_code": "tab",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "option"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "key_code": "tab",
-                                        "modifiers": [
-                                            "command"
-                                        ]
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "from": {
-                                    "key_code": "tab",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "command"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "key_code": "tab",
-                                        "modifiers": [
-                                            "option"
-                                        ]
-                                    }
-                                ],
-                                "type": "basic"
-                            }
-                        ]
-                    },
-                    {
-                        "description": "Swap Alt-` and Cmd-`",
-                        "manipulators": [
-                            {
-                                "from": {
-                                    "key_code": "grave_accent_and_tilde",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "option"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "key_code": "tab",
-                                        "modifiers": [
-                                            "command"
-                                        ]
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "from": {
-                                    "key_code": "grave_accent_and_tilde",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "command"
-                                        ]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "key_code": "grave_accent_and_tilde",
-                                        "modifiers": [
-                                            "option"
-                                        ]
-                                    }
-                                ],
                                 "type": "basic"
                             }
                         ]
@@ -4035,6 +4205,19 @@
                         "vendor_id": 1452
                     },
                     "ignore": false,
+                    "manipulate_caps_lock_led": true,
+                    "simple_modifications": []
+                },
+                {
+                    "disable_built_in_keyboard_if_exists": false,
+                    "fn_function_keys": [],
+                    "identifiers": {
+                        "is_keyboard": true,
+                        "is_pointing_device": false,
+                        "product_id": 50475,
+                        "vendor_id": 1133
+                    },
+                    "ignore": true,
                     "manipulate_caps_lock_led": true,
                     "simple_modifications": []
                 }
