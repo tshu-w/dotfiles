@@ -5,7 +5,6 @@ brew "gnutls"
 brew "emacs", args: ["HEAD"]
 brew "fzf"
 brew "gcc"
-brew "node"
 brew "python@3.9"
 brew "ripgrep"
 brew "screen"
