@@ -26,8 +26,6 @@ for dir in "fastmail" "iscas"; do
     mkdir -p $XDG_DATA_HOME/mail/$dir
 done
 
-sudo rm -rf /Applications/Anaconda-Navigator.app
-
 # add login item
 for app in "Arq" "AltTab" "Bartender 4" "Dash" "Dropbox" "Emacs" "iTerm" "Karabiner-Elements" "Launchbar" "Surge"; do
     osascript <<EOF

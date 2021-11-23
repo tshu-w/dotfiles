@@ -12,7 +12,7 @@ eval $($PREFIX/bin/brew shellenv)
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
 
-# Installing Anaconda
+# Installing miniconda
 if [ ! -d $XDG_DATA_HOME/conda ]; then
     miniconda_script="Miniconda3-latest-Linux-x86_64.sh"
     curl https://repo.anaconda.com/miniconda/$miniconda_script -o ~/$miniconda_script

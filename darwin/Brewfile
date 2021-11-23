@@ -58,7 +58,6 @@ brew "daviderestivo/emacs-head/emacs-head@29", args: ["with-cocoa", "with-modern
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "alt-tab"
-cask "anaconda"
 cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
@@ -84,6 +83,7 @@ cask "microsoft-auto-update"
 cask "microsoft-excel"
 cask "microsoft-powerpoint"
 cask "microsoft-word"
+cask "miniconda"
 cask "moneywiz", args: { appdir: "/Applications" }
 cask "neteasemusic"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
