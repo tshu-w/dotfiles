@@ -1,7 +1,7 @@
-layout_anaconda() {
+layout_conda() {
   local CONDA_PATH=`which -a conda | tail -n1`
-  local ANACONDA_HOME="${CONDA_PATH%/*/*}"
-  local ACTIVATE="$ANACONDA_HOME/bin/activate"
+  local CONDA_HOME="${CONDA_PATH%/*/*}"
+  local ACTIVATE="$CONDA_HOME/bin/activate"
 
   if [ -n "$1" ]; then
     # Explicit environment name from layout command.
