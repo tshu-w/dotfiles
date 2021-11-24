@@ -6,6 +6,7 @@ brew "emacs", args: ["HEAD"]
 brew "fzf"
 brew "gcc"
 brew "python@3.9"
+brew "node"
 brew "ripgrep"
 brew "screen"
 brew "stow"
