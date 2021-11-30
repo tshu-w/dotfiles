@@ -8,9 +8,6 @@ Host 14
 Host 16
   Hostname 192.168.14.16
   User wts
-Host 51
-  Hostname 192.168.15.51
-  User wts
 Host 74
   Hostname 192.168.14.74
   User wangtianshu
