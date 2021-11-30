@@ -37,8 +37,8 @@ bindkey -M menuselect "^[m" accept-and-hold
 znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
-znap source ohmyzsh/ohmyzsh lib/clipboard.zsh
 
+# emacs
 compdef _gnu_generic emacs emacsclient
 
 # dir_colors
