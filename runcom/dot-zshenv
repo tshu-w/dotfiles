@@ -31,11 +31,12 @@ else
     [ -d /home/linuxbrew/.linuxbrew ] && eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     [ -d $XDG_DATA_HOME/linuxbrew ] && eval $($XDG_DATA_HOME/linuxbrew/bin/brew shellenv)
 
-    export CONDA_HOME=$XDG_DATA_HOME/conda/
+    export CONDA_HOME=$XDG_DATA_HOME/conda
     export PATH=$CONDA_HOME/bin:$PATH
 
-    export NPM_CONFIG_PREFIX=$HOME/.local
+    export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
+    export NPM_CONFIG_PREFIX=$HOME/.local
 fi
 
 ZDOTDIR=$HOME/.config/zsh
