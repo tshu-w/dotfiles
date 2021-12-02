@@ -1,2 +1,6 @@
 auto_activate_base: true
 env_prompt: '({default_env}) '
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
