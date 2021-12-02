@@ -64,4 +64,3 @@ python-packages:
 	command -v pip3 &>/dev/null && pip3 install flake8 black flake8-black || true
 
 node-packages:
-	npm install -g pyright
