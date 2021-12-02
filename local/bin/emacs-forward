@@ -6,4 +6,4 @@ ssh $1 "mkdir -p $(dirname $remote_socket) && \rm -rf $remote_socket"
 ssh -o PermitLocalCommand=no -fNT -R $remote_socket:$local_socket $1
 
 echo $1 > /tmp/hostname
-scp -q /tmp/hostname $1:~/.cache/ssh/hostname
+scp -q /tmp/hostname $1:~/.cache/hostname

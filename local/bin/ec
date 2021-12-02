@@ -34,7 +34,7 @@ change_focus() {
 
 # Preferred edit file at local emacs via tramp
 if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
-    [ -z $hostname ] && export hostname=`cat $XDG_CACHE_HOME/ssh/hostname`
+    [ -z $hostname ] && export hostname=`cat $XDG_CACHE_HOME/hostname`
     for arg in "$@"; do
         [[ "$arg" != -* ]] && set -- "$@" /ssh:"$hostname":$(readlink -f -- "$arg") || set -- "$@" "$arg"
         shift
