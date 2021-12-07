@@ -1,5 +1,4 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
-[ ! -d $XDG_DATA_HOME/zsh ] && mkdir -p $XDG_DATA_HOME/zsh
 
 ###############################################################################
 #                                     Znap                                    #
@@ -10,6 +9,7 @@ if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
     git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git $ZNAP_HOME
 fi
 source $ZNAP_HOME/znap.zsh
+zstyle ':znap:*:.*' git-maintenance off
 
 # starship
 (( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init'; znap prompt }
@@ -31,14 +31,14 @@ znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
 
-# emacs
-compdef _gnu_generic emacs emacsclient
-
 # dir_colors
 (( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
 
 # direnv
-(( $+commands[direnv] )) && znap eval direnv 'direnv hook zsh'
+(( $+commands[direnv] )) && znap eval direnv "$(readlink -f $commands[direnv]) hook zsh"
+
+# emacs
+compdef _gnu_generic emacs emacsclient
 
 # fzf
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse'
@@ -49,14 +49,23 @@ source $XDG_CONFIG_HOME/fzf/fzf.zsh
 # gpg
 gpg-connect-agent /bye &>/dev/null
 
+# pip
+znap function _pip_completion pip 'eval "$( pip completion --zsh )"'
+compctl -K    _pip_completion pip
+
 # wakatime
 (( $+commands[wakatime-cli] )) && znap source sobolevn/wakatime-zsh-plugin
+export ZSH_WAKATIME_BIN=$commands[wakatime-cli]
 
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
 
 # iterm2_shell_integration
-[ ! -e $ZDOTDIR/iterm2_shell_integration.zsh ] || source $ZDOTDIR/iterm2_shell_integration.zsh
+export PATH=$PATH:$HOME/.local/bin/iterm2
+znap eval iterm2 'curl -fsSL https://iterm2.com/shell_integration/zsh'
+
+# run script
+compdef _run run
 
 ###############################################################################
 #                                     Misc                                    #
@@ -117,14 +126,13 @@ alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ts='trash'
 
-if [ `uname` = "Darwin" ]; then
+if [ $VENDOR = "apple" ]; then
     alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
     alias cleanupad="find . -type d -name '.AppleD*' -ls -exec /bin/rm -r {} \;"
     alias flushdns="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
     alias resetlaunchpad="defaults write com.apple.dock ResetLaunchPad -bool true"
     alias log='/usr/bin/log'
     alias ofd='open $PWD'
-    alias typora='open -a typora'
 fi
 
 ###############################################################################
@@ -279,7 +287,7 @@ cdf () {
 man-preview () {
   man -t "$@" | open -f -a Preview
 }
-declare -f compdef &>/dev/null && compdef _man man-preview
+compdef _man man-preview
 
 quick-look () {
   (( $# > 0 )) && qlmanage -p $* &>/dev/null &

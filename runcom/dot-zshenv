@@ -2,7 +2,6 @@
 setopt no_global_rcs
 
 export LANG=en_US
-export LANGUAGE=en # for Ubuntu
 export LC_ALL=en_US.UTF-8
 export XAPIAN_CJK_NGRAM=yes
 
@@ -10,11 +9,17 @@ export XDG_CONFIG_HOME=$HOME/.config
 export XDG_CACHE_HOME=$HOME/.cache
 export XDG_DATA_HOME=$HOME/.local/share
 
+ZDOTDIR=$HOME/.config/zsh
+export ZSH_DISABLE_COMPFIX="true" # disable compinit warning
+
 export PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
 export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
 export INFOPATH=$HOME/.local/share/info:/usr/local/share/info:/usr/share/info
 
-if [[ `uname` == "Darwin" ]]; then
+case $VENDOR in
+  ( apple )
+    export SHELL_SESSIONS_DISABLE=1
+
     for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar"; do
         export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
     done
@@ -27,7 +32,11 @@ if [[ `uname` == "Darwin" ]]; then
     export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
 
     alias trash='trash -F'
-else
+  ;;
+  ( ubuntu )
+    export LANGUAGE=en
+    export skip_global_compinit=1
+
     [ -d /home/linuxbrew/.linuxbrew ] && eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     [ -d $XDG_DATA_HOME/linuxbrew ] && eval $($XDG_DATA_HOME/linuxbrew/bin/brew shellenv)
 
@@ -37,12 +46,8 @@ else
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
     export NPM_CONFIG_PREFIX=$HOME/.local
-fi
-
-ZDOTDIR=$HOME/.config/zsh
-
-export ZSH_DISABLE_COMPFIX="true" # disable compinit warning
-[[ $VENDOR == ubuntu ]] && export skip_global_compinit=1
+  ;;
+esac
 
 export CONDARC=$XDG_CONFIG_HOME/conda/condarc
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
@@ -54,8 +59,6 @@ export NPM_CONFIG_USERCONFIG=$XDG_CONFIG_HOME/npm/npmrc
 export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 export WAKATIME_HOME=$XDG_DATA_HOME/wakatime
 export LESSHISTFILE=-
-
-export ZSH_WAKATIME_BIN=`command -v wakatime-cli`
 
 unset SSH_AGENT_PID
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
