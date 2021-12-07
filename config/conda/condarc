@@ -4,3 +4,4 @@ channels:
   - defaults
   - conda-forge
   - pytorch
+changeps1: false

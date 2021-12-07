@@ -1,0 +1,60 @@
+format = """
+($username$hostname )\
+$all\
+$line_break\
+$conda\
+$jobs\
+$battery\
+$time\
+$status\
+$character"""
+
+[character]
+success_symbol = "[λ](bold purple)"
+error_symbol = "[λ](bold red)"
+
+[[battery.display]]
+threshold = 10
+style = "bold red"
+
+[[battery.display]]
+threshold = 30
+style = "bold yellow"
+
+[directory]
+truncation_length = 5
+truncate_to_repo = false
+truncation_symbol = "…/"
+style = "bold blue"
+
+[git_branch]
+format = "[$branch]($style) "
+
+[git_status]
+format = '([$ahead_behind$all_status]($style))'
+conflicted = "= "
+ahead = "⇡${ahead_count} "
+behind = "⇣${behind_count} "
+diverged = "⇡${ahead_count}⇣${behind_count} "
+untracked = "?${count} "
+stashed = "\\$${count} "
+modified = "!${count} "
+staged = "+${count} "
+renamed = "»${count} "
+deleted = "✘${count} "
+style = "yellow"
+
+[username]
+format = "[$user]($style)"
+style_user = "180"
+
+[hostname]
+format = "[@$hostname]($style)"
+style = "180"
+
+[python]
+style = ""
+
+[conda]
+format = "[$environment]($style) "
+style = "green"

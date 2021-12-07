@@ -1,13 +1,6 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 [ ! -d $XDG_DATA_HOME/zsh ] && mkdir -p $XDG_DATA_HOME/zsh
 
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 ###############################################################################
 #                                     Znap                                    #
 ###############################################################################
@@ -18,8 +11,8 @@ if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
 fi
 source $ZNAP_HOME/znap.zsh
 
-znap source romkatv/powerlevel10k
-[ ! -f $ZDOTDIR/p10k.zsh ] || source $ZDOTDIR/p10k.zsh
+# starship
+(( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init'; znap prompt }
 
 znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
