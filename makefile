@@ -61,6 +61,6 @@ crontab:
 packages: python-packages node-packages
 
 python-packages:
-	command -v pip3 &>/dev/null && pip3 install flake8 black flake8-black || true
+	command -v pip3 &>/dev/null && pip3 install flake8 black flake8-black isort || true
 
 node-packages:
