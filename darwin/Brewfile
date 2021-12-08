@@ -61,6 +61,7 @@ brew "zoxide"
 brew "daviderestivo/emacs-head/emacs-head@29", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-comp"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
+cask "aldente"
 cask "alt-tab"
 cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
