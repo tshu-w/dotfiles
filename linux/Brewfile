@@ -4,7 +4,6 @@ brew "direnv"
 brew "gcc"
 brew "gnutls"
 brew "emacs", args: ["HEAD"]
-brew "fzf"
 brew "python@3.9"
 brew "node"
 brew "pre-commit"

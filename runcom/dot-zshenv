@@ -1,16 +1,16 @@
 # -*- mode: sh -*-
 setopt no_global_rcs
 
-export LANG=en_US
+export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
-export XAPIAN_CJK_NGRAM=yes
 
-export XDG_CONFIG_HOME=$HOME/.config
-export XDG_CACHE_HOME=$HOME/.cache
-export XDG_DATA_HOME=$HOME/.local/share
+: ${XDG_CACHE_HOME:=~/.cache}
+: ${XDG_CONFIG_HOME:=~/.config}
+: ${XDG_DATA_HOME:=~/.local/share}
+: ${XDG_STATE_HOME:=~/.local/state}
+export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
-ZDOTDIR=$HOME/.config/zsh
-export ZSH_DISABLE_COMPFIX="true" # disable compinit warning
+ZDOTDIR=$XDG_CONFIG_HOME/zsh
 
 export PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
 export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
@@ -25,29 +25,30 @@ case $VENDOR in
     done
 
     export PATH=$PATH:/Library/TeX/texbin:/Library/Apple/usr/bin
+    export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
 
     export CONDA_HOME=/usr/local/Caskroom/miniconda/base
     export PATH=$CONDA_HOME/bin:$PATH
 
-    export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
-
     alias trash='trash -F'
   ;;
   ( ubuntu )
-    export LANGUAGE=en
     export skip_global_compinit=1
+    export LANGUAGE=en
 
     [ -d /home/linuxbrew/.linuxbrew ] && eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     [ -d $XDG_DATA_HOME/linuxbrew ] && eval $($XDG_DATA_HOME/linuxbrew/bin/brew shellenv)
 
+    export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
+
     export CONDA_HOME=$XDG_DATA_HOME/conda
     export PATH=$CONDA_HOME/bin:$PATH
 
-    export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
-
-    export NPM_CONFIG_PREFIX=$HOME/.local
+    export NPM_CONFIG_PREFIX=$HOME/.local ubuntu
   ;;
 esac
+
+[[ $OSTYPE == linux-gnu ]] && export DEBIAN_PREVENT_KEYBOARD_CHANGES=1
 
 export CONDARC=$XDG_CONFIG_HOME/conda/condarc
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
@@ -61,8 +62,6 @@ export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 export WAKATIME_HOME=$XDG_DATA_HOME/wakatime
 export LESSHISTFILE=-
 
-unset SSH_AGENT_PID
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
     export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
 fi
-export GPG_TTY=$(tty)
