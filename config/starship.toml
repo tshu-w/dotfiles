@@ -46,11 +46,11 @@ style = "yellow"
 
 [username]
 format = "[$user]($style)"
-style_user = "180"
+style_user = "yellow"
 
 [hostname]
 format = "[@$hostname]($style)"
-style = "180"
+style = "yellow"
 
 [python]
 style = ""
