@@ -14,9 +14,3 @@
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
-[http]
-	proxy = http://127.0.0.1:6152
-[https]
-	proxy = http://127.0.0.1:6152
-[github]
-	user = tshu-w
