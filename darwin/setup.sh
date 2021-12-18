@@ -16,8 +16,8 @@ command -v brew >/dev/null || \
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
 
-brew services start yabai
-brew services start skhd
+command -v yabai >/dev/null && brew services start yabai
+command -v skhd >/dev/null && brew services start skhd
 ln -sf /usr/local/opt/emacs-head@29/Emacs.app /Applications
 
 # mu init
