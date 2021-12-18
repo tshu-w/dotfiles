@@ -13,6 +13,9 @@ $character"""
 success_symbol = "[λ](bold purple)"
 error_symbol = "[λ](bold red)"
 
+[battery]
+format = "[$percentage]($style) "
+
 [[battery.display]]
 threshold = 10
 style = "bold red"
