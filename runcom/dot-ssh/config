@@ -8,22 +8,22 @@ Host 14
 Host 16
   Hostname 192.168.14.16
   User wts
-Host 74
+Host 70
+  Hostname 192.168.14.70
+  User wangtianshu
+Host 71
+  Hostname 192.168.14.71
+  User cipsup
+Host 72
+  Hostname 192.168.14.72
+  User cipsup
+Host 74 backup
   Hostname 192.168.14.74
   User wangtianshu
-Host 75
-  Hostname 192.168.14.75
+HOST ext
+  Hostname ext.cipsup.cn
   User wangtianshu
-Host 77
-  Hostname 192.168.14.77
-  User wts
-Host 109
-  Hostname 192.168.14.109
-  User tianshu
-HOST 208
-  Hostname 124.16.139.208
-  User wts
-  Port 1422
+  Port 10722
 Host 141
   Hostname 124.16.138.141
   User wts
@@ -39,7 +39,7 @@ Host 144
 Match exec "echo %h | grep -q '192\|124'" user wts,wangtianshu
   LocalCommand  { gpg-forward %n; emacs-forward %n } &
   RemoteForward 2048 localhost:22
-Match exec "echo %h | grep '192\|124\|icip' | grep -q -v '208' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match exec "echo %h | grep '192\|124\|cipsup' | grep -q -v '208' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
