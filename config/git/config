@@ -14,3 +14,5 @@
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
+[github]
+	user = tshu-w
