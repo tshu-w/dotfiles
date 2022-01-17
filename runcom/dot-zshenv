@@ -64,4 +64,5 @@ export LESSHISTFILE=-
 
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
     export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+    [ -f $SSH_AUTH_SOCK ] || gpg-connect-agent /bye &>/dev/null
 fi
