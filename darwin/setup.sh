@@ -18,7 +18,7 @@ brew bundle -v --no-lock || true
 
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
-ln -sf /usr/local/opt/emacs-head@29/Emacs.app /Applications
+ln -sf /usr/local/opt/emacs-head@28/Emacs.app /Applications
 
 # mu init
 mu init -m $XDG_DATA_HOME/mail
