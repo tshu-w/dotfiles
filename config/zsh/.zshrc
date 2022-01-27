@@ -23,7 +23,7 @@ zstyle ':completion:*:paths' path-completion yes
 zstyle ':completion:*:processes' command 'ps -afu $USER'
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
-bindkey "?" list-expand
+bindkey "^[?" list-expand
 bindkey -M menuselect "^[m" accept-and-hold
 
 znap source esc/conda-zsh-completion
