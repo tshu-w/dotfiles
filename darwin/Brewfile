@@ -60,21 +60,25 @@ brew "wakatime-cli"
 brew "zoxide"
 brew "daviderestivo/emacs-head/emacs-head@28", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-comp"]
 brew "koekeishiya/formulae/skhd"
-brew "koekeishiya/formulae/yabai"
+brew "koekeishiya/formulae/yabai", args: ["HEAD"]
 cask "aldente"
 cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bob"
+cask "clashx-pro"
 cask "dash", args: { appdir: "/Applications" }
 cask "dingtalk"
 cask "discord"
-cask "dropbox", args: { appdir: "/Applications" }
+cask "dropbox"
 cask "firefox"
 cask "font-hanamina"
+cask "font-noto-sans-cjk"
+cask "font-noto-serif-cjk"
 cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
 cask "iina", args: { appdir: "/Applications" }
+cask "inkscape"
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements", args: { appdir: "/Applications" }
@@ -99,7 +103,6 @@ cask "tencent-meeting"
 cask "thunder", args: { appdir: "/Applications" }
 cask "wechattweak-cli"
 cask "zoom"
-cask "zotero", args: { appdir: "/Applications" }
 mas "Bitwarden", id: 1352778147
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
@@ -107,6 +110,7 @@ mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
+mas "Surfingkeys", id: 1599827286
 mas "Take a Break", id: 1457158844
 mas "Tampermonkey", id: 1482490089
 mas "WeChat", id: 836500024
