@@ -20,12 +20,12 @@ case $VENDOR in
   ( apple )
     export SHELL_SESSIONS_DISABLE=1
 
-    for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar"; do
+    for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar" "grep"; do
         export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
     done
 
     export PATH=$PATH:/Library/TeX/texbin:/Library/Apple/usr/bin
-    export MANPATH=$MANPATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Man
+    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/.DefaultTeX/Contents/Man`
 
     export CONDA_HOME=/usr/local/Caskroom/miniconda/base
     export PATH=$CONDA_HOME/bin:$PATH

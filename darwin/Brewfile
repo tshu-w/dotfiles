@@ -23,6 +23,7 @@ brew "git"
 brew "gnupg"
 brew "gnu-sed"
 brew "gnu-tar"
+brew "grep"
 brew "node"
 brew "iconsur"
 brew "isync", restart_service: true
