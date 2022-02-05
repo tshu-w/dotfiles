@@ -32,13 +32,13 @@ yabai -m rule --add app="QQ|WeChat|Telegram|Music" manage=off space=misc
 
 # signals
 chinese_app_regex="^QQ|WeChat$"
-yabai -m signal --add event=application_activated app="$chinese_app_regex" action="/usr/local/bin/fcitx-remote -o"
-yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="/usr/local/bin/fcitx-remote -c"
+yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Rime"
+yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="fcitx-remote -s com.apple.keylayout.US"
 
-float_script="if [ \$(yabai -m query --windows --window | jq '.resizable == 0 and .floating != 1') = 'true' ]; then
+float_script="if [ \$(yabai -m query --windows --window | jq '.\"can-resize\" == false and .\"is-floating\" == false') = 'true' ]; then
   yabai -m window --toggle float;
 fi"
-center_float_window="if [ \$(yabai -m query --windows --window | jq '.floating == 1') == 'true' ]; then
+center_float_window="if [ \$(yabai -m query --windows --window | jq '.\"is-floating\" == true') == 'true' ]; then
   ~/.config/yabai/scripts/center-float-window.sh;
 fi"
 yabai -m signal --add event=application_launched action="$float_script && $center_float_window"
