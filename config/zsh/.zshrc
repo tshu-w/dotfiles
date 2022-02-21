@@ -69,6 +69,8 @@ zshaddhistory() {
 }
 
 ### Misc
+export EDITOR=vim
+
 setopt auto_cd auto_pushd pushd_ignore_dups pushdminus \
        interactive_comments long_list_jobs multios no_clobber \
        extended_glob glob_star_short numeric_glob_sort
