@@ -72,7 +72,7 @@ zshaddhistory() {
 export EDITOR=vim
 
 setopt auto_cd auto_pushd pushd_ignore_dups pushdminus \
-       interactive_comments long_list_jobs multios no_clobber \
+       interactive_comments long_list_jobs multios \
        extended_glob glob_star_short numeric_glob_sort
 
 hash -d d="$HOME/dotfiles"
