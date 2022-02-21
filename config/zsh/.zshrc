@@ -81,7 +81,7 @@ bindkey -s '\el' 'ls\n'   # [Esc-l] - run command: ls
 bindkey ' ' magic-space   # [Space] - don't do history expansion
 bindkey "^[m" copy-prev-shell-word
 bindkey '^[q' push-line-or-edit
-bindkey '^[k' describe-key-briefly
+bindkey '^[k' describe-key-briefly # Alt-H: run-help
 
 # Edit the current command line in $EDITOR
 autoload -U edit-command-line
