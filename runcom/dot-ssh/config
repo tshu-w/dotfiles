@@ -20,7 +20,7 @@ Host 72
 Host 74 backup
   Hostname 192.168.14.74
   User wangtianshu
-HOST ext
+HOST ext jumpbox
   Hostname ext.cipsup.cn
   User wangtianshu
   Port 10722
