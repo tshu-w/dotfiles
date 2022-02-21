@@ -140,7 +140,7 @@ fs () {
   fi
 }
 
-ip () {
+cip () {
   curl https://ipinfo.io/$1 ; echo
 }
 
