@@ -4,9 +4,14 @@ set autochdir
 set backspace=indent,eol,start
 set clipboard^=unnamed,unnamedplus
 set encoding=utf-8
+set ignorecase
+set incsearch
+set mouse+=a
 set nocompatible
+set noerrorbells visualbell t_vb=
 set showcmd
 set showmatch
+set smartcase
 filetype indent on
 
 " XDG support
