@@ -18,7 +18,7 @@ defaults read ~/Library/Preferences/com.apple.universalaccessAuthWarning.plist
 *** ~TODO~ and ~FIXME~ in [[file:darwin/macOS.sh][macOS.sh]]
 *** link Documents to Dropbox and lock it
 #+begin_src sh
-sudo rm -rf ~/Documents && ln -s ~/Dropbox/Documents ~
+sudo rm -rf ~/Documents && ln -s ~/Library/CloudStorage/Dropbox/Documents ~
 SetFileIcon -image ~/Pictures/icons/macOS_Documents.icns -file ~/Documents
 sudo chflags -h uchg ~/Documents
 #+end_src
