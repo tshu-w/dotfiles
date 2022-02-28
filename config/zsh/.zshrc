@@ -209,6 +209,12 @@ transfer () {
     fi
 }
 
+# https://www.stefaanlippens.net/pretty-csv.html
+pretty-csv () {
+    # column -t -s, -n "$@" | less -F -S -X -K
+    perl -pe 's/((?<=,)|(?<=^)),/ ,/g;' "$@" | column -t -s, | less  -F -S -X -K
+}
+
 if [ $VENDOR = "apple" ]; then
     appID () {
         if [ $# -eq 0 ]; then
