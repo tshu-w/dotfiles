@@ -14,7 +14,7 @@ Host 141 142 143 144
 Match exec "echo %h | grep -q '192\|124'"
   LocalCommand  { gpg-forward %n; emacs-forward %n } &
   RemoteForward 2048 localhost:22
-Match exec "echo %h | grep '192\|124' | grep -q -v 'ext' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match exec "echo %h | grep '192\|124' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
