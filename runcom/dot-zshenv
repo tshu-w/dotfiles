@@ -16,6 +16,8 @@ export PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/s
 export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
 export INFOPATH=$HOME/.local/share/info:/usr/local/share/info:/usr/share/info
 
+export EDITOR=vim
+
 case $VENDOR in
   ( apple )
     export SHELL_SESSIONS_DISABLE=1
