@@ -14,5 +14,10 @@
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
 [github]
 	user = tshu-w
