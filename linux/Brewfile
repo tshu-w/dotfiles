@@ -6,6 +6,7 @@ brew "gnutls"
 brew "emacs", args: ["HEAD"]
 brew "python@3.9"
 brew "node"
+brew "pipx"
 brew "pre-commit"
 brew "pyright"
 brew "ripgrep"
