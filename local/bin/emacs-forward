@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-ssh_options='-o PermitLocalCommand=no'
-
 local_socket=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server
-remote_socket=$(ssh $ssh_options $1 'echo ${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server')
+remote_socket=$(ssh $1 'echo ${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server')
 
-[ -z $remote_socket ] || ssh $ssh_options $1 "mkdir -p $(dirname $remote_socket) && rm -rf $remote_socket"
-ssh $ssh_options -fNT -R $remote_socket:$local_socket $1
+[ -z $remote_socket ] || ssh $1 "mkdir -p $(dirname $remote_socket) && rm -rf $remote_socket"
+ssh -fNT -R $remote_socket:$local_socket $1
 
 echo $1 > /tmp/hostname
 scp -q /tmp/hostname $1:~/.cache/hostname

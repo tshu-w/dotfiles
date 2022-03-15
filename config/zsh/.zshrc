@@ -105,6 +105,7 @@ alias lla='ls -lAh'
 alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
+alias ssh='ssh -o PermitLocalCommand=yes'
 alias ts='trash'
 
 if [ $VENDOR = "apple" ]; then

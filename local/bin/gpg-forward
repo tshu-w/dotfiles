@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 
-ssh_options="-o PermitLocalCommand=no"
-
 if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
     local_agent_socket=`gpgconf --list-dirs agent-socket`
     local_ssh_socket=`gpgconf --list-dirs agent-ssh-socket`
-    remote_agent_socket=`ssh $ssh_options $1 "gpgconf --list-dirs agent-socket"`
-    remote_ssh_socket=`ssh $ssh_options $1 "gpgconf --list-dirs agent-ssh-socket"`
-    ssh $ssh_options $1 "\rm -rf $remote_agent_socket $remote_ssh_socket"
-    ssh $ssh_options -fNT -R $remote_agent_socket:$local_agent_socket -R $remote_ssh_socket:$local_ssh_socket $1
+    remote_agent_socket=`ssh $1 "gpgconf --list-dirs agent-socket"`
+    remote_ssh_socket=`ssh $1 "gpgconf --list-dirs agent-ssh-socket"`
+    ssh $1 "\rm -rf $remote_agent_socket $remote_ssh_socket"
+    ssh -fNT -R $remote_agent_socket:$local_agent_socket -R $remote_ssh_socket:$local_ssh_socket $1
 else
     local_extra_socket=`gpgconf --list-dirs agent-extra-socket`
     local_ssh_socket=`gpgconf --list-dirs agent-ssh-socket`
-    remote_agent_socket=`ssh $ssh_options $1 "gpgconf --list-dirs agent-socket"`
-    remote_ssh_socket=`ssh $ssh_options $1 "gpgconf --list-dirs agent-ssh-socket"`
-    ssh $ssh_options $1 "\rm -rf $remote_agent_socket $remote_ssh_socket"
-    ssh $ssh_options -fNT -R $remote_agent_socket:$local_extra_socket -R $remote_ssh_socket:$local_ssh_socket $1
+    remote_agent_socket=`ssh $1 "gpgconf --list-dirs agent-socket"`
+    remote_ssh_socket=`ssh $1 "gpgconf --list-dirs agent-ssh-socket"`
+    ssh $1 "\rm -rf $remote_agent_socket $remote_ssh_socket"
+    ssh -fNT -R $remote_agent_socket:$local_extra_socket -R $remote_ssh_socket:$local_ssh_socket $1
 fi
