@@ -36,7 +36,7 @@ change_focus() {
 if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
     [ -z $hostname ] && export hostname=`cat $XDG_CACHE_HOME/hostname`
     for arg in "$@"; do
-        [[ "$arg" != -* ]] && set -- "$@" /ssh:"$hostname":$(readlink -f -- "$arg") || set -- "$@" "$arg"
+        [[ "$arg" != -* ]] && set -- "$@" /sshx:"$hostname":$(readlink -f -- "$arg") || set -- "$@" "$arg"
         shift
     done
 fi
