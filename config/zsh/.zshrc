@@ -21,7 +21,7 @@ znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' file-sort date
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
-zstyle ':completion:*:processes' command 'ps -afu $USER'
+zstyle ':completion:*:processes' command 'ps -afwwu $USER'
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 bindkey "^[?" list-expand
