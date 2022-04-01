@@ -1,12 +1,12 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 
 ### Znap
-ZNAP_HOME=$XDG_DATA_HOME/zsh/zsh-snap
+ZNAP_HOME=$XDG_DATA_HOME/zsh-snap/zsh-snap
 if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
     git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git $ZNAP_HOME
 fi
 source $ZNAP_HOME/znap.zsh
-zstyle ':znap:*:.*' git-maintenance off
+zstyle ':znap:*:*' git-maintenance off
 unset ZNAP_HOME
 
 ### Plugins
@@ -21,7 +21,8 @@ znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' file-sort date
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
-zstyle ':completion:*:processes' command 'ps -afwwu $USER'
+zstyle ':completion:*:processes' command 'ps -afu $USER'
+zstyle ':completion:*:*:man:*:*' menu select=long search
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 bindkey -M menuselect "^[m" accept-and-hold
