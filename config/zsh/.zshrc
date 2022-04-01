@@ -17,8 +17,12 @@ znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
 znap source zsh-users/zsh-syntax-highlighting
 
+# dir_colors
+(( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
+
 znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' file-sort date
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':completion:*:processes' command 'ps -afu $USER'
@@ -30,9 +34,6 @@ bindkey -M menuselect "^[m" accept-and-hold
 znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
-
-# dir_colors
-(( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
 
 # direnv
 (( $+commands[direnv] )) && znap eval direnv "$(readlink -f $commands[direnv]) hook zsh"
