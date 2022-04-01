@@ -11,7 +11,7 @@ unset ZNAP_HOME
 
 ### Plugins
 # starship
-(( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init'; znap prompt starship }
+(( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init' }
 
 znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
