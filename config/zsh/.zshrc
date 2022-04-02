@@ -63,11 +63,11 @@ setopt extended_history hist_fcntl_lock \
        hist_ignore_space hist_verify share_history
 
 zshaddhistory() {
-  local line=${1%%$'\n'}
-  local cmd=${line%% *}
-  [[ ${#line} -ge 5
-     && ${cmd} != (rm|\\rm|\"rm\")
-  ]]
+    local line=${1%%$'\n'}
+    local cmd=${line%% *}
+    [[ ${#line} -ge 5
+         && ${cmd} != (rm|\\rm|\"rm\")
+     ]]
 }
 
 ### Misc
@@ -122,46 +122,46 @@ fi
 md () { mkdir -p "$@" && cd "$_"; }
 
 d () {
-  if [[ -n $1 ]]; then
-    dirs "$@"
-  else
-    dirs -v | head -10
-  fi
+    if [[ -n $1 ]]; then
+        dirs "$@"
+    else
+        dirs -v | head -10
+    fi
 }
 
 # Determine size of a file or total size of a directory
 fs () {
-  if du -b /dev/null > /dev/null 2>&1; then
-    local arg=-sbh
-  else
-    local arg=-sh
-  fi
+    if du -b /dev/null > /dev/null 2>&1; then
+        local arg=-sbh
+    else
+        local arg=-sh
+    fi
 
-  if [[ -n "$@" ]]; then
-    du $arg -- "$@"
-  else
-    du $arg .[^.]* *
-  fi
+    if [[ -n "$@" ]]; then
+        du $arg -- "$@"
+    else
+        du $arg .[^.]* *
+    fi
 }
 
 cip () {
-  curl https://ipinfo.io/$1 ; echo
+    curl https://ipinfo.io/$1 ; echo
 }
 
 http_port=6152; socks_port=6153
 proxy () {
-  export http_proxy=http://127.0.0.1:$http_port
-  export https_proxy=http://127.0.0.1:$http_port
-  export all_proxy=socks5://127.0.0.1:$socks_port
-  export no_proxy=localhost,127.0.0.0/8,*.local
-  echo "Proxy on"
+    export http_proxy=http://127.0.0.1:$http_port
+    export https_proxy=http://127.0.0.1:$http_port
+    export all_proxy=socks5://127.0.0.1:$socks_port
+    export no_proxy=localhost,127.0.0.0/8,*.local
+    echo "Proxy on"
 }
 noproxy () {
-  unset http_proxy
-  unset https_proxy
-  unset all_proxy
-  unset no_proxy
-  echo "Proxy off"
+    unset http_proxy
+    unset https_proxy
+    unset all_proxy
+    unset no_proxy
+    echo "Proxy off"
 }
 proxy &> /dev/null
 
@@ -252,7 +252,7 @@ EOF
     }
 
     pfs () {
-      osascript 2>/dev/null <<EOF
+        osascript 2>/dev/null <<EOF
         set output to ""
         tell application "Finder" to set the_selection to selection
         set item_count to count the_selection
@@ -265,7 +265,7 @@ EOF
     }
 
     cdf () {
-    	  cd "$(osascript -e 'tell app "Finder" to POSIX path of (insertion location as alias)')";
+    	cd "$(osascript -e 'tell app "Finder" to POSIX path of (insertion location as alias)')";
     }
 
     man-preview () {
