@@ -4,6 +4,7 @@ set autochdir
 set backspace=indent,eol,start
 set clipboard^=unnamed,unnamedplus
 set encoding=utf-8
+set expandtab
 set ignorecase
 set incsearch
 set mouse+=a
@@ -13,6 +14,8 @@ set showcmd
 set showmatch
 set smartcase
 filetype indent on
+
+inoremap <tab> <c-q><tab>
 
 " XDG support
 
