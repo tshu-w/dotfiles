@@ -1,5 +1,6 @@
 tap "homebrew/bundle"
 tap "homebrew/core"
+brew "difftastic"
 brew "direnv"
 brew "gcc"
 brew "gnutls"
