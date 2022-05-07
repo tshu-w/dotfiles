@@ -26,7 +26,6 @@ zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':completion:*:processes' command 'ps -afu $USER'
-zstyle ':completion:*:*:man:*:*' menu select=long search
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 bindkey -M menuselect "^[m" accept-and-hold
