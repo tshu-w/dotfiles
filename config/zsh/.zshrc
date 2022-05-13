@@ -1,7 +1,7 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 
 ### Znap
-ZNAP_HOME=$XDG_DATA_HOME/zsh-snap/zsh-snap
+ZNAP_HOME=$XDG_DATA_HOME/znap/zsh-snap
 if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
     git clone --depth 1 -- https://github.com/marlonrichert/zsh-snap.git $ZNAP_HOME
 fi
