@@ -64,6 +64,7 @@ brew "trash"
 brew "tree"
 brew "vim"
 brew "wakatime-cli"
+brew "wget"
 brew "zoxide"
 brew "daviderestivo/emacs-head/emacs-head@28", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-comp", "with-xwidgets"]
 brew "koekeishiya/formulae/skhd"
