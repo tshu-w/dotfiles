@@ -26,7 +26,7 @@ case $VENDOR in
         export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
     done
 
-    export PATH=$PATH:/Library/TeX/texbin:/Library/Apple/usr/bin
+    export PATH=$PATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Programs/texbin:/Library/Apple/usr/bin
     export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/.DefaultTeX/Contents/Man`
 
     export CONDA_HOME=/usr/local/Caskroom/miniconda/base
