@@ -16,9 +16,11 @@ brew "blueutil"
 brew "python@3.9"
 brew "glib"
 brew "pkg-config"
+brew "colima"
 brew "coreutils"
 brew "difftastic"
 brew "direnv"
+brew "docker"
 brew "fcitx-remote-for-osx"
 brew "fd"
 brew "findutils"
@@ -93,7 +95,6 @@ cask "karabiner-elements", args: { appdir: "/Applications" }
 cask "keycastr"
 cask "lark"
 cask "launchbar", args: { appdir: "/Applications" }
-cask "logitech-options"
 cask "mactex-no-gui"
 cask "maczip"
 cask "microsoft-auto-update"
@@ -113,6 +114,7 @@ cask "tencent-meeting"
 cask "thunder", args: { appdir: "/Applications" }
 cask "wechattweak-cli"
 cask "zoom"
+cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
