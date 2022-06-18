@@ -202,6 +202,10 @@ colortest () {
     done
 }
 
+onelink() {
+    echo -n "$1"|base64|sed "s/=$//;s/\//\_/g;s/\+/\-/g;s/^/https:\/\/api\.onedrive\.com\/v1\.0\/shares\/u\!/;s/$/\/root\/content/";
+}
+
 transfer () {
     if [ $# -eq 0 ]; then
         echo "No arguments specified.\nUsage:\n transfer <file|directory>\n ... | transfer <file_name>" >&2
