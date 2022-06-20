@@ -27,7 +27,7 @@ for dir in "fastmail" "iscas"; do
 done
 
 # add login item
-for app in "AltTab" "Bartender 4" "Dash" "Dropbox" "Emacs" "iTerm" "Launchbar" "Surge"; do
+for app in "Bartender 4" "Dropbox" "Emacs" "iTerm" "Launchbar" "Surge"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
