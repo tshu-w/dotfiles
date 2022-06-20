@@ -95,6 +95,7 @@ cask "karabiner-elements", args: { appdir: "/Applications" }
 cask "keycastr"
 cask "lark"
 cask "launchbar", args: { appdir: "/Applications" }
+cask "logitech-g-hub"
 cask "mactex-no-gui"
 cask "maczip"
 cask "microsoft-auto-update"
@@ -103,6 +104,7 @@ cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "miniconda"
 cask "moneywiz", args: { appdir: "/Applications" }
+cask "mouse-fix"
 cask "neteasemusic"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
@@ -111,19 +113,17 @@ cask "squirrel", args: { appdir: "/Applications" }
 cask "syntax-highlight"
 cask "telegram"
 cask "tencent-meeting"
-cask "thunder", args: { appdir: "/Applications" }
 cask "wechattweak-cli"
 cask "zoom"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
-mas "LanguageTool", id: 1534275760
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
-mas "Surfingkeys", id: 1599827286
+mas "Surfingkeys", id: 1609752330
 mas "Take a Break", id: 1457158844
 mas "Tampermonkey", id: 1482490089
 mas "WeChat", id: 836500024
