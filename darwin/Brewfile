@@ -73,7 +73,6 @@ brew "koekeishiya/formulae/yabai"
 cask "aldente"
 cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
-cask "bob"
 cask "clashx-pro"
 cask "dash", args: { appdir: "/Applications" }
 cask "dingtalk"
@@ -115,8 +114,10 @@ cask "wechattweak-cli"
 cask "zoom"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
+mas "Bob", id: 1630034110
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
+mas "MoneyWiz 3", id: 1012291524
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
