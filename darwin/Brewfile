@@ -72,8 +72,6 @@ cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
 cask "clashx-pro"
 cask "dash", args: { appdir: "/Applications" }
-cask "dingtalk"
-cask "discord"
 cask "dropbox"
 cask "firefox"
 cask "font-hanamina"
@@ -82,13 +80,13 @@ cask "font-noto-serif-cjk"
 cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
+cask "google-chrome"
 cask "iina", args: { appdir: "/Applications" }
 cask "inkscape"
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements", args: { appdir: "/Applications" }
 cask "keycastr"
-cask "lark"
 cask "launchbar", args: { appdir: "/Applications" }
 cask "logitech-g-hub"
 cask "mactex-no-gui"
@@ -99,22 +97,21 @@ cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "miniconda"
 cask "mouse-fix"
-cask "neteasemusic"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
 cask "syntax-highlight"
 cask "telegram"
-cask "tencent-meeting"
 cask "wechattweak-cli"
-cask "zoom"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
+mas "Feishu", id: 1551632588
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
 mas "MoneyWiz 3", id: 1012291524
+mas "NeteaseMusic", id: 944848654
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
@@ -122,4 +119,5 @@ mas "QQ", id: 451108668
 mas "Surfingkeys", id: 1609752330
 mas "Take a Break", id: 1457158844
 mas "Tampermonkey", id: 1482490089
+mas "TencentMeeting", id: 1484048379
 mas "WeChat", id: 836500024
