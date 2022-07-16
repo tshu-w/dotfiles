@@ -1,8 +1,5 @@
 #!/usr/bin/env sh
 
-# example: /usr/local/opt/yabai/share/yabai/examples/yabairc
-#          https://github.com/koekeishiya/dotfiles/blob/master/yabai/yabairc
-
 # global settings
 yabai -m config mouse_follows_focus          on
 yabai -m config focus_follows_mouse          off

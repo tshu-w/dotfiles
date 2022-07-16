@@ -1,7 +1,5 @@
 #!/usr/bin/env sh
 # for more info, see https://github.com/koekeishiya/skhd#configuration
-# example: /usr/local/opt/skhd/share/skhd/examples/skhdrc
-#          https://github.com/koekeishiya/dotfiles/blob/master/skhd/skhdrc
 
 # mode declaration
 # 1) default: all keybindings are available
