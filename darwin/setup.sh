@@ -12,24 +12,30 @@ caffeinate -s -w $$ &
 # Check for Homebrew, install if we don't have it
 command -v brew >/dev/null || \
     curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash
+case `uname -m` in
+arm64)
+    eval "$(/opt/homebrew/bin/brew shellenv)" ;;
+x86_64)
+    eval "$(/usr/local/bin/brew shellenv)" ;;
+esac
 
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
 
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
-ln -sf /usr/local/opt/emacs-head@28/Emacs.app /Applications
-ln -s /usr/local/Caskroom/miniconda/base/ ~/.local/share/conda
+ln -sf $HOMEBREW_PREFIX/opt/emacs-head@28/Emacs.app /Applications
+ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ ~/.local/share/conda
 
 command -v wechattweak-cli && sudo wechattweak-cli install
 
-# mu init
+# Init mu
 mu init -m $XDG_DATA_HOME/mail
 for dir in "fastmail" "iscas"; do
     mkdir -p $XDG_DATA_HOME/mail/$dir
 done
 
-# add login item
+# Add login item
 for app in "Bartender 4" "Dropbox" "Emacs" "iTerm" "Launchbar" "Surge"; do
     osascript <<EOF
     tell application "System Events"
@@ -39,7 +45,10 @@ for app in "Bartender 4" "Dropbox" "Emacs" "iTerm" "Launchbar" "Surge"; do
 EOF
 done
 
-# mackup restore
+# Create Developer Directory
+mkdir -p ~/Developer
+
+# Mackup restore
 MACKUP_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Mackup"
 if [[ -f "$MACKUP_DIR/.mackup.cfg" && ! -L "$HOME/.mackup.cfg" ]]; then
     cp -v  "$MACKUP_DIR/.mackup.cfg" $HOME

@@ -7,9 +7,12 @@ export XDG_CONFIG_HOME = $(HOME)/.config
 export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
 
-ifeq ($(OS),linux)
-export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:$(PATH)
-export NPM_CONFIG_PREFIX := $(HOME)/.local
+ifeq ($(OS),darwin)
+	export PATH := /opt/homebrew/bin:$(PATH)
+	SHELL := env PATH=$(PATH) /bin/bash
+else
+	export PATH := /home/linuxbrew/.linuxbrew/bin/:$(XDG_DATA_HOME)/linuxbrew/bin/:$(PATH)
+	export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
 .PHONY: darwin linux

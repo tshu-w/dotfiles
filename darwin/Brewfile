@@ -14,8 +14,6 @@ brew "python@3.10"
 brew "black"
 brew "blueutil"
 brew "python@3.9"
-brew "glib"
-brew "pkg-config"
 brew "colima"
 brew "coreutils"
 brew "difftastic"
@@ -36,7 +34,6 @@ brew "iconsur"
 brew "isync"
 brew "jq"
 brew "jsonnet"
-brew "pango"
 brew "m-cli"
 brew "mackup"
 brew "mas"
@@ -103,12 +100,15 @@ cask "skim", args: { appdir: "/Applications" }
 cask "squirrel", args: { appdir: "/Applications" }
 cask "syntax-highlight"
 cask "telegram"
+cask "topnotch"
 cask "wechattweak-cli"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
 mas "Feishu", id: 1551632588
+mas "GarageBand", id: 682658836
 mas "Grammarly for Safari", id: 1462114288
+mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
 mas "MoneyWiz 3", id: 1012291524
 mas "NeteaseMusic", id: 944848654

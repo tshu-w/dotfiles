@@ -85,7 +85,7 @@ defaults write com.apple.helpviewer DevMode -bool true
 # launchctl unload -w /System/Library/LaunchAgents/com.apple.notificationcenterui.plist 2> /dev/null
 
 # FIXME: Show battery percentage on menu bar
-defaults write com.apple.menuextra.battery ShowPercent YES
+# defaults write com.apple.menuextra.battery ShowPercent YES
 
 # Disable automatic capitalization as it’s annoying when typing code
 defaults write NSGlobalDomain NSAutomaticCapitalizationEnabled -bool false
@@ -204,10 +204,10 @@ launchctl unload -w /System/Library/LaunchAgents/com.apple.rcd.plist 2> /dev/nul
 # sudo pmset -a lidwake 1
 
 # Restart automatically on power loss
-sudo pmset -a autorestart 1
+# sudo pmset -a autorestart 1
 
 # Restart automatically if the computer freezes
-sudo systemsetup -setrestartfreeze on
+# sudo systemsetup -setrestartfreeze on
 
 # Sleep the display after 15 minutes
 # sudo pmset -a displaysleep 15
@@ -418,10 +418,6 @@ defaults write com.apple.dock persistent-apps -array
 # Don’t animate opening applications from the Dock
 defaults write com.apple.dock launchanim -bool false
 
-# Speed up Mission Control animations
-# FIXME: https://github.com/mathiasbynens/dotfiles/issues/711
-defaults write com.apple.dock expose-animation-duration -float 0.1
-
 # Don’t group windows by application in Mission Control
 # (i.e. use the old Exposé behavior instead)
 # defaults write com.apple.dock expose-group-by-app -bool false
@@ -518,10 +514,12 @@ sudo defaults write /Library/Preferences/com.apple.AppleFileServer guestAccess -
 ###############################################################################
 # Safari & WebKit                                                             #
 ###############################################################################
-# FIXME: https://github.com/mathiasbynens/dotfiles/issues/849
 # Set Safari Default Encoding: UTF-8
 defaults write com.apple.Safari WebKitDefaultTextEncodingName -string "utf-8"
-defaults write com.apple.Safari "com.apple.Safari.ContentPageGroupIdentifier.WebKit2DefaultTextEncodingName" -string "utf-8"
+defaults write com.apple.Safari "WebKitPreferences.defaultTextEncodingName" -string "utf-8"
+
+# Use compact Tab layout
+defaults write com.apple.Safari ShowStandaloneTabBar -bool false
 
 # Open new Tab or Windows with Top Sites
 defaults write com.apple.Safari NewWindowBehavior -int 4

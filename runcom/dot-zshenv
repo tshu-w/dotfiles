@@ -22,15 +22,20 @@ case $VENDOR in
   ( apple )
     export SHELL_SESSIONS_DISABLE=1
 
+    [ -f /usr/local/bin/brew ] && eval $(/usr/local/bin/brew shellenv)
+    [ -f /opt/homebrew/bin/brew ] && eval $(/opt/homebrew/bin/brew shellenv)
+
     for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar" "grep"; do
-        export PATH=/usr/local/opt/$pkg/libexec/gnubin:$PATH
+        export PATH=$HOMEBREW_PREFIX/opt/$pkg/libexec/gnubin:$PATH
     done
 
-    export PATH=$PATH:/Library/TeX/Distributions/.DefaultTeX/Contents/Programs/texbin:/Library/Apple/usr/bin
-    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/.DefaultTeX/Contents/Man`
+    export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
-    export CONDA_HOME=/usr/local/Caskroom/miniconda/base
+    export CONDA_HOME=$HOMEBREW_PREFIX/Caskroom/miniconda/base
     export PATH=$CONDA_HOME/bin:$PATH
+
+    export PATH=$PATH:/Library/TeX/texbin
+    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/.DefaultTeX/Contents/Man`
 
     alias trash='trash -F'
   ;;
@@ -46,7 +51,7 @@ case $VENDOR in
     export CONDA_HOME=$XDG_DATA_HOME/conda
     export PATH=$CONDA_HOME/bin:$PATH
 
-    export NPM_CONFIG_PREFIX=$HOME/.local ubuntu
+    export NPM_CONFIG_PREFIX=$HOME/.local
   ;;
 esac
 
@@ -69,7 +74,8 @@ export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 export WAKATIME_HOME=$XDG_DATA_HOME/wakatime
 export LESSHISTFILE=-
 
+export GPG_TTY=$(tty)
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
     export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
-    [ -f $SSH_AUTH_SOCK ] || gpg-connect-agent /bye &>/dev/null
+    [ -f $SSH_AUTH_SOCK ] || gpgconf --launch gpg-agent
 fi
