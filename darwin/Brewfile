@@ -67,6 +67,7 @@ brew "koekeishiya/formulae/yabai"
 cask "aldente"
 cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
+cask "bettermouse"
 cask "clashx-pro"
 cask "dash", args: { appdir: "/Applications" }
 cask "dropbox"
@@ -93,7 +94,6 @@ cask "microsoft-excel"
 cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "miniconda"
-cask "mouse-fix"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "skim", args: { appdir: "/Applications" }
