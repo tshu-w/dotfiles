@@ -77,6 +77,12 @@ defaults write NSGlobalDomain com.apple.keyboard.fnState -bool true
 defaults write com.apple.AppleMultitouchTrackpad ActuationStrength -int 0
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad ActuationStrength -int 0
 
+# Trakpad: make click light
+defaults write com.apple.AppleMultitouchTrackpad FirstClickThreshold -int 0
+defaults write com.apple.AppleMultitouchTrackpad SecondClickThreshold -int 0
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad FirstClickThreshold -int 0
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad SecondClickThreshold -int 0
+
 # Trackpad: set Tracking Speed(from 0 to 3)
 defaults write NSGlobalDomain com.apple.trackpad.scaling -float 1.5
 
