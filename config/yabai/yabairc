@@ -4,6 +4,9 @@
 yabai -m config mouse_follows_focus          on
 yabai -m config focus_follows_mouse          off
 yabai -m config window_placement             first_child
+yabai -m config window_border                on
+yabai -m config active_window_border_color   0xff61afef
+yabai -m config normal_window_border_color   0xff555555
 yabai -m config split_ratio                  0.50
 yabai -m config auto_balance                 on
 yabai -m config mouse_drop_action            stack
@@ -33,14 +36,5 @@ yabai -m rule --add app="QQ|WeChat|Telegram|Music|Lark|Feishu" manage=off space=
 chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
 yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Rime"
 yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="fcitx-remote -s com.apple.keylayout.US"
-
-float_script="if [ \$(yabai -m query --windows --window | jq '.\"can-resize\" == false and .\"is-floating\" == false') = 'true' ]; then
-  yabai -m window --toggle float;
-fi"
-center_float_window="if [ \$(yabai -m query --windows --window | jq '.\"is-floating\" == true') == 'true' ]; then
-  ~/.config/yabai/scripts/center-float-window.sh;
-fi"
-yabai -m signal --add event=application_launched action="$float_script && $center_float_window"
-yabai -m signal --add event=window_created       action="$float_script && $center_float_window"
 
 echo "yabai configuration loaded.."
