@@ -57,5 +57,5 @@ if [ "$(visible_frames)" -lt "1" ]; then # need to create a frame
 else # there is already a visible frame besides the daemon, so
   change_focus
   # -n $@ errors if there are no args
-  test "$#" -ne "0" && emacsclient -n "$@"
+  test "$#" -eq "0" || emacsclient -n "$@"
 fi
