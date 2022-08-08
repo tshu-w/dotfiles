@@ -1,0 +1,15 @@
+#!/bin/bash
+
+echo ' Insert diff name:'
+read NAME
+mkdir -p diffs/$NAME
+defaults read > diffs/$NAME/old.plist
+defaults -currentHost read > diffs/$NAME/host-old.plist
+echo ' Change settings and press any key to continue'
+read -n 1 -s -r
+defaults read > diffs/$NAME/new.plist
+defaults -currentHost read > diffs/$NAME/host-new.plist
+echo -e ' Here is your diff:\n\n'
+diff diffs/$NAME/old.plist diffs/$NAME/new.plist
+echo -e '\n\n and here with the `-currentHost` option:\n\n'
+diff diffs/$NAME/host-old.plist diffs/$NAME/host-new.plist
