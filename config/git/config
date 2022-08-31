@@ -13,7 +13,11 @@
 	random = !"git commit -am \"$(echo $(curl -s http://whatthecommit.com/index.txt)\"\")\""
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
 [diff]
-	external = difft
+	tool = difftastic
+[difftool]
+        prompt = false
+[difftool "difftastic"]
+        cmd = difft "$LOCAL" "$REMOTE"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
 [filter "lfs"]
@@ -21,6 +25,8 @@
 	smudge = git-lfs smudge -- %f
 	process = git-lfs filter-process
 	required = true
+[pager]
+        difftool = true
 [github]
 	user = tshu-w
 [credential "https://github.com"]
