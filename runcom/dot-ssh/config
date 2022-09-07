@@ -1,4 +1,4 @@
-HOST mac
+HOST local
   Hostname localhost
   User wangtianshu
   Port 2048
@@ -9,7 +9,7 @@ Host backup
 HOST ext jumpbox
   Hostname ext.cipsup.cn
   Port 10722
-Host 141 142 143 144
+Host 141 142 143 144 147
   Hostname 124.16.138.%h
 Host github.com
   Hostname ssh.github.com
