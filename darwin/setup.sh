@@ -18,6 +18,8 @@ arm64)
 x86_64)
     eval "$(/usr/local/bin/brew shellenv)" ;;
 esac
+# Link /opt/homebrew/bin to /usr/local/bin
+[ -d /usr/local/bin ] || sudo ln -s /opt/homebrew/bin /usr/local/bin
 
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
