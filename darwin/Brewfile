@@ -48,6 +48,7 @@ brew "pipx"
 brew "pre-commit"
 brew "pyright"
 brew "ripgrep"
+brew "rust"
 brew "starship"
 brew "stow"
 brew "subversion"
@@ -72,9 +73,11 @@ cask "bartender", args: { appdir: "/Applications" }
 cask "bettermouse"
 cask "calibre"
 cask "clashx-pro"
+cask "coconutbattery"
 cask "dash", args: { appdir: "/Applications" }
 cask "dropbox"
 cask "firefox"
+cask "focus"
 cask "font-hanamina"
 cask "font-noto-sans-cjk"
 cask "font-noto-serif-cjk"
@@ -85,7 +88,7 @@ cask "iina", args: { appdir: "/Applications" }
 cask "inkscape"
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
-cask "karabiner-elements", args: { appdir: "/Applications" }
+cask "karabiner-elements"
 cask "keycastr"
 cask "launchbar", args: { appdir: "/Applications" }
 cask "logitech-g-hub"
@@ -100,6 +103,7 @@ cask "monitorcontrol"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "skim", args: { appdir: "/Applications" }
+cask "slack"
 cask "squirrel", args: { appdir: "/Applications" }
 cask "syntax-highlight"
 cask "telegram"
@@ -113,8 +117,9 @@ mas "GarageBand", id: 682658836
 mas "Grammarly for Safari", id: 1462114288
 mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
+mas "Lingocloud for Safari", id: 1567588461
 mas "MoneyWiz 3", id: 1012291524
-mas "NeteaseMusic", id: 944848654
+mas "NetEaseMusic", id: 944848654
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
