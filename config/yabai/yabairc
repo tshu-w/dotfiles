@@ -30,7 +30,7 @@ yabai -m rule --add app="Safari|Firefox" space=submain
 yabai -m rule --add app="^System Preferences|System Information$" manage=off
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off
 yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge" manage=off
-yabai -m rule --add app="QQ|WeChat|Telegram|Music|Lark|Feishu" manage=off space=misc
+yabai -m rule --add app="QQ|WeChat|Telegram|Music|Lark|Feishu|Slack" manage=off space=misc
 
 # signals
 chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
