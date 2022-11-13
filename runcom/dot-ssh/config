@@ -15,7 +15,7 @@ Host github.com
   Hostname ssh.github.com
   User git
   Port 443
-Match exec "echo %h | grep '192\|124'"
+Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'wangtianshu' }"
   LocalCommand  { gpg-forward %n; emacs-forward %n } &
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
