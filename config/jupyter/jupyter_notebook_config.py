@@ -1,5 +1,7 @@
 # Configuration file for jupyter-notebook.
 
+c = get_config()  #noqa
+
 #------------------------------------------------------------------------------
 # Application(SingletonConfigurable) configuration
 #------------------------------------------------------------------------------
@@ -45,7 +47,7 @@
 #
 #  .. code-block:: python
 #
-#     c.Application.logging_configuration = {
+#     c.Application.logging_config = {
 #         'handlers': {
 #             'file': {
 #                 'class': 'logging.FileHandler',
@@ -131,7 +133,7 @@
 #
 #          Takes precedence over allow_origin_pat.
 #  Default: ''
-c.NotebookApp.allow_origin = '*'
+# c.NotebookApp.allow_origin = ''
 
 ## Use a regular expression for the Access-Control-Allow-Origin header
 #
@@ -1139,7 +1141,7 @@ c.NotebookApp.port = 9999
 ## A class for computing and verifying notebook signatures.
 
 ## The hashing algorithm used to sign notebooks.
-#  Choices: any of ['sha3_256', 'sha3_384', 'sha3_224', 'sha512', 'md5', 'sha384', 'blake2s', 'sha3_512', 'sha1', 'sha256', 'sha224', 'blake2b']
+#  Choices: any of ['sha1', 'blake2b', 'sha3_384', 'blake2s', 'md5', 'sha3_512', 'sha3_256', 'sha384', 'sha3_224', 'sha256', 'sha512', 'sha224']
 #  Default: 'sha256'
 # c.NotebookNotary.algorithm = 'sha256'
 
