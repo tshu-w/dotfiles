@@ -2,6 +2,6 @@
 
 chmod a-x /Applications/Thunder.app/Contents/PlugIns/*
 
-for name in "applications" "details" "downloadhistory" "preferences" "searchtask" "userlogin"; do
+for name in "cloudspace" "details" "preferences" "userlogin"; do
     chmod a+x /Applications/Thunder.app/Contents/PlugIns/$name.xlplugin
 done
