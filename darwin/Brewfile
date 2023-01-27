@@ -10,7 +10,6 @@ tap "homebrew/services"
 tap "koekeishiya/formulae"
 tap "sunnyyoung/repo"
 brew "aspell"
-brew "black"
 brew "blueutil"
 brew "python@3.9"
 brew "colima"
@@ -20,7 +19,6 @@ brew "direnv"
 brew "docker"
 brew "fcitx-remote-for-osx"
 brew "fd"
-brew "fdupes"
 brew "findutils"
 brew "gawk"
 brew "gh"
@@ -34,7 +32,6 @@ brew "node"
 brew "iconsur"
 brew "isync"
 brew "jq"
-brew "jsonnet"
 brew "m-cli"
 brew "mackup"
 brew "mas"
@@ -73,7 +70,6 @@ cask "bartender", args: { appdir: "/Applications" }
 cask "bettermouse"
 cask "calibre"
 cask "clashx-pro"
-cask "coconutbattery"
 cask "dash", args: { appdir: "/Applications" }
 cask "dropbox"
 cask "firefox"
@@ -114,11 +110,9 @@ cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
 mas "Feishu", id: 1551632588
-mas "GarageBand", id: 682658836
 mas "Grammarly for Safari", id: 1462114288
 mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
-mas "Lingocloud for Safari", id: 1567588461
 mas "MoneyWiz 3", id: 1012291524
 mas "NetEaseMusic", id: 944848654
 mas "Numbers", id: 409203825
