@@ -26,7 +26,7 @@ brew bundle -v --no-lock || true
 
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
-ln -sf $HOMEBREW_PREFIX/opt/emacs-head@28/Emacs.app /Applications
+ln -sf $HOMEBREW_PREFIX/opt/emacs-head@29/Emacs.app /Applications
 ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ ~/.local/share/conda
 
 command -v wechattweak-cli && sudo wechattweak-cli install
