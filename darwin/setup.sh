@@ -9,6 +9,9 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 # Prevent sleeping during script execution, as long as the machine is on AC power
 caffeinate -s -w $$ &
 
+# Install Rosetta
+softwareupdate --install-rosetta --agree-to-license
+
 # Check for Homebrew, install if we don't have it
 command -v brew >/dev/null || \
     curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash
@@ -27,7 +30,8 @@ brew bundle -v --no-lock || true
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
 ln -sf $HOMEBREW_PREFIX/opt/emacs-head@29/Emacs.app /Applications
-ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ ~/.local/share/conda
+mkdir -p $XDG_DATA_HOME
+ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ $XDG_DATA_HOME/conda
 
 command -v wechattweak-cli && sudo wechattweak-cli install
 
