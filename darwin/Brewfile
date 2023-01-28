@@ -11,7 +11,6 @@ tap "koekeishiya/formulae"
 tap "sunnyyoung/repo"
 brew "aspell"
 brew "blueutil"
-brew "python@3.9"
 brew "colima"
 brew "coreutils"
 brew "difftastic"
@@ -26,7 +25,6 @@ brew "git-lfs"
 brew "gnupg"
 brew "gnu-sed"
 brew "gnu-tar"
-brew "python@3.10"
 brew "grep"
 brew "node"
 brew "iconsur"
@@ -61,7 +59,7 @@ brew "vim"
 brew "wakatime-cli"
 brew "wget"
 brew "zoxide"
-brew "daviderestivo/emacs-head/emacs-head@29", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-comp", "with-tree-sitter", "with-xwidgets"]
+brew "daviderestivo/emacs-head/emacs-head@29", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "aldente"
@@ -74,7 +72,6 @@ cask "dash", args: { appdir: "/Applications" }
 cask "dropbox"
 cask "firefox"
 cask "focus"
-cask "font-hanamina"
 cask "font-noto-sans-cjk"
 cask "font-noto-serif-cjk"
 cask "font-sf-mono"
@@ -111,7 +108,6 @@ mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
 mas "Feishu", id: 1551632588
 mas "Grammarly for Safari", id: 1462114288
-mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
 mas "MoneyWiz 3", id: 1012291524
 mas "NetEaseMusic", id: 944848654
