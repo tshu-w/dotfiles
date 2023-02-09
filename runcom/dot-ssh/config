@@ -33,3 +33,4 @@ Host *
   ControlPersist 1h
   PermitLocalCommand no
   GSSAPIAuthentication no
+  StrictHostKeyChecking accept-new
