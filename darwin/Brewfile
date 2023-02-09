@@ -45,7 +45,6 @@ brew "ripgrep"
 brew "rust"
 brew "starship"
 brew "stow"
-brew "subversion"
 brew "switchaudio-osx"
 brew "syncthing", restart_service: true
 brew "tealdeer"
@@ -98,7 +97,6 @@ cask "onedrive"
 cask "skim", args: { appdir: "/Applications" }
 cask "slack"
 cask "squirrel", args: { appdir: "/Applications" }
-cask "syntax-highlight"
 cask "telegram"
 cask "topnotch"
 cask "tor-browser"
@@ -107,6 +105,7 @@ cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
 mas "Feishu", id: 1551632588
+mas "GhostText", id: 1552641506
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
 mas "MoneyWiz 3", id: 1012291524
