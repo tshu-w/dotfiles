@@ -10,7 +10,7 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 caffeinate -s -w $$ &
 
 # Install Rosetta
-softwareupdate --install-rosetta --agree-to-license
+[ `uname -m` = arm64 ] && softwareupdate --install-rosetta --agree-to-license
 
 # Check for Homebrew, install if we don't have it
 command -v brew >/dev/null || \
