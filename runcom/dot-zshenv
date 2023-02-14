@@ -23,7 +23,7 @@ case $VENDOR in
     export SHELL_SESSIONS_DISABLE=1
 
     { [ -f /usr/local/bin/brew ] && eval $(/usr/local/bin/brew shellenv) } || \
-            { [ -f /opt/homebrew/bin/brew ] && eval $(/opt/homebrew/bin/brew shellenv) }
+        { [ -f /opt/homebrew/bin/brew ] && eval $(/opt/homebrew/bin/brew shellenv) }
 
     for pkg in "coreutils" "findutils" "gnu-sed" "gnu-tar" "grep"; do
         export PATH=$HOMEBREW_PREFIX/opt/$pkg/libexec/gnubin:$PATH
@@ -34,8 +34,8 @@ case $VENDOR in
     export CONDA_HOME=$HOMEBREW_PREFIX/Caskroom/miniconda/base
     export PATH=$CONDA_HOME/bin:$PATH
 
-    export PATH=$PATH:/Library/TeX/texbin
-    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/.DefaultTeX/Contents/Man`
+    export PATH=$PATH:/Library/TeX/Distributions/Programs/texbin
+    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/Programs/texbin/man`
 
     alias trash='trash -F'
   ;;
