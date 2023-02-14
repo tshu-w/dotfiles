@@ -162,7 +162,6 @@ noproxy () {
     unset no_proxy
     echo "Proxy off"
 }
-proxy &> /dev/null
 
 # lazy load conda
 conda () {
