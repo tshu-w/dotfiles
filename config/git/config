@@ -12,6 +12,7 @@
 	lg = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
 	random = !"git commit -am \"$(echo $(curl -s http://whatthecommit.com/index.txt)\"\")\""
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
+	squash-all = "!f(){ git reset $(git commit-tree HEAD^{tree} \"$@\");};f"
 [diff]
 	tool = difftastic
 [difftool]
