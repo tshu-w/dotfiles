@@ -27,6 +27,10 @@ esac
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
 
+# Install info files
+# https://github.com/d12frosted/homebrew-emacs-plus/issues/437
+(cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
+
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
 ln -sf $HOMEBREW_PREFIX/opt/emacs-head@29/Emacs.app /Applications
