@@ -17,6 +17,7 @@ export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
 export INFOPATH=$HOME/.local/share/info:/usr/local/share/info:/usr/share/info
 
 export EDITOR=vim
+export VISUAL=emacsclient
 
 case $VENDOR in
   ( apple )
