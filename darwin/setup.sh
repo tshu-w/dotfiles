@@ -33,7 +33,7 @@ brew bundle -v --no-lock || true
 
 command -v yabai >/dev/null && brew services start yabai
 command -v skhd >/dev/null && brew services start skhd
-ln -sf $HOMEBREW_PREFIX/opt/emacs-head@29/Emacs.app /Applications
+ln -sf $HOMEBREW_PREFIX/opt/emacs-head@30/Emacs.app /Applications
 mkdir -p $XDG_DATA_HOME
 ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ $XDG_DATA_HOME/conda
 
