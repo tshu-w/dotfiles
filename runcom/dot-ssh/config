@@ -2,20 +2,23 @@ HOST local
   Hostname localhost
   User wangtianshu
   Port 2048
-Host 11 16 70 71 72 74
+Host 16
+  Hostname 192.168.14.%h
+  User tianshu2020
+Host 70 71 72 74
   Hostname 192.168.14.%h
 Host backup
   Hostname 192.168.14.74
 HOST ext jumpbox
   Hostname ext.cipsup.cn
   Port 10722
-Host 141 142 143 144 147
+Host 140 141 142 143 144 145 147 150
   Hostname 124.16.138.%h
 Host github.com
   Hostname ssh.github.com
   User git
   Port 443
-Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'wangtianshu' }"
+Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'tianshu' }"
   LocalCommand  { gpg-forward %n; emacs-forward %n } &
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
