@@ -293,5 +293,12 @@ compdef _gnu_generic emacs emacsclient
 compdef _man man-preview
 compdef _mkdir md
 compdef _run run
-znap function _pip_completion pip 'eval "$( pip completion --zsh )"'
+
+znap fpath _pdm 'pdm completion zsh'
+
+znap function _pip_completion pip       'eval "$( pip completion --zsh )"'
 compctl -K    _pip_completion pip
+
+znap function _python_argcomplete pipx  'eval "$( register-python-argcomplete pipx )"'
+complete -o nospace -o default -o bashdefault \
+           -F _python_argcomplete pipx
