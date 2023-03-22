@@ -52,6 +52,9 @@ fi
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
 
+# copilot cli
+(( $+commands[github-copilot-cli] )) && znap eval copilot-cli 'github-copilot-cli alias -- "$0"'
+
 ### History
 HISTFILE=$XDG_DATA_HOME/zsh/history
 SAVEHIST=$(( 100 * 1000 ))
