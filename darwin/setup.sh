@@ -40,9 +40,9 @@ ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ $XDG_DATA_HOME/conda
 command -v wechattweak-cli && sudo wechattweak-cli install
 
 # Init mu
-mu init -m $XDG_DATA_HOME/mail
+mu init -m $XDG_STATE_HOME/mail
 for dir in "fastmail" "iscas"; do
-    mkdir -p $XDG_DATA_HOME/mail/$dir
+    mkdir -p $XDG_STATE_HOME/mail/$dir
 done
 
 # Add login item

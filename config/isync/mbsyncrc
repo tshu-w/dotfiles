@@ -12,8 +12,8 @@ IMAPStore fastmail-remote
 Account fastmail
 
 MaildirStore fastmail-local
-Path ~/.local/share/mail/fastmail/
-Inbox ~/.local/share/mail/fastmail/Inbox
+Path ~/.local/state/mail/fastmail/
+Inbox ~/.local/state/mail/fastmail/Inbox
 SubFolders Verbatim
 
 Channel fastmail
@@ -33,8 +33,8 @@ IMAPStore iscas-remote
 Account iscas
 
 MaildirStore iscas-local
-Path ~/.local/share/mail/iscas/
-Inbox ~/.local/share/mail/iscas/Inbox
+Path ~/.local/state/mail/iscas/
+Inbox ~/.local/state/mail/iscas/Inbox
 SubFolders Verbatim
 
 Channel iscas-default
