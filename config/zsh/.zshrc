@@ -56,7 +56,7 @@ fi
 (( $+commands[github-copilot-cli] )) && znap eval copilot-cli 'github-copilot-cli alias -- "$0"'
 
 ### History
-HISTFILE=$XDG_DATA_HOME/zsh/history
+HISTFILE=$XDG_STATE_HOME/zsh/history
 SAVEHIST=$(( 100 * 1000 ))
 HISTSIZE=$(( 1.2 * SAVEHIST ))
 
