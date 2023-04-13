@@ -2,7 +2,7 @@ HOST local
   Hostname localhost
   User wangtianshu
   Port 2048
-Host 16
+Host 16 103
   Hostname 192.168.14.%h
   User tianshu2020
 Host 70 71 72 74
@@ -12,7 +12,7 @@ Host backup
 HOST ext jumpbox
   Hostname ext.cipsup.cn
   Port 10722
-Host 140 141 142 143 144 145 147 150
+Host 140 141 142 143 144 147 148 150
   Hostname 124.16.138.%h
 Host github.com
   Hostname ssh.github.com
