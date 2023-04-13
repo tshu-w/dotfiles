@@ -34,7 +34,7 @@ yabai -m rule --add app="QQ|WeChat|Telegram|Music|Lark|Feishu|Slack|TencentMeeti
 
 # signals
 chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
-yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Rime"
+yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Hans"
 yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="fcitx-remote -s com.apple.keylayout.US"
 
 yabai -m signal --add event=window_destroyed action="yabai -m query --windows --window &> /dev/null || yabai -m window --focus mouse"
