@@ -1,5 +1,22 @@
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 
+### Zsh
+setopt auto_cd auto_pushd pushd_ignore_dups pushdminus \
+       interactive_comments long_list_jobs multios \
+       extended_glob glob_star_short numeric_glob_sort
+
+bindkey -e                # force emacs mode regardless of $EDITOR
+bindkey -s '\el' 'ls\n'   # [Esc-l] - run command: ls
+bindkey ' ' magic-space   # [Space] - don't do history expansion
+bindkey "^[m" copy-prev-shell-word
+bindkey '^[q' push-line-or-edit
+bindkey '^[k' describe-key-briefly # Alt-H: run-help
+
+# Edit the current command line in $EDITOR
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line
+
 ### Znap
 ZNAP_HOME=$XDG_DATA_HOME/znap/zsh-snap
 if [[ ! -f $ZNAP_HOME/znap.zsh ]]; then
@@ -73,25 +90,9 @@ zshaddhistory() {
 }
 
 ### Misc
-setopt auto_cd auto_pushd pushd_ignore_dups pushdminus \
-       interactive_comments long_list_jobs multios \
-       extended_glob glob_star_short numeric_glob_sort
-
 hash -d d="$HOME/dotfiles"
 hash -d icloud="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
 hash -d surge="$HOME/Library/Mobile Documents/iCloud~com~nssurge~inc/Documents"
-
-bindkey -e                # force emacs mode regardless of $EDITOR
-bindkey -s '\el' 'ls\n'   # [Esc-l] - run command: ls
-bindkey ' ' magic-space   # [Space] - don't do history expansion
-bindkey "^[m" copy-prev-shell-word
-bindkey '^[q' push-line-or-edit
-bindkey '^[k' describe-key-briefly # Alt-H: run-help
-
-# Edit the current command line in $EDITOR
-autoload -U edit-command-line
-zle -N edit-command-line
-bindkey '\C-x\C-e' edit-command-line
 
 ### Alias
 alias _='sudo'
