@@ -295,7 +295,7 @@ compdef _man man-preview
 compdef _mkdir md
 compdef _run run
 
-znap fpath _pdm 'pdm completion zsh'
+(( $+commands[pdm] )) znap fpath _pdm 'pdm completion zsh'
 
 znap function _pip_completion pip       'eval "$( pip completion --zsh )"'
 compctl -K    _pip_completion pip
