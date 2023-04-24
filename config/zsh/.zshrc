@@ -37,7 +37,7 @@ znap source zsh-users/zsh-syntax-highlighting
 # dir_colors
 (( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
 
-znap source marlonrichert/zsh-autocomplete
+znap source tshu-w/zsh-autocomplete
 zstyle ':completion:*' file-sort date
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
