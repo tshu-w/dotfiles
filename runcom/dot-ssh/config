@@ -23,7 +23,7 @@ Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'tianshu' }"
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
-Match exec "echo %h | grep '192\|124\|git.cipsup.cn' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match exec "echo %h | grep '192\|124\|git' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
