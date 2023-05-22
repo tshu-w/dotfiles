@@ -52,7 +52,7 @@ znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
 
 # direnv
-(( $+commands[direnv] )) && znap eval direnv "$(readlink -f $commands[direnv]) hook zsh"
+(( $+commands[direnv] )) && znap eval direnv "direnv hook zsh"
 
 # iterm2_shell_integration
 if [ "${LC_TERMINAL-}" = "iTerm2" ]; then
