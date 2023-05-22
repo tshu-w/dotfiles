@@ -120,7 +120,7 @@ focus, grid, swap, warp, warpnf, resize < q                 : yabai -m window --
 focus, grid, swap, warp, warpnf, resize < p                 : yabai -m window --toggle zoom-parent       # mnemonic: _p_arent
 focus, grid, swap, warp, warpnf, resize < i                 : yabai -m window --toggle split             # mnemonic: couldn't think of one!
 focus, grid, swap, warp, warpnf, resize < t                 : yabai -m window --toggle float; yabai -m window --grid 30:30:2:2:26:26 # mnemonic: floa_t_
-focus, grid, swap, warp, warpnf, resize < shift - r         : launchctl kickstart -k "gui/${UID}/homebrew.mxcl.yabai"
+focus, grid, swap, warp, warpnf, resize < shift - r         : yabai --restart-service
 
 # Global hotkeys which I limit so as to not pollute the global namespace
 # default         < cmd - return     : open -a iTerm
