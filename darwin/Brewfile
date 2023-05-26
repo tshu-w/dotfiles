@@ -55,7 +55,6 @@ brew "texlab"
 brew "trash"
 brew "tree"
 brew "vim"
-brew "wakatime-cli"
 brew "wget"
 brew "zoxide"
 brew "daviderestivo/emacs-head/emacs-head@30", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]

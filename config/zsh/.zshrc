@@ -60,12 +60,6 @@ if [ "${LC_TERMINAL-}" = "iTerm2" ]; then
     znap eval iterm2 'curl -fsSL https://iterm2.com/shell_integration/zsh'
 fi
 
-# wakatime
-(( $+commands[wakatime-cli] )) && {
-    znap source sobolevn/wakatime-zsh-plugin
-    export ZSH_WAKATIME_BIN=$commands[wakatime-cli]
-}
-
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
 
