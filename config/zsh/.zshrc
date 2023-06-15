@@ -3,7 +3,7 @@
 ### Zsh
 setopt auto_cd auto_pushd pushd_ignore_dups pushdminus \
        interactive_comments long_list_jobs multios \
-       extended_glob glob_star_short numeric_glob_sort
+       glob_star_short numeric_glob_sort
 
 bindkey -e                # force emacs mode regardless of $EDITOR
 bindkey -s '\el' 'ls\n'   # [Esc-l] - run command: ls
