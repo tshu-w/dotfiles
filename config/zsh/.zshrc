@@ -88,6 +88,7 @@ zshaddhistory() {
 hash -d d="$HOME/dotfiles"
 hash -d icloud="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
 hash -d surge="$HOME/Library/Mobile Documents/iCloud~com~nssurge~inc/Documents"
+hash -d rime="$HOME/Library/Rime"
 
 ### Alias
 alias _='sudo'
@@ -106,6 +107,8 @@ alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ssh='ssh -o PermitLocalCommand=yes'
 alias ts='trash'
+
+alias magit='ec --eval "(magit-status)"'
 
 if [ $VENDOR = "apple" ]; then
     alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
