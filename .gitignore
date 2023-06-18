@@ -10,4 +10,9 @@
 !**/gnupg/gpg-agent.conf
 !**/gnupg/public.asc
 
+### Jupyter ###
+**/jupyter/lab
+**/jupyter/migrated
+**/jupyter/serverconfig
+
 *.zwc
