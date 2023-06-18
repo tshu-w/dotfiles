@@ -8,6 +8,7 @@ Host 16 103
 Host 70 71 72 74
   Hostname 192.168.14.%h
 Host backup
+  User wangtianshu
   Hostname 192.168.14.74
 HOST ext jumpbox
   Hostname ext.cipsup.cn
