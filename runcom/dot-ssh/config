@@ -12,7 +12,7 @@ Host backup
   Hostname 192.168.14.74
 HOST ext jumpbox
   Hostname ext.cipsup.cn
-  Port 10722
+  Port 17022
 Host 140 141 142 143 144 147 148 150
   Hostname 124.16.138.%h
 Host github.com
