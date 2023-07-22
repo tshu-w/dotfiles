@@ -1,10 +1,8 @@
 {
   "title": "Vim Mode Plus",
   "maintainers": [
-    "harmtemolder"
+    "gilitos92"
   ],
-  "homepage": "https://git.sr.ht/~harmtemolder/karabiner-vim-mode-plus",
-  "import_url": "karabiner://karabiner/assets/complex_modifications/import?url=https://git.sr.ht/~harmtemolder/karabiner-vim-mode-plus/blob/master/vim_mode_plus.json",
   "rules": [
     {
       "description": "(Vim 1/11) caps_lock -> on, caps_lock, esc, control+[ or any pointing_button -> off",
@@ -22,8 +20,11 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [i] to leave\" with title \"-- NORMAL --\"'",
-              "halt": true
+                "halt": true,
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": "NORMAL - Vim Mode Enabled"
+                }
             }
           ],
           "to_if_held_down": [
@@ -34,7 +35,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Release [caps lock] to leave\" with title \"-- NORMAL --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": "NORMAL - Vim Mode Enabled"
+                }
             }
           ],
           "to_after_key_up": [
@@ -79,7 +83,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -112,7 +119,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -150,7 +160,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -183,7 +196,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -216,7 +232,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -246,7 +265,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -286,7 +308,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [v] again to go back to Vim Mode\" with title \"-- VISUAL --\"'"
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": "VISUAL - Visual Mode Enabled"
+                }
             }
           ],
           "conditions": [
@@ -330,7 +355,52 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [i] to leave\" with title \"-- NORMAL --\"'"
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
+            }
+          ],
+          "conditions": [
+            {
+              "type": "frontmost_application_unless",
+              "bundle_identifiers": [
+                "com.googlecode.iterm2",
+                "com.github.atom",
+                "com.jetbrains.pycharm",
+                "com.visualstudio.code.oss"
+              ]
+            },
+            {
+              "name": "visual_mode",
+              "type": "variable_if",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "type": "basic",
+          "from": {
+            "key_code": "escape"
+          },
+          "to": [
+            {
+              "set_variable": {
+                "name": "visual_mode",
+                "value": 0
+              }
+            },
+            {
+              "set_variable": {
+                "name": "vim_mode",
+                "value": 1
+              }
+            },
+            {
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -865,7 +935,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [i] to leave\" with title \"-- NORMAL --\"'"
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -910,7 +983,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [i] to leave\" with title \"-- NORMAL --\"'"
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -955,7 +1031,16 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
+            },
+            {
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -997,7 +1082,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification \"Press [i] to leave\" with title \"-- NORMAL --\"'"
+                "set_notification_message": {
+                    "id": "visual_mode_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2475,7 +2563,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2532,7 +2623,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2589,7 +2683,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2653,7 +2750,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2715,7 +2815,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2777,7 +2880,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2893,7 +2999,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -2955,7 +3064,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3017,7 +3129,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3079,7 +3194,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3822,7 +3940,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3866,7 +3987,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3899,7 +4023,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3943,7 +4070,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -3985,7 +4115,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -4035,7 +4168,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -4076,7 +4212,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -4112,7 +4251,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [
@@ -4148,7 +4290,10 @@
               }
             },
             {
-              "shell_command": "osascript -e 'display notification with title \"-- INSERT --\"'"
+                "set_notification_message": {
+                    "id": "vim_mode_plus_enabled",
+                    "text": ""
+                }
             }
           ],
           "conditions": [

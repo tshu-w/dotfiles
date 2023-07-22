@@ -18,6 +18,7 @@ modifier_keys=[
 ]
 
 key_codes=[
+    "spacebar",
     "caps_lock",
     "left_control",
     "left_shift",

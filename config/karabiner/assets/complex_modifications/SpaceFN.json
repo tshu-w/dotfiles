@@ -2,7 +2,7 @@
   "title": "SpaceFN",
   "rules": [
     {
-      "description": "SpaceFN: Space enables SpaceFN mode (see: https://geekhack.org/index.php?topic=51069.0)",
+      "description": "SpaceFN: Space enables SpaceFN mode (see: https://geekhack.org/index.php?topic=51069.0 & https://spacelauncherapp.com)",
       "manipulators": [
         {
           "type": "basic",
@@ -456,12 +456,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "e",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "e"
           },
           "to": [
             {
@@ -479,12 +474,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "t",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "t"
           },
           "to": [
             {
@@ -502,12 +492,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "s",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "s"
           },
           "to": [
             {
@@ -525,12 +510,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "f",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "f"
           },
           "to": [
             {
@@ -553,12 +533,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "q",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "q"
           },
           "to": [
             {
@@ -576,12 +551,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "w",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "w"
           },
           "to": [
             {
@@ -599,12 +569,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "t",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "t"
           },
           "to": [
             {
@@ -622,12 +587,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "l",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "l"
           },
           "to": [
             {
@@ -645,12 +605,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "s",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "s"
           },
           "to": [
             {
@@ -668,12 +623,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "p",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "p"
           },
           "to": [
             {
@@ -691,12 +641,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "f",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "f"
           },
           "to": [
             {
@@ -714,12 +659,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "m",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "m"
           },
           "to": [
             {
@@ -737,12 +677,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "comma",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "comma"
           },
           "to": [
             {
@@ -760,12 +695,7 @@
         {
           "type": "basic",
           "from": {
-            "key_code": "a",
-            "modifiers": {
-              "optional": [
-                "any"
-              ]
-            }
+            "key_code": "a"
           },
           "to": [
             {
@@ -824,6 +754,44 @@
     {
       "description": "SpaceFN: Disable SpaceFN mode after last typing",
       "manipulators": [
+        {
+          "from": {
+            "key_code": "spacebar"
+          },
+          "to": [
+            {
+              "set_variable": {
+                "name": "_spacefn_mode",
+                "value": 1
+              }
+            },
+            {
+              "key_code": "spacebar"
+            }
+          ],
+          "to_delayed_action": {
+            "to_if_invoked": [
+              {
+                "set_variable": {
+                  "name": "_spacefn_mode",
+                  "value": 0
+                }
+              }
+            ],
+            "to_if_canceled": [
+              {
+                "set_variable": {
+                  "name": "_spacefn_mode",
+                  "value": 0
+                }
+              }
+            ]
+          },
+          "parameters": {
+            "basic.to_delayed_action_delay_milliseconds": 200
+          },
+          "type": "basic"
+        },
         {
           "from": {
             "key_code": "caps_lock"
