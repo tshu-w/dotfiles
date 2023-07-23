@@ -1,7 +1,6 @@
 tap "daviderestivo/emacs-head"
 tap "homebrew/bundle"
 tap "homebrew/cask"
-tap "homebrew/cask-drivers"
 tap "homebrew/cask-fonts"
 tap "homebrew/cask-versions"
 tap "homebrew/core"
@@ -103,7 +102,6 @@ cask "topnotch"
 cask "tor-browser"
 cask "wechattweak-cli"
 cask "zotero"
-mas "Bitwarden", id: 1352778147
 mas "Bob", id: 1630034110
 mas "Feishu", id: 1551632588
 mas "GhostText", id: 1552641506
