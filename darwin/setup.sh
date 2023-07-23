@@ -25,7 +25,7 @@ esac
 [ -d /usr/local/bin ] || sudo ln -s /opt/homebrew/bin /usr/local/bin
 
 # Install all dependencies from the Brewfile
-brew bundle -v --no-lock || true
+HOMEBREW_BUNDLE_CASK_SKIP=$GITHUB_ACTIONS HOMEBREW_BUNDLE_MAS_SKIP=$GITHUB_ACTIONS brew bundle -v --no-lock || true
 
 # Install info files
 # https://github.com/d12frosted/homebrew-emacs-plus/issues/437
