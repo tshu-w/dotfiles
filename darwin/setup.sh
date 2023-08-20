@@ -25,6 +25,10 @@ esac
 [ -d /usr/local/bin ] || sudo ln -s /opt/homebrew/bin /usr/local/bin
 
 # Install all dependencies from the Brewfile
+if [[ -n "${GITHUB_ACTION:-}" ]]; then
+    export HOMEBREW_BUNDLE_CASK_SKIP=`brew bundle list --cask --quiet | tr '\n' ' '`
+    export HOMEBREW_BUNDLE_MAS_SKIP=`/usr/bin/grep "^mas.*id: \d*$" Brewfile | cut -d":" -f2 | tr '\n' ' '`
+fi
 brew bundle -v --no-lock || true
 
 # Install info files
