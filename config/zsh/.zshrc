@@ -107,11 +107,11 @@ alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ssh='ssh -o PermitLocalCommand=yes'
 alias ts='trash'
+alias cleanupds="find . \( -type f -name '*.DS_Store' -o -type d -name '__MACOSX' \) -ls -exec /bin/rm -r {} \;"
 
 alias magit='ec --eval "(magit-status)"'
 
 if [ $VENDOR = "apple" ]; then
-    alias cleanupds="find . -type f -name '*.DS_Store' -ls -delete"
     alias cleanupad="find . -type d -name '.AppleD*' -ls -exec /bin/rm -r {} \;"
     alias flushdns="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
     alias resetlaunchpad="defaults write com.apple.dock ResetLaunchPad -bool true"
@@ -292,6 +292,7 @@ compdef _gnu_generic emacs emacsclient
 compdef _man man-preview
 compdef _mkdir md
 compdef _run run
+compdef _sweep sweep
 
 znap function _pip_completion pip       'eval "$( pip completion --zsh )"'
 compctl -K    _pip_completion pip
