@@ -105,7 +105,7 @@ alias lla='ls -lAh'
 alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
 alias rm='echo "This is not the command you are looking for."; false'
-alias ssh='ssh -o PermitLocalCommand=yes'
+alias ssh='ssh -t -o PermitLocalCommand=yes'
 alias ts='trash'
 alias cleanupds="find . \( -type f -name '*.DS_Store' -o -type d -name '__MACOSX' \) -ls -exec /bin/rm -r {} \;"
 
