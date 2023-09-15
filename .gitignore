@@ -15,4 +15,6 @@
 **/jupyter/migrated
 **/jupyter/serverconfig
 
+### ZSH ###
 *.zwc
+.zprofile
