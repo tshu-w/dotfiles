@@ -1,0 +1,2 @@
+contest_directory = "~/Documents/ICPC/training/{service_name}/{contest_id}{problem_id}"
+problem_directory = "~/Documents/ICPC/training/{service_name}/{contest_id}{problem_id}"
