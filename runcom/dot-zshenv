@@ -80,3 +80,21 @@ if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
     export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
     [ -S $SSH_AUTH_SOCK ] || gpgconf --launch gpg-agent
 fi
+
+### Emacs Related Functions
+ec () {
+    # Preferred edit file at local emacs via tramp
+    if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+        [ -z $hostname ] && export hostname=`cat $XDG_CACHE_HOME/hostname`
+        for arg in "$@"; do
+            [[ "$arg" != -* ]] && set -- "$@" /sshx:"$hostname":$(readlink -f -- "$arg") || set -- "$@" "$arg"
+            shift
+        done
+    fi
+
+    test "$#" -eq "0" || emacsclient -n "$@"
+    emacsclient -eu "(select-frame-set-input-focus (selected-frame))"
+}
+ef () { emacsclient -cn "$@" && emacsclient -eu "(select-frame-set-input-focus (selected-frame))" }
+es () { emacsclient -e "(save-buffers-kill-emacs)" &> /dev/null && echo "Emacs server is down" || echo "Emacs server not running" }
+et () { emacsclient -a "" -t "$@" }
