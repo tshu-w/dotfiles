@@ -146,7 +146,7 @@ fs () {
 }
 
 cip () {
-    curl https://ipinfo.io/$1 ; echo
+    curl "ipinfo.io/$1${IPINFO_TOKEN:+?token=$IPINFO_TOKEN}"; echo
 }
 
 http_port=6152; socks_port=6153
