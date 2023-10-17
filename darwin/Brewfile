@@ -12,7 +12,6 @@ brew "aspell"
 brew "node"
 brew "bitwarden-cli"
 brew "blueutil"
-brew "colima"
 brew "coreutils"
 brew "difftastic"
 brew "direnv"
@@ -94,6 +93,7 @@ cask "moment"
 cask "monitorcontrol"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
+cask "orbstack"
 cask "skim", args: { appdir: "/Applications" }
 cask "slack"
 cask "squirrel", args: { appdir: "/Applications" }
