@@ -72,6 +72,7 @@ export MACHINE_STORAGE_PATH=$XDG_DATA_HOME/docker-machine
 export NPM_CONFIG_USERCONFIG=$XDG_CONFIG_HOME/npm/npmrc
 export PYTHONSTARTUP=$XDG_CONFIG_HOME/python/pythonrc
 export RIPGREP_CONFIG_PATH=$XDG_CONFIG_HOME/ripgrep/ripgreprc
+export RUFF_CACHE_DIR=$XDG_CACHE_HOME/ruff
 export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 export LESSHISTFILE=-
 
