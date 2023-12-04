@@ -35,8 +35,8 @@ brew bundle -v --no-lock || true
 # https://github.com/d12frosted/homebrew-emacs-plus/issues/437
 (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
 
-command -v yabai >/dev/null && brew services start yabai
-command -v skhd >/dev/null && brew services start skhd
+command -v yabai >/dev/null && yabai --start-service
+command -v skhd >/dev/null && skhd --start-service
 ln -sf $HOMEBREW_PREFIX/opt/emacs-head@30/Emacs.app /Applications
 mkdir -p $XDG_DATA_HOME
 ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ $XDG_DATA_HOME/conda

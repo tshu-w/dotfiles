@@ -84,13 +84,13 @@
 #        cmd + return, h, j, k, l    Resize even smaller & move floating window (center, top-left, bottom-left, bottom-right, top-right)
 #
 
-:: default  : yabai -m config active_window_border_color 0xff61afef
-:: focus    : yabai -m config active_window_border_color 0xffe06c75  # Focus window, desktop, monitors
-:: grid     : yabai -m config active_window_border_color 0xff56b6c2  # Floating window layout
-:: swap     : yabai -m config active_window_border_color 0xffc678dd  # Swap windows
-:: warp     : yabai -m config active_window_border_color 0xffe5c07b  # Warp and send to desktop/monitors
-:: warpnf   : yabai -m config active_window_border_color 0xffd19a66  # Same, but don't follow focus
-:: resize   : yabai -m config active_window_border_color 0xff98c379  # Resize window operations
+:: default  : borders active_color=0xff61afef
+:: focus    : borders active_color=0xffe06c75  # Focus window, desktop, monitors
+:: grid     : borders active_color=0xff56b6c2  # Floating window layout
+:: swap     : borders active_color=0xffc678dd  # Swap windows
+:: warp     : borders active_color=0xffe5c07b  # Warp and send to desktop/monitors
+:: warpnf   : borders active_color=0xffd19a66  # Same, but don't follow focus
+:: resize   : borders active_color=0xff98c379  # Resize window operations
 
 # CTRL-RETURN is the global hotkey to toggle in/out of modal mode. Entry is
 # always to FOCUS mode. Getting out of any mode can also be done with ESCAPE.
