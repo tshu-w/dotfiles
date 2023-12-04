@@ -72,7 +72,7 @@ HISTFILE=$XDG_STATE_HOME/zsh/history
 SAVEHIST=$(( 100 * 1000 ))
 HISTSIZE=$(( 1.2 * SAVEHIST ))
 
-setopt extended_history hist_fcntl_lock \
+setopt extended_history \
        hist_expire_dups_first hist_ignore_all_dups \
        hist_ignore_space hist_verify share_history
 
