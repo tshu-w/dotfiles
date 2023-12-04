@@ -104,6 +104,7 @@ alias ll='ls -lh'
 alias lla='ls -lAh'
 alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
+alias pdb='python -m pdb -c "c" -c "q"'
 alias rm='echo "This is not the command you are looking for."; false'
 alias ssh='ssh -t -o PermitLocalCommand=yes'
 alias ts='trash'
@@ -163,6 +164,9 @@ noproxy () {
     unset all_proxy
     unset no_proxy
     echo "Proxy off"
+}
+proxy_forward () {
+    ssh -fnNT -R :${http_port}:localhost:${http_port} -R :${socks_port}:localhost:${socks_port} $@
 }
 
 # lazy load conda
