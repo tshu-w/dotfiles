@@ -334,7 +334,7 @@ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on
 
 # Disable Quarantine stores information about downloaded files
 #:>~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2
-sudo chflags schg ~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2
+# sudo chflags schg ~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2
 
 # Do not show password hints
 sudo defaults write /Library/Preferences/com.apple.loginwindow RetriesUntilHint -int 0
