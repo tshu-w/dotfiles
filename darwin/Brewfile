@@ -1,4 +1,5 @@
 tap "daviderestivo/emacs-head"
+tap "felixkratz/formulae"
 tap "homebrew/bundle"
 tap "homebrew/cask"
 tap "homebrew/cask-fonts"
@@ -57,6 +58,7 @@ brew "vim"
 brew "wget"
 brew "zoxide"
 brew "daviderestivo/emacs-head/emacs-head@30", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]
+brew "felixkratz/formulae/borders"
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 cask "aldente"
@@ -64,7 +66,6 @@ cask "arq"
 cask "bartender", args: { appdir: "/Applications" }
 cask "bettermouse"
 cask "calibre"
-cask "clashx-pro"
 cask "dash", args: { appdir: "/Applications" }
 cask "discord"
 cask "dropbox"
@@ -82,7 +83,6 @@ cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
 cask "iina", args: { appdir: "/Applications" }
-cask "inkscape"
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements"
@@ -97,11 +97,10 @@ cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "miniconda"
 cask "moment"
-cask "monitorcontrol"
 cask "omnidisksweeper", args: { appdir: "/Applications" }
 cask "onedrive"
 cask "orbstack"
-cask "skim", args: { appdir: "/Applications" }
+cask "skim"
 cask "slack"
 cask "squirrel", args: { appdir: "/Applications" }
 cask "telegram"
@@ -115,7 +114,6 @@ mas "GhostText", id: 1552641506
 mas "Grammarly for Safari", id: 1462114288
 mas "Immersive Translate", id: 6447957425
 mas "Keynote", id: 409183694
-mas "MoneyWiz 3", id: 1012291524
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
