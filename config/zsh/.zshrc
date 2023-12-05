@@ -63,9 +63,6 @@ fi
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
 
-# copilot cli
-(( $+commands[github-copilot-cli] )) && znap eval copilot-cli 'github-copilot-cli alias -- "$0"'
-
 ### History
 [ -d $XDG_STATE_HOME/zsh ] || mkdir -p $XDG_STATE_HOME/zsh
 HISTFILE=$XDG_STATE_HOME/zsh/history
