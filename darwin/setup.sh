@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euxo pipefail # -e=-o errexit, -u=-o nounset
 
+: ${XDG_CACHE_HOME:=~/.cache}
+: ${XDG_CONFIG_HOME:=~/.config}
+: ${XDG_DATA_HOME:=~/.local/share}
+: ${XDG_STATE_HOME:=~/.local/state}
+export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
+
 # Ask for the administrator password upfront
 sudo -n true 2>/dev/null || sudo -v
 # Keep-alive: update existing `sudo` time stamp until `init.sh` has finished
@@ -50,7 +56,7 @@ for dir in "fastmail" "iscas"; do
 done
 
 # Add login item
-for app in "AlDente" "Bartender 4" "Bettermouse" "Dropbox" "iTerm" "Launchbar" "Surge", "Emacs"; do
+for app in "AlDente" "Bartender 5" "Bettermouse" "Dash" "Dropbox" "Easydict" "Emacs" "Focus" "iTerm" "Moment" "Surge" "Take a Break" "TopNotch"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
