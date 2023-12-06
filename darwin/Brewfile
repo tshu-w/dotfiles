@@ -1,10 +1,8 @@
 tap "daviderestivo/emacs-head"
 tap "felixkratz/formulae"
 tap "homebrew/bundle"
-tap "homebrew/cask"
 tap "homebrew/cask-fonts"
 tap "homebrew/cask-versions"
-tap "homebrew/core"
 tap "homebrew/services"
 tap "koekeishiya/formulae"
 tap "sunnyyoung/repo"
@@ -83,6 +81,7 @@ cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
 cask "iina", args: { appdir: "/Applications" }
+cask "input-source-pro"
 cask "iterm2"
 cask "kap", args: { appdir: "/Applications" }
 cask "karabiner-elements"
@@ -110,9 +109,7 @@ cask "wechattweak-cli"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
-mas "GhostText", id: 1552641506
 mas "Grammarly for Safari", id: 1462114288
-mas "Immersive Translate", id: 6447957425
 mas "Keynote", id: 409183694
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
@@ -120,7 +117,6 @@ mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
 mas "Surfingkeys", id: 1609752330
 mas "Take a Break", id: 1457158844
-mas "Tampermonkey", id: 1482490089
 mas "TencentMeeting", id: 1484048379
 mas "Userscripts-Mac-App", id: 1463298887
 mas "WeChat", id: 836500024
