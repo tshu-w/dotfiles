@@ -103,7 +103,6 @@ cask "skim"
 cask "slack"
 cask "squirrel", args: { appdir: "/Applications" }
 cask "telegram"
-cask "topnotch"
 cask "tor-browser"
 cask "wechattweak-cli"
 cask "zotero"
