@@ -8,6 +8,7 @@
 	gpgsign = true
 [push]
 	default = simple
+	autoSetupRemote = true
 [alias]
 	last = log -1
 	unstage = reset HEAD
@@ -16,11 +17,12 @@
 	fire = !"git add -A; git commit -am \"fire!!!\"; git pull --rebase; git push"
 	squash-all = "!f(){ git reset $(git commit-tree HEAD^{tree} \"$@\");};f"
 [diff]
+	algorithm = histogram
 	tool = difftastic
 [difftool]
-        prompt = false
+    prompt = false
 [difftool "difftastic"]
-        cmd = difft "$LOCAL" "$REMOTE"
+    cmd = difft "$LOCAL" "$REMOTE"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
 [filter "lfs"]
@@ -29,7 +31,7 @@
 	process = git-lfs filter-process
 	required = true
 [pager]
-        difftool = true
+    difftool = true
 [github]
 	user = tshu-w
 [credential "https://github.com"]
