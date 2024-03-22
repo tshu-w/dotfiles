@@ -69,9 +69,9 @@ HISTFILE=$XDG_STATE_HOME/zsh/history
 SAVEHIST=$(( 100 * 1000 ))
 HISTSIZE=$(( 1.2 * SAVEHIST ))
 
-setopt extended_history \
+setopt extended_history share_history \
        hist_expire_dups_first hist_ignore_all_dups \
-       hist_ignore_space hist_verify share_history
+       hist_ignore_space hist_verify
 
 zshaddhistory() {
     local line=${1%%$'\n'}
@@ -88,14 +88,22 @@ hash -d surge="$HOME/Library/Mobile Documents/iCloud~com~nssurge~inc/Documents"
 hash -d rime="$HOME/Library/Rime"
 
 ### Alias
+for index ({1..9}) alias "$index"="cd -${index}"; unset index
 alias _='sudo'
 alias ...='cd ../..'
 alias ....='cd ../../..'
 alias cp='cp -i'
-alias df='df -hT'
-alias grep="grep --color=auto"
+alias d='dirs -v | head -10'
+alias df='df -h'
+alias df='du -h'
+if (( $+commands[wget] )); then
+  alias get='wget --continue --progress=bar --timestamping'
+elif (( $+commands[curl] )); then
+  alias get='curl --continue-at - --location --progress-bar --remote-name --remote-time'
+fi
+alias grep='grep --color=auto'
 alias iplocal="ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'"
-alias ls='ls --l --color'
+alias ls='ls --l --color=auto --group-directories-first'
 alias la='ls -Ah'
 alias ll='ls -lh'
 alias lla='ls -lAh'
@@ -103,11 +111,17 @@ alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
 alias pdb='python -m pdb -c "c" -c "q"'
 alias rm='echo "This is not the command you are looking for."; false'
+alias rcp='rsync --archive --compress --verbose --human-readable --partial --progress'
+alias rmv='rcp --remove-source-files'
+alias rupd='rcp --update'
+alias rsyn='rcp --update --delete'
 alias scr='screen'
 alias scrl='screen -ls'
 alias scrn='screen -U -S'
 alias scrr='screen -a -A -U -D -RR'
 alias ssh='ssh -t -o PermitLocalCommand=yes'
+alias topc='top -o %CPU'
+alias topm='top -o %MEM'
 alias ts='trash'
 alias cleanupds="find . \( -type f -name '*.DS_Store' -o -type d -name '__MACOSX' \) -ls -exec /bin/rm -r {} \;"
 
@@ -119,18 +133,12 @@ if [ $VENDOR = "apple" ]; then
     alias resetlaunchpad="defaults write com.apple.dock ResetLaunchPad -bool true"
     alias log='/usr/bin/log'
     alias ofd='open $PWD'
+    alias topc='top -o cpu'
+    alias topm='top -o vsize'
 fi
 
 ### Functions
 md () { mkdir -p "$@" && cd "$_"; }
-
-d () {
-    if [[ -n $1 ]]; then
-        dirs "$@"
-    else
-        dirs -v | head -10
-    fi
-}
 
 # Determine size of a file or total size of a directory
 fs () {
