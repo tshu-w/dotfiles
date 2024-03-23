@@ -37,7 +37,7 @@ yabai -m rule --add app="Emacs" space=main
 yabai -m rule --add app="Safari|Firefox" space=submain
 yabai -m rule --add app="^System Preferences|System Information$" manage=off
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off
-yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge" manage=off
+yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge|iTerm" manage=off
 yabai -m rule --add app="QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting" manage=off space=misc
 
 # signals
