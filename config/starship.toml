@@ -2,7 +2,6 @@ format = """
 ($username$hostname )\
 $all\
 $line_break\
-$conda\
 $jobs\
 $battery\
 $time\
@@ -57,10 +56,3 @@ style_user = "yellow"
 [hostname]
 format = "[@$hostname]($style)"
 style = "yellow"
-
-[python]
-style = ""
-
-[conda]
-format = "[$environment]($style) "
-style = "green"
