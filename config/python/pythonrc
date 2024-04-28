@@ -11,7 +11,7 @@ try:
     readline.read_history_file(history_file)
     # default history len is -1 (infinite), which may grow unruly
     readline.set_history_length(1000)
-except FileNotFoundError:
+except Exception:
     pass
 
 atexit.register(readline.write_history_file, history_file)
