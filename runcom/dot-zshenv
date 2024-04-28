@@ -16,9 +16,6 @@ export PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/s
 export MANPATH=$HOME/.local/share/man:/usr/local/share/man:/usr/share/man
 export INFOPATH=$HOME/.local/share/info:/usr/local/share/info:/usr/share/info
 
-export EDITOR=vim
-export VISUAL=emacsclient
-
 case $VENDOR in
   ( apple )
     export SHELL_SESSIONS_DISABLE=1
@@ -56,6 +53,7 @@ case $VENDOR in
   ;;
 esac
 
+[ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ] || export VISUAL=emacsclient
 [[ $OSTYPE == linux-gnu ]] && export DEBIAN_PREVENT_KEYBOARD_CHANGES=1
 
 export BUNDLE_USER_CONFIG=$XDG_CONFIG_HOME/bundle
