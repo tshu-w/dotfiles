@@ -1,8 +1,6 @@
 tap "daviderestivo/emacs-head"
 tap "felixkratz/formulae"
 tap "homebrew/bundle"
-tap "homebrew/cask-fonts"
-tap "homebrew/cask-versions"
 tap "homebrew/services"
 tap "koekeishiya/formulae"
 tap "sunnyyoung/repo"
