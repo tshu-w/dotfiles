@@ -95,7 +95,7 @@ alias ....='cd ../../..'
 alias cp='cp -i'
 alias d='dirs -v | head -10'
 alias df='df -h'
-alias df='du -h'
+alias du='du -h'
 if (( $+commands[wget] )); then
   alias get='wget --continue --progress=bar --timestamping'
 elif (( $+commands[curl] )); then
