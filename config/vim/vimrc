@@ -1,21 +1,18 @@
 syntax on
-set ai si sw=4 ts=4 sts=4 mouse=a
 set autochdir
+set autoindent smartindent
 set backspace=indent,eol,start
 set clipboard^=unnamed,unnamedplus
 set encoding=utf-8
-set expandtab
-set ignorecase
+set ignorecase smartcase
 set incsearch
 set mouse+=a
 set nocompatible
 set noerrorbells visualbell t_vb=
+set shiftwidth=4 softtabstop=4 expandtab
 set showcmd
 set showmatch
-set smartcase
 filetype indent on
-
-inoremap <tab> <c-q><tab>
 
 " XDG support
 
