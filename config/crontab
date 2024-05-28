@@ -3,4 +3,3 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
 00 11 * * * crontab -l > ~/.config/crontab
 00 10 * * 5 brew bundle dump --file ~/dotfiles/`uname -s | tr A-Z a-z`/Brewfile -f &>/dev/null
 * * * * * [ `uname` = "Darwin" ] && open -gj -a TakeABreak &>/dev/null
-*/10 * * * * [ `uname` = "Darwin" ] && mbsync -c ~/.config/isync/mbsyncrc -a &>/dev/null && timeout 10s mu index &>/dev/null
