@@ -41,6 +41,7 @@ brew "pre-commit"
 brew "pyright"
 brew "rclone"
 brew "ripgrep"
+brew "ruff"
 brew "rust"
 brew "screen"
 brew "starship"
@@ -110,10 +111,12 @@ mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
 mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
+mas "MoneyWiz 3", id: 1012291524
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
+mas "RSSHub Radar", id: 1610744717
 mas "Surfingkeys", id: 1609752330
 mas "Take a Break", id: 1457158844
 mas "TencentMeeting", id: 1484048379
