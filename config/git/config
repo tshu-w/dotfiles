@@ -32,9 +32,9 @@
 	required = true
 [pager]
     difftool = true
-[github]
-	user = tshu-w
 [credential "https://github.com"]
 	username = tshu-w
 [credential "https://huggingface.co"]
 	username = wangtianshu
+[credential]
+	helper = netrc
