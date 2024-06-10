@@ -47,9 +47,9 @@ zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 bindkey -M menuselect "^[m" accept-and-hold
 
-znap source esc/conda-zsh-completion
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
+znap source conda-incubator/conda-zsh-completion
 
 # direnv
 (( $+commands[direnv] )) && znap eval direnv "direnv hook zsh"
