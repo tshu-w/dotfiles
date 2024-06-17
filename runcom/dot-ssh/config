@@ -49,5 +49,4 @@ Host *
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 1h
   PermitLocalCommand no
-  GSSAPIAuthentication no
   StrictHostKeyChecking accept-new
