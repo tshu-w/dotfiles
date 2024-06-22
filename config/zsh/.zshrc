@@ -30,6 +30,7 @@ unset ZNAP_HOME
 # starship
 (( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init' ; znap prompt }
 
+export ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 znap source zsh-users/zsh-completions
 znap source zsh-users/zsh-autosuggestions
 znap source zsh-users/zsh-syntax-highlighting
@@ -46,6 +47,8 @@ zstyle ':completion:*:processes' command 'ps -afu $USER'
 zstyle ':autocomplete:*' min-input 1
 zstyle ':autocomplete:*' insert-unambiguous yes
 bindkey -M menuselect "^[m" accept-and-hold
+bindkey -M menuselect "^I"  menu-complete
+bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
