@@ -106,6 +106,7 @@ cask "squirrel", args: { appdir: "/Applications" }
 cask "telegram"
 cask "tor-browser"
 cask "wechattweak-cli"
+cask "wechatwork"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
