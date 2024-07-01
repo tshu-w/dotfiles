@@ -21,9 +21,6 @@ sudo chflags -h uchg ~/Documents
 gpg --import private-subkeys.asc
 gpg --edit-key [key-id]
 gpg> trust
-
-gpg -K --with-keygrip
-echo [A]Keygrip >> $XDG_CONFIG_HOME/gnupg/sshcontrol
 #+end_src
 
 ** Server
