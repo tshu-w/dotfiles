@@ -37,6 +37,10 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
 fi
 brew bundle -v --no-lock || true
 
+# Install Rime configuration
+git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rime
+(cd ~/Library/Rime/plum && bash rime-install ../plum-package.conf)
+
 # Install info files
 # https://github.com/d12frosted/homebrew-emacs-plus/issues/437
 (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
