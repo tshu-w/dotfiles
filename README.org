@@ -22,6 +22,11 @@ gpg --import private-subkeys.asc
 gpg --edit-key [key-id]
 gpg> trust
 #+end_src
+*** authenticate Github CLI
+#+begin_src sh
+gh auth login
+gh extension install github/gh-copilot
+#+end_src
 
 ** Server
 *** import GPG public key
@@ -32,3 +37,9 @@ gpg --import .config/gnupg/public.asc
 #+end_src
 
 
+
+*** authenticate Github CLI
+#+begin_src sh
+gh auth login
+gh extension install github/gh-copilot
+#+end_src
