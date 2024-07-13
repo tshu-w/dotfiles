@@ -23,3 +23,7 @@
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
+
+### Unison ###
+**/unison/*
+!**/unison/*.prf

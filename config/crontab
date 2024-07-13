@@ -3,3 +3,4 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
 00 11 * * * crontab -l > ~/.config/crontab
 00 10 * * 5 brew bundle dump --file ~/dotfiles/`uname -s | tr A-Z a-z`/Brewfile -f &>/dev/null
 * * * * * [ `uname` = "Darwin" ] && open -gj -a TakeABreak &>/dev/null
+@reboot [ -x "$(command -v unison)" ] && UNISON=~/.config/unison unison -repeat 3600 -silent

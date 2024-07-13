@@ -4,7 +4,7 @@ git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git
 #+end_src
 
 ** macOS
-*** *ensure iCloud mackup downloaded*
+*** *ensure iCloud Unison downloaded*
 *** grant terminal Full Disk Access
 *** make
 *** ~TODO~ and ~FIXME~ in [[file:darwin/macOS.sh][macOS.sh]]

@@ -75,6 +75,7 @@ export PYTHONSTARTUP=$XDG_CONFIG_HOME/python/pythonrc
 export PYTHONPATH=$XDG_CONFIG_HOME/python${PYTHONPATH:+":$PYTHONPATH"}
 export RIPGREP_CONFIG_PATH=$XDG_CONFIG_HOME/ripgrep/ripgreprc
 export RUFF_CACHE_DIR=$XDG_CACHE_HOME/ruff
+export UNISON=$XDG_CONFIG_HOME/unison
 export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 export LESSHISTFILE=-
 
