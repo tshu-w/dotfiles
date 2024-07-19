@@ -76,6 +76,6 @@ Host *
   TCPKeepAlive yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 1h
+  ControlPersist 6h
   PermitLocalCommand no
   StrictHostKeyChecking accept-new
