@@ -16,9 +16,6 @@ backupsuffix =
 #   and put links to all the files you want to synchronize into this directory.
 follow = Name *
 
-# Log actions to the terminal
-log = true
-
 # Paths to synchronize
 path = shared
 path = current
