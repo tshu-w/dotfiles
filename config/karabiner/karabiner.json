@@ -1220,18 +1220,17 @@
                                     "basic.to_if_alone_timeout_milliseconds": 300,
                                     "basic.to_if_held_down_threshold_milliseconds": 150
                                 },
-                                "to_after_key_up": [
+                                "to_delayed_action": { "to_if_canceled": [{ "key_code": "spacebar" }] },
+                                "to_if_alone": [
                                     {
-                                        "set_variable": {
-                                            "name": "spacefn_mode",
-                                            "value": 0
-                                        }
+                                        "halt": true,
+                                        "key_code": "spacebar"
                                     }
                                 ],
-                                "to_if_alone": [{ "key_code": "spacebar" }],
                                 "to_if_held_down": [
                                     {
                                         "set_variable": {
+                                            "key_up_value": 0,
                                             "name": "spacefn_mode",
                                             "value": 1
                                         }
