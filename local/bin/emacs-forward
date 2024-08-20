@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-local_socket=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server
+local_socket=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp/}}emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server
 remote_socket=$(ssh $1 'echo ${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/emacs`[ -z ${XDG_RUNTIME_DIR} ] && echo $UID || echo ""`/server')
 
 [ -z $remote_socket ] || ssh $1 "mkdir -p $(dirname $remote_socket) && rm -rf $remote_socket"
