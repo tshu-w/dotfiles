@@ -79,6 +79,9 @@ path = Library/Preferences/net.sourceforge.skim-app.skim.plist
 path = Library/Preferences/ru.keepcoder.Telegram.plist
 ## Terminal
 path = Library/Preferences/com.apple.Terminal.plist
+## Time Out
+path = Library/Preferences/com.dejal.timeout.plist
+path = Library/Preferences/com.dejal.timeout.break.plist
 ## Zotero
 path = Library/Application Support/Zotero
 path = Library/Preferences/org.zotero.zotero.plist
