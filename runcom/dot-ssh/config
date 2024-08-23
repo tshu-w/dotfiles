@@ -4,7 +4,7 @@ HOST local
   Hostname localhost
   User wangtianshu
   Port 2048
-Host 17 103
+Host 16 17 103
   Hostname 192.168.14.%h
   User tianshu2020
 Host 70 71 72 74
@@ -58,7 +58,7 @@ Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'tianshu' }"
 Match exec "echo %h | grep '192\|124\|git' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host det
-  Hostname 23e78308-85d5-4544-b908-ed5dfa215054
+  Hostname 49e9a7dc-8d1e-4091-8c19-a4ebc624e4a8
   User tianshu2020
   ProxyCommand ${HOME}/.local/share/pipx/venvs/determined/bin/python -m determined.cli.tunnel http://det.cipsup.cn %h
   StrictHostKeyChecking no
