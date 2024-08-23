@@ -38,3 +38,5 @@
 	username = wangtianshu
 [credential]
 	helper = netrc
+[github]
+	user = tshu-w
