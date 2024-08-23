@@ -6,7 +6,7 @@ Host imap.fastmail.com
 User wangtianshu@fastmail.com
 Passcmd "gpg -q --for-your-eyes-only --no-tty -d ~/.authinfo.gpg | awk '$2==\"smtp.fastmail.com\" {print $8;exit(0)}'"
 AuthMechs LOGIN
-SSLType IMAPS
+TLSType IMAPS
 
 IMAPStore fastmail-remote
 Account fastmail
@@ -27,7 +27,7 @@ IMAPAccount iscas
 Host mail.cstnet.cn
 User tianshu2020@iscas.ac.cn
 PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.authinfo.gpg | awk '$2==\"mail.cstnet.cn\" {print $8;exit(0)}'"
-SSLType IMAPS
+TLSType IMAPS
 
 IMAPStore iscas-remote
 Account iscas
