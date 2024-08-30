@@ -72,5 +72,9 @@ done
 # Create Developer Directory
 mkdir -p ~/Developer
 
+# Unison restore
+UNISON_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Unison"
+[ -d $UNISON_DIR ] && UNISON=$XDG_CONFIG_HOME/unison unison -batch -force $UNISON_DIR
+
 # Apply macoS system settings
 . "macOS.sh"
