@@ -1,4 +1,4 @@
-* My awesome dotfiles
+* Dotfiles
 #+begin_src sh
 git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git
 #+end_src
