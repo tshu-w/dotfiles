@@ -37,6 +37,9 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
 fi
 brew bundle -v --no-lock || true
 
+# Install gh-copilot
+gh extension install github/gh-copilot
+
 # Install Rime configuration
 git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rime
 (cd ~/Library/Rime/plum && bash rime-install ../plum-package.conf)

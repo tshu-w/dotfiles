@@ -18,6 +18,9 @@ eval $($PREFIX/bin/brew shellenv)
 # Install all dependencies from the Brewfile
 brew bundle -v --no-lock || true
 
+# Install gh-copilot
+gh extension install github/gh-copilot
+
 # Installing miniconda
 if [ ! -d $XDG_DATA_HOME/conda ]; then
     miniconda_script="Miniconda3-latest-Linux-x86_64.sh"
