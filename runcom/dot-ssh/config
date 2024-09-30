@@ -68,6 +68,17 @@ Host det
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
+Host sense
+  Hostname jump-yun.sensetime.com
+  User wangtianshu
+  HostKeyAlgorithms +ssh-rsa
+  PubkeyAcceptedKeyTypes +ssh-rsa
+Host sense141
+  Hostname jump-yun.sensetime.com
+  User wangtianshu@wangtianshu-root@10.119.169.141
+  HostKeyAlgorithms +ssh-rsa
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  ControlPath ~/.cache/ssh/%C
 Host *
   Compression yes
   HashKnownHosts yes
