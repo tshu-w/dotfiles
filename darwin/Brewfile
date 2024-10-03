@@ -5,7 +5,6 @@ tap "homebrew/services"
 tap "koekeishiya/formulae"
 tap "sunnyyoung/repo"
 tap "tshu-w/malt"
-tap "zurawiki/brews"
 brew "node"
 brew "bitwarden-cli"
 brew "blueutil"
@@ -60,7 +59,6 @@ brew "felixkratz/formulae/borders"
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
 brew "tshu-w/malt/fcitx-remote-for-osx"
-brew "zurawiki/brews/gptcommit"
 cask "aldente"
 cask "arq"
 cask "bettermouse"
@@ -69,7 +67,6 @@ cask "discord"
 cask "dropbox"
 cask "easydict"
 cask "firefox"
-cask "focus"
 cask "font-blex-mono-nerd-font"
 cask "font-comic-shanns-mono-nerd-font"
 cask "font-fontawesome"
@@ -97,13 +94,12 @@ cask "microsoft-excel"
 cask "microsoft-powerpoint"
 cask "microsoft-word"
 cask "miniconda"
-cask "moment"
-cask "omnidisksweeper", args: { appdir: "/Applications" }
+cask "moneywiz"
 cask "onedrive"
 cask "orbstack"
 cask "skim"
 cask "slack"
-cask "squirrel", args: { appdir: "/Applications" }
+cask "squirrel"
 cask "telegram"
 cask "time-out"
 cask "tor-browser"
@@ -112,14 +108,11 @@ cask "wechatwork"
 cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
-mas "Grammarly for Safari", id: 1462114288
 mas "Keynote", id: 409183694
-mas "MoneyWiz 3", id: 1012291524
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
 mas "QQ", id: 451108668
-mas "RSSHub Radar", id: 1610744717
 mas "Surfingkeys", id: 1609752330
 mas "TencentMeeting", id: 1484048379
 mas "Userscripts-Mac-App", id: 1463298887
