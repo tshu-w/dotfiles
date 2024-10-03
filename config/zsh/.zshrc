@@ -54,13 +54,16 @@ znap source marlonrichert/zsh-edit
 znap source conda-incubator/conda-zsh-completion
 
 # direnv
-(( $+commands[direnv] )) && znap eval direnv "direnv hook zsh"
+(( $+commands[direnv] )) && znap eval direnv 'direnv hook zsh'
 
-# iterm2_shell_integration
+# iterm2 shell integration
 if [ "${LC_TERMINAL-}" = "iTerm2" ]; then
     export PATH=$PATH:$HOME/.local/bin/iterm2
     znap eval iterm2 'curl -fsSL https://iterm2.com/shell_integration/zsh'
 fi
+
+# orbstack command-line tools and integration
+[ -d ~/.orbstack ] && znap eval orbstack 'cat ~/.orbstack/shell/init.zsh'
 
 # zoxide
 (( $+commands[zoxide] )) && znap eval zoxide 'zoxide init --cmd j zsh'
