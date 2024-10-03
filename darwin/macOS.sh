@@ -198,9 +198,9 @@ defaults write com.apple.frameworks.diskimages skip-verify-remote -bool true
 # /usr/libexec/PlistBuddy -c "Set DesktopViewSettings:IconViewSettings:labelOnBottom false" ~/Library/Preferences/com.apple.finder.plist
 
 # Enable snap-to-grid for icons on the desktop and in other icon views
-/usr/libexec/PlistBuddy -c "Set :DesktopViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || true
-/usr/libexec/PlistBuddy -c "Set :FK_StandardViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || true
-/usr/libexec/PlistBuddy -c "Set :StandardViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || true
+/usr/libexec/PlistBuddy -c "Set :DesktopViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || :
+/usr/libexec/PlistBuddy -c "Set :FK_StandardViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || :
+/usr/libexec/PlistBuddy -c "Set :StandardViewSettings:IconViewSettings:arrangeBy grid" ~/Library/Preferences/com.apple.finder.plist || :
 
 # Increase grid spacing for icons on the desktop and in other icon views
 # /usr/libexec/PlistBuddy -c "Set :DesktopViewSettings:IconViewSettings:gridSpacing 100" ~/Library/Preferences/com.apple.finder.plist
@@ -220,7 +220,7 @@ defaults write com.apple.frameworks.diskimages skip-verify-remote -bool true
 defaults write com.apple.finder WarnOnEmptyTrash -bool false
 
 # Show the ~/Library folder
-chflags nohidden ~/Library && xattr -d com.apple.FinderInfo ~/Library 2>/dev/null || true
+chflags nohidden ~/Library && xattr -d com.apple.FinderInfo ~/Library 2>/dev/null || :
 
 # Show the /Volumes folder
 sudo chflags nohidden /Volumes
@@ -436,6 +436,6 @@ sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.locate.plist
 ###############################################################################
 for app in "Address Book" "Contacts" "cfprefsd" "Dock" "Finder" \
 	"Photos" "Safari" "SystemUIServer" "TextEdit"; do
-    killall $app &> /dev/null || true
+    killall $app &> /dev/null || :
 done
 echo "Done. Note that some of these changes require a logout/restart to take effect."

@@ -16,10 +16,7 @@ fi
 eval $($PREFIX/bin/brew shellenv)
 
 # Install all dependencies from the Brewfile
-brew bundle -v --no-lock || true
-
-# Install gh-copilot
-gh extension install github/gh-copilot
+brew bundle -v --no-lock || :
 
 # Installing miniconda
 if [ ! -d $XDG_DATA_HOME/conda ]; then

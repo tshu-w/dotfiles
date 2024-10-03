@@ -18,6 +18,19 @@ caffeinate -s -w $$ &
 # Install Rosetta
 [ `uname -m` = arm64 ] && softwareupdate --install-rosetta --agree-to-license
 
+# HACK: Create a custom sudoers file to allow passwordless sudo for brew
+# Introduced in: https://github.com/Homebrew/brew/pull/17694
+# Source: https://github.com/Homebrew/brew/issues/17915#issuecomment-2288351932
+SUDOERS_FILE="/etc/sudoers.d/custom_homebrew_sudoers"
+cleanup() { sudo rm -f "$SUDOERS_FILE"; }
+trap cleanup EXIT INT TERM HUP QUIT ABRT ALRM PIPE
+cat <<EOF | sudo tee $SUDOERS_FILE > /dev/null
+Defaults syslog=authpriv
+root ALL=(ALL) ALL
+%admin ALL=(ALL) NOPASSWD: ALL
+EOF
+sudo chmod 0440 $SUDOERS_FILE
+
 # Check for Homebrew, install if we don't have it
 command -v brew >/dev/null || \
     curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash
@@ -35,10 +48,10 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
     export HOMEBREW_BUNDLE_CASK_SKIP=`brew bundle list --cask --quiet | tr '\n' ' '`
     export HOMEBREW_BUNDLE_MAS_SKIP=`/usr/bin/grep "^mas.*id: \d*$" Brewfile | cut -d":" -f2 | tr '\n' ' '`
 fi
-brew bundle -v --no-lock || true
+brew bundle -v --no-lock || :
 
-# Install gh-copilot
-gh extension install github/gh-copilot
+# Codesign MoneyWiz 3 application if installed
+[ -d "/Applications/MoneyWiz 3.app" ] && codesign --force --deep --sign - "/Applications/MoneyWiz 3.app"
 
 # Install Rime configuration
 git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rime
@@ -63,7 +76,7 @@ for dir in "fastmail" "iscas"; do
 done
 
 # Add login item
-for app in "AlDente" "Bettermouse" "Dash" "Dropbox" "Easydict" "Emacs" "Focus" "iTerm" "Ice" "Moment" "Surge" "Time Out"; do
+for app in "AlDente" "Bettermouse" "Dash" "Dropbox" "Easydict" "Emacs" "iTerm" "Ice" "LaunchBar" "Surge" "Time Out"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
