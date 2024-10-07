@@ -1,13 +1,21 @@
 #!/usr/bin/env sh
 
+yabai -m signal --add event=dock_did_restart action="sudo yabai --load-sa"
+sudo yabai --load-sa
+
 # global settings
 yabai -m config                                 \
+    external_bar                 off:0:0        \
+    menubar_opacity              1.0            \
     mouse_follows_focus          off            \
     focus_follows_mouse          off            \
+    display_arrangement_order    default        \
     window_origin_display        default        \
     window_placement             second_child   \
     window_zoom_persist          on             \
     window_shadow                on             \
+    window_animation_duration    0.0            \
+    window_animation_easing      ease_out_circ  \
     window_opacity_duration      0.0            \
     active_window_opacity        1.0            \
     normal_window_opacity        0.90           \
@@ -37,13 +45,14 @@ yabai -m rule --add app="Emacs" space=main
 yabai -m rule --add app="Safari|Firefox" space=submain
 yabai -m rule --add app="^System Preferences|System Information$" manage=off
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off
-yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge|iTerm" manage=off
-yabai -m rule --add app="QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" manage=off space=misc
+yabai -m rule --add app="Bitwarden|Dash|Karabiner|Surge" manage=off
+yabai -m rule --add app="QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off
+yabai -m rule --add app=".*" sub-layer=normal
 
 # signals
-# chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
-# yabai -m signal --add event=application_front_switched action="echo \$YABAI_PROCESS_ID \$YABAI_RECENT_PROCESS_ID"
-# yabai -m signal --add event=application_front_switched action="fcitx-remote -s com.apple.keylayout.US"
+chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
+yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Hans"
+yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="fcitx-remote -s com.apple.keylayout.US"
 
 yabai -m signal --add event=window_destroyed action="yabai -m query --windows --window &> /dev/null || yabai -m window --focus mouse"
 yabai -m signal --add event=application_terminated action="yabai -m query --windows --window &> /dev/null || yabai -m window --focus mouse"
