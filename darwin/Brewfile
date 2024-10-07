@@ -80,7 +80,6 @@ cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
 cask "iina", args: { appdir: "/Applications" }
-cask "input-source-pro"
 cask "iterm2"
 cask "jordanbaird-ice"
 cask "kap", args: { appdir: "/Applications" }
