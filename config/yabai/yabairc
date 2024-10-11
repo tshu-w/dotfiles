@@ -45,7 +45,7 @@ yabai -m rule --add app="Emacs" space=main
 yabai -m rule --add app="Safari|Firefox" space=submain
 yabai -m rule --add app="^System Preferences|System Information$" manage=off sub-layer=below
 yabai -m rule --add title="Copy|Bin|About This Mac|Info|Open" manage=off sub-layer=below
-yabai -m rule --add app="Bitwarden|Dash|Surge" manage=off sub-layer=below
+yabai -m rule --add app="Bitwarden|Dash|Surge|Karabiner-Elements" manage=off sub-layer=below
 yabai -m rule --add app="QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off sub-layer=below
 
 # signals
@@ -55,6 +55,8 @@ yabai -m signal --add event=application_activated app!="$chinese_app_regex" acti
 
 yabai -m signal --add event=window_destroyed action="yabai -m query --windows --window &> /dev/null || yabai -m window --focus mouse"
 yabai -m signal --add event=application_terminated action="yabai -m query --windows --window &> /dev/null || yabai -m window --focus mouse"
+
+yabai -m signal --add event=window_created app="Karabiner-Elements" action='yabai -m window --focus $YABAI_WINDOW_ID'
 
 float_script="if [ \$(yabai -m query --windows --window | jq '.\"can-resize\" == false and .\"is-floating\" == false') = 'true' ]; then
   yabai -m window --toggle float;
