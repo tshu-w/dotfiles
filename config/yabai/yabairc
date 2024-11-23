@@ -45,7 +45,7 @@ yabai -m rule --add app="Emacs" space=main
 yabai -m rule --add app="Safari|Firefox" space=submain
 yabai -m rule --add app="System Settings|System Information" manage=off sub-layer=below
 yabai -m rule --add title="Copy|Bin|Info|Open" manage=off sub-layer=below
-yabai -m rule --add app="Launchbar|Bitwarden|Dash|Surge|Karabiner-Elements" manage=off sub-layer=below
+yabai -m rule --add app="LaunchBar|Bitwarden|Dash|Surge|Karabiner-Elements" manage=off sub-layer=below
 yabai -m rule --add app="Messages|QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off sub-layer=below
 
 # signals
