@@ -41,10 +41,11 @@ znap source zsh-users/zsh-syntax-highlighting
 znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' file-sort date
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
-zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':completion:*:processes' command 'ps x'
 zstyle ':autocomplete:*' min-input 1
+zstyle ':autocomplete:*complete*:*' insert-unambiguous yes
+zstyle ':completion:*:*' matcher-list 'm:{[:lower:]-}={[:upper:]_}' '+r:|[.]=**'
 bindkey -M menuselect "^[m" accept-and-hold
 bindkey -M menuselect "^I"  menu-complete
 bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
