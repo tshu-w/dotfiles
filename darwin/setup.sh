@@ -21,8 +21,8 @@ caffeinate -s -w $$ &
 # HACK: Create a custom sudoers file to allow passwordless sudo for brew
 # Introduced in: https://github.com/Homebrew/brew/pull/17694
 # Source: https://github.com/Homebrew/brew/issues/17915#issuecomment-2288351932
-SUDOERS_FILE="/etc/sudoers.d/custom_homebrew_sudoers"
-cleanup() { sudo rm -f "$SUDOERS_FILE"; }
+SUDOERS_FILE=/etc/sudoers.d/custom_homebrew_sudoers
+cleanup() { sudo rm -f $SUDOERS_FILE; }
 trap cleanup EXIT INT TERM HUP QUIT ABRT ALRM PIPE
 cat <<EOF | sudo tee $SUDOERS_FILE > /dev/null
 Defaults syslog=authpriv
@@ -40,8 +40,11 @@ arm64)
 x86_64)
     eval "$(/usr/local/bin/brew shellenv)" ;;
 esac
-# Link /opt/homebrew/bin to /usr/local/bin
-[ -d /usr/local/bin ] || sudo ln -s /opt/homebrew/bin /usr/local/bin
+
+# Link /opt/homebrew directories to /usr/local
+for dir in "bin" "include" "lib" "sbin" "share"; do
+    [ -d /usr/local/$dir ] || sudo ln -s /opt/homebrew/$dir /usr/local/$dir
+done
 
 # Install all dependencies from the Brewfile
 if [[ -n "${GITHUB_ACTION:-}" ]]; then
