@@ -286,7 +286,7 @@ defaults write com.apple.dock orientation -string "left"
 defaults write com.apple.dock show-recents -bool false
 
 # TODO: Reset icon on the Launchpad
-# defaults write com.apple.dock ResetLaunchPad -bool true
+# rm -rf /private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad
 
 # Add a spacer to the left side of the Dock (where the applications are)
 #defaults write com.apple.dock persistent-apps -array-add '{tile-data={}; tile-type="spacer-tile";}'
