@@ -49,7 +49,7 @@ yabai -m rule --add app="LaunchBar|Bitwarden|Dash|Surge|Karabiner-Elements" mana
 yabai -m rule --add app="Messages|QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off sub-layer=below
 
 # signals
-chinese_app_regex="^QQ|WeChat|Telegram|Lark|Feishu$"
+chinese_app_regex="QQ|WeChat|Telegram|Lark|Feishu"
 yabai -m signal --add event=application_activated app="$chinese_app_regex" action="fcitx-remote -s im.rime.inputmethod.Squirrel.Hans"
 yabai -m signal --add event=application_activated app!="$chinese_app_regex" action="fcitx-remote -s com.apple.keylayout.US"
 
