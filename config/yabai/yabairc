@@ -41,12 +41,14 @@ yabai -m space 2 --label submain
 yabai -m space 3 --label misc
 
 # rules
+yabai -m rule --add app=".*" sub-layer=below
+yabai -m rule --add subrole="AXSystemDialog" manage=off
 yabai -m rule --add app="Emacs" space=main
 yabai -m rule --add app="Safari|Firefox" space=submain
-yabai -m rule --add app="System Settings|System Information" manage=off sub-layer=normal
-yabai -m rule --add title="Copy|Bin|Info|Open" manage=off sub-layer=normal
-yabai -m rule --add app="LaunchBar|Bitwarden|Dash|Surge|Karabiner-Elements" manage=off sub-layer=normal
-yabai -m rule --add app="Messages|QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off sub-layer=normal
+yabai -m rule --add app="System Settings|System Information" manage=off
+yabai -m rule --add title="Copy|Bin|Info|Open" manage=off
+yabai -m rule --add app="LaunchBar|Bitwarden|Dash|Surge|Karabiner-Elements" manage=off
+yabai -m rule --add app="Messages|QQ|WeChat|Telegram|Music|Discord|Lark|Feishu|Slack|TencentMeeting|WeCom" space=misc manage=off
 
 # signals
 chinese_app_regex="QQ|WeChat|Telegram|Lark|Feishu"
