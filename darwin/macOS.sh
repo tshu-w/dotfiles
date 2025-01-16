@@ -431,6 +431,9 @@ defaults write com.apple.TextEdit PlainTextEncodingForWrite -int 4
 # Enable locate
 sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.locate.plist
 
+# Set Simplified Chinese as primary language in Maps
+defaults write com.apple.Maps AppleLanguages -array "zh-Hans" "en-US"
+
 ###############################################################################
 # Kill affected applications                                                  #
 ###############################################################################
