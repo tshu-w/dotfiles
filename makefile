@@ -62,4 +62,4 @@ packages: python-packages node-packages
 python-packages:
 
 node-packages:
-	npm install -g @delance/runtime@2024.12.1
+	npm install -g @delance/runtime
