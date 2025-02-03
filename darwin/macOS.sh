@@ -18,6 +18,13 @@ sudo scutil --set LocalHostName "$COMPUTER_NAME"
 sudo nvram SystemAudioVolume=" "
 sudo nvram StartupMute=%01
 
+# Prevent automatically turning on
+# Possible values:
+#  %00: open the lid or connect to power
+#  %01: open the lid
+#  %02: connect to power
+sudo nvram BootPreference=%01
+
 # Set highlight color to orange
 # defaults write NSGlobalDomain AppleHighlightColor -string "1.000000 0.874510 0.701961 Orange"
 
