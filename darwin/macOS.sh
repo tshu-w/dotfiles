@@ -98,11 +98,11 @@ defaults write NSGlobalDomain com.apple.trackpad.scaling -float 1.5
 defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerTapGesture -int 2
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerTapGesture -int 2
 
-# Trackpad: Enable three fingers drag
+# Trackpad: enable three fingers drag
 defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -int 1
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -int 1
 
-# Trackpad: Enable App Expose
+# Trackpad: enable App Expose
 defaults write com.apple.dock showAppExposeGestureEnabled -int 1
 
 # Trackpad: enable tap to click for this user and for the login screen
