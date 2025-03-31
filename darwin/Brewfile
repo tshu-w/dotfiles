@@ -51,7 +51,6 @@ brew "tealdeer"
 brew "terminal-notifier"
 brew "texlab"
 brew "tinymist"
-brew "trash", link: true
 brew "tree"
 brew "typst"
 brew "unison"

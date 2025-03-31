@@ -36,8 +36,6 @@ case $VENDOR in
     export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/Programs/texbin/man`
 
     export GITPERLLIB=/Library/Developer/CommandLineTools/usr/share/git-core/perl
-
-    alias trash='trash -F'
   ;;
   ( ubuntu )
     export skip_global_compinit=1
