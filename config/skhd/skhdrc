@@ -181,6 +181,8 @@ focus           < shift - tab       : yabai -m display --focus prev
 focus           < cmd - 1           : yabai -m space --focus 1 || skhd -k "ctrl - 1"
 focus           < cmd - 2           : yabai -m space --focus 2 || skhd -k "ctrl - 2"
 focus           < cmd - 3           : yabai -m space --focus 3 || skhd -k "ctrl - 3"
+focus           < cmd - 4           : yabai -m space --focus 4 || skhd -k "ctrl - 4"
+focus           < cmd - 5           : yabai -m space --focus 5 || skhd -k "ctrl - 5"
 focus           < cmd - tab         : yabai -m space --focus next || skhd -k "ctrl - right"
 focus           < cmd + shift - tab : yabai -m space --focus prev || skhd -k "ctrl - left"
 
@@ -242,6 +244,8 @@ warp            < shift - tab       : yabai -m window --display prev; yabai -m d
 warp            < cmd - 1           : yabai -m window --space 1; yabai -m space --focus 1 || skhd -k "ctrl - 1"
 warp            < cmd - 2           : yabai -m window --space 2; yabai -m space --focus 2 || skhd -k "ctrl - 2"
 warp            < cmd - 3           : yabai -m window --space 3; yabai -m space --focus 3 || skhd -k "ctrl - 3"
+warp            < cmd - 4           : yabai -m window --space 4; yabai -m space --focus 4 || skhd -k "ctrl - 4"
+warp            < cmd - 5           : yabai -m window --space 5; yabai -m space --focus 5 || skhd -k "ctrl - 5"
 warp            < cmd - tab         : yabai -m window --space next; yabai -m space --focus next || skhd -k "ctrl - right"
 warp            < cmd + shift - tab : yabai -m window --space prev; yabai -m space --focus prev || skhd -k "ctrl - left"
 
@@ -256,6 +260,8 @@ warpnf          < shift - tab       : yabai -m window --display prev
 warpnf          < cmd - 1           : yabai -m window --space 1
 warpnf          < cmd - 2           : yabai -m window --space 2
 warpnf          < cmd - 3           : yabai -m window --space 3
+warpnf          < cmd - 4           : yabai -m window --space 4
+warpnf          < cmd - 5           : yabai -m window --space 5
 warpnf          < cmd - tab         : yabai -m window --space next
 warpnf          < cmd + shift - tab : yabai -m window --space prev
 
