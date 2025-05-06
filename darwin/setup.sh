@@ -51,7 +51,7 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
     export HOMEBREW_BUNDLE_CASK_SKIP=`brew bundle list --cask --quiet | tr '\n' ' '`
     export HOMEBREW_BUNDLE_MAS_SKIP=`/usr/bin/grep "^mas.*id: \d*$" Brewfile | cut -d":" -f2 | tr '\n' ' '`
 fi
-brew bundle -v --no-lock || :
+brew bundle -v || :
 
 # Codesign MoneyWiz 3 application if installed
 [ -d "/Applications/MoneyWiz 3.app" ] && codesign --force --deep --sign - "/Applications/MoneyWiz 3.app"

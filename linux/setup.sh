@@ -16,7 +16,7 @@ fi
 eval $($PREFIX/bin/brew shellenv)
 
 # Install all dependencies from the Brewfile
-brew bundle -v --no-lock || :
+brew bundle -v || :
 
 # Installing miniconda
 if [ ! -d $XDG_DATA_HOME/conda ]; then
