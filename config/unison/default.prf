@@ -35,8 +35,6 @@ path = Library/Preferences/com.apphousekitchen.aldente-pro.plist
 ## Arq
 path = Library/Preferences/com.haystacksoftware.Arq.plist
 path = Library/Preferences/com.haystacksoftware.ArqMonitor.plist
-## BetterMouse
-path = Library/Preferences/com.naotanhaocan.BetterMouse.plist
 ## Dash
 path = Library/Application Support/Dash/library.dash
 path = Library/Application Support/Dash/License/license.dash-license
