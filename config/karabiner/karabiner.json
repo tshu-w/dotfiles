@@ -1736,50 +1736,35 @@
             "devices": [
                 {
                     "identifiers": {
+                        "is_keyboard": true,
+                        "product_id": 4229,
+                        "vendor_id": 14139
+                    },
+                    "ignore": true
+                },
+                {
+                    "identifiers": {
+                        "is_keyboard": true,
                         "is_pointing_device": true,
-                        "product_id": 6592,
-                        "vendor_id": 65261
-                    },
-                    "ignore": false
-                },
-                {
-                    "identifiers": {
-                        "is_keyboard": true,
-                        "product_id": 6592,
-                        "vendor_id": 65261
-                    },
-                    "manipulate_caps_lock_led": false
-                },
-                {
-                    "identifiers": {
-                        "is_keyboard": true,
-                        "is_pointing_device": true
+                        "product_id": 7896,
+                        "vendor_id": 1312
                     },
                     "ignore": false,
                     "manipulate_caps_lock_led": false
                 },
                 {
                     "identifiers": {
-                        "is_keyboard": true,
-                        "product_id": 50475,
-                        "vendor_id": 1133
-                    },
-                    "ignore": true
-                },
-                {
-                    "identifiers": {
                         "is_pointing_device": true,
-                        "product_id": 50489,
+                        "product_id": 50498,
                         "vendor_id": 1133
                     },
                     "ignore": false
                 },
                 {
-                    "disable_built_in_keyboard_if_exists": true,
                     "identifiers": {
-                        "device_address": "e9-f6-06-64-ef-f9",
-                        "is_keyboard": true,
-                        "is_pointing_device": true
+                        "is_pointing_device": true,
+                        "product_id": 4229,
+                        "vendor_id": 14139
                     },
                     "ignore": false
                 }
@@ -1804,6 +1789,12 @@
             ],
             "name": "Default profile",
             "selected": true,
+            "simple_modifications": [
+                {
+                    "from": { "pointing_button": "button3" },
+                    "to": [{ "apple_vendor_keyboard_key_code": "launchpad" }]
+                }
+            ],
             "virtual_hid_keyboard": {
                 "caps_lock_delay_milliseconds": 0,
                 "keyboard_type": "ansi",
