@@ -143,6 +143,7 @@ if [ $VENDOR = "apple" ]; then
     alias ofd='open $PWD'
     alias topc='top -o cpu'
     alias topm='top -o vsize'
+    alias batteryinfo="ioreg -rn AppleSmartBattery | awk '/AppleRawMaxCapacity/{raw=\$NF} /DesignCapacity/{design=\$NF} /CycleCount/{cycle=\$NF} END{printf \"当前最大容量: %d mAh | 设计容量: %d mAh | 循环次数 %d 次 | 健康度: %.1f%%\\n\", raw, design, cycle, (raw/design)*100}'"
 fi
 
 ### Functions
