@@ -17,35 +17,6 @@ HOST ext jumpbox
   Port 17022
 Host 140 141 142 143 144 147 148 150
   Hostname 124.16.138.%h
-Host A800
-  User tianshu2020
-  Hostname 125.76.110.14
-  RemoteCommand zsh -l
-  Port 8229
-Host A800-1
-  User tianshu2020
-  Hostname 192.168.0.136
-  Port 22
-  RemoteCommand zsh -l
-  ProxyJump A800
-Host A800-2
-  User tianshu2020
-  Hostname 192.168.0.232
-  Port 22
-  RemoteCommand zsh -l
-  ProxyJump A800
-Host A800-3
-  User tianshu2020
-  Hostname 192.168.0.26
-  Port 22
-  RemoteCommand zsh -l
-  ProxyJump A800
-Host A800-4
-  User tianshu2020
-  Hostname 192.168.0.231
-  Port 22
-  RemoteCommand zsh -l
-  ProxyJump A800
 Host github.com
   Hostname ssh.github.com
   User git
