@@ -1740,7 +1740,7 @@
                         "product_id": 4229,
                         "vendor_id": 14139
                     },
-                    "ignore": true
+                    "ignore_vendor_events": true
                 },
                 {
                     "identifiers": {
@@ -1750,6 +1750,7 @@
                         "vendor_id": 1312
                     },
                     "ignore": false,
+                    "ignore_vendor_events": true,
                     "manipulate_caps_lock_led": false
                 },
                 {
@@ -1758,7 +1759,8 @@
                         "product_id": 50498,
                         "vendor_id": 1133
                     },
-                    "ignore": false
+                    "ignore": false,
+                    "ignore_vendor_events": true
                 },
                 {
                     "identifiers": {
@@ -1766,7 +1768,42 @@
                         "product_id": 4229,
                         "vendor_id": 14139
                     },
-                    "ignore": false
+                    "ignore": false,
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_keyboard": true,
+                        "product_id": 7896,
+                        "vendor_id": 1312
+                    },
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_keyboard": true,
+                        "product_id": 62863,
+                        "vendor_id": 13652
+                    },
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_pointing_device": true,
+                        "product_id": 62863,
+                        "vendor_id": 13652
+                    },
+                    "ignore": false,
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_consumer": true,
+                        "product_id": 62863,
+                        "vendor_id": 13652
+                    },
+                    "ignore": false,
+                    "ignore_vendor_events": true
                 }
             ],
             "fn_function_keys": [
