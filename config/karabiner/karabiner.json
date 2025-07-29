@@ -35,7 +35,7 @@
                         ]
                     },
                     {
-                        "description": "Post escape if left_ctrl is pressed alone (HHKB)",
+                        "description": "Post escape if left_ctrl is pressed alone",
                         "manipulators": [
                             {
                                 "conditions": [
@@ -1801,6 +1801,23 @@
                         "is_consumer": true,
                         "product_id": 62863,
                         "vendor_id": 13652
+                    },
+                    "ignore": false,
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_keyboard": true,
+                        "product_id": 1,
+                        "vendor_id": 57624
+                    },
+                    "ignore_vendor_events": true
+                },
+                {
+                    "identifiers": {
+                        "is_pointing_device": true,
+                        "product_id": 1,
+                        "vendor_id": 57624
                     },
                     "ignore": false,
                     "ignore_vendor_events": true
