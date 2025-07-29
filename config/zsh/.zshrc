@@ -189,6 +189,35 @@ proxy_forward () {
     ssh -fnNT -R :${http_port}:localhost:${http_port} -R :${socks_port}:localhost:${socks_port} $@
 }
 
+sysup() {
+  local C_BLUE="\033[1;34m"
+  local C_GREEN="\033[1;32m"
+  local C_BOLD="\033[1m"
+  local C_RESET="\033[0m"
+
+  echo "${C_BLUE}==> 🍺 Updating Homebrew packages and formulae...${C_RESET}"
+  brew update && brew upgrade --greedy-auto-updates --force
+  echo
+
+  echo "${C_BLUE}==> ⚡️ Pulling Zsh plugin updates (znap)...${C_RESET}"
+  znap pull
+  echo
+
+  echo "${C_BLUE}==> 📦 Updating global npm packages...${C_RESET}"
+  npm update -g
+  echo
+
+  if [ -d "$HOME/Library/Rime" ]; then
+    echo "${C_BLUE}==> ⌨️ Updating Rime packages...${C_RESET}"
+    (cd $HOME/Library/Rime/plum/ && bash rime-install ../plum-package.conf)
+  else
+    echo "${C_BOLD}--> ℹ️  Skipping Rime update: Directory $HOME/Library/Rime/ not found.${C_RESET}"
+  fi
+  echo
+
+  echo "${C_GREEN}✅ All update tasks are complete.${C_RESET}"
+}
+
 # lazy load conda
 conda () {
     unfunction conda
