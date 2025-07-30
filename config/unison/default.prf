@@ -66,6 +66,9 @@ path = Library/Application Support/LaunchBar/Snippets
 path = Library/Application Support/LaunchBar/Configuration.plist
 path = Library/Application Support/LaunchBar/CustomShortcuts.plist
 atomic = Name *.lbaction
+## LookAway
+path = Library/Application Support/LookAway
+path = Library/Preferences/com.mysticalbits.lookaway.plist
 ## Quicklook
 path = Library/Quicklook
 atomic = Name *.qlgenerator
@@ -78,10 +81,6 @@ path = Library/Preferences/net.sourceforge.skim-app.skim.plist
 path = Library/Preferences/ru.keepcoder.Telegram.plist
 ## Terminal
 path = Library/Preferences/com.apple.Terminal.plist
-## Time Out
-path = Library/Preferences/com.dejal.timeout.plist
-path = Library/Preferences/com.dejal.timeout.break.plist
-path = Library/Group Containers/6Z7QW53WB6.com.dejal.timeout
 ## Zotero
 path = Library/Application Support/Zotero
 path = Library/Preferences/org.zotero.zotero.plist
