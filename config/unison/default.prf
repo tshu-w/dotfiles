@@ -1,5 +1,5 @@
 # Roots of the synchronization
-## unison currently not support ~/$HOME in preference file
+## unison currently not support ~/ or $HOME/ in preference file
 root = /Users/wangtianshu
 root = /Users/wangtianshu/Library/Mobile Documents/com~apple~CloudDocs/Unison
 prefer = newer
