@@ -2,16 +2,15 @@
   "title": "Caps, Ctrl, ESC and Return",
   "rules": [
     {
-      "description": "Post escape if caps_lock is pressed alone, left_ctrl otherwise",
+      "description": "Post escape if caps_lock is pressed alone, left_ctrl otherwise (Apple keyboards)",
       "manipulators": [
         {
           "conditions": [
             {
               "identifiers": [
-                {
-                  "description": "Apple Internal Keyboard",
-                  "vendor_id": 1452
-                }
+                { "vendor_id": 1452 },
+                { "vendor_id": 76 },
+                { "is_built_in_keyboard": true }
               ],
               "type": "device_if"
             }
@@ -45,16 +44,15 @@
       ]
     },
     {
-      "description": "Post escape if left_ctrl is pressed alone (HHKB)",
+      "description": "Post escape if left_ctrl is pressed alone (not Apple keyboards)",
       "manipulators": [
         {
           "conditions": [
             {
               "identifiers": [
-                {
-                  "description": "Apple Internal Keyboard",
-                  "vendor_id": 1452
-                }
+                { "vendor_id": 1452 },
+                { "vendor_id": 76 },
+                { "is_built_in_keyboard": true }
               ],
               "type": "device_unless"
             }
