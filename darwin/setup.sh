@@ -66,7 +66,7 @@ git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rim
 
 command -v yabai >/dev/null && yabai --start-service
 command -v skhd >/dev/null && skhd --start-service
-ln -sf $HOMEBREW_PREFIX/opt/emacs-head@30/Emacs.app /Applications
+ln -sf $HOMEBREW_PREFIX/opt/emacs-head@31/Emacs.app /Applications
 mkdir -p $XDG_DATA_HOME
 ln -sf $HOMEBREW_PREFIX/Caskroom/miniconda/base/ $XDG_DATA_HOME/conda
 

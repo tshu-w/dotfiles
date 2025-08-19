@@ -56,7 +56,7 @@ brew "uv"
 brew "vim"
 brew "wget"
 brew "zoxide"
-brew "daviderestivo/emacs-head/emacs-head@30", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]
+brew "daviderestivo/emacs-head/emacs-head@31", args: ["with-cocoa", "with-modern-icon-elrumo1", "with-mps", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]
 brew "felixkratz/formulae/borders"
 brew "koekeishiya/formulae/skhd"
 brew "koekeishiya/formulae/yabai"
