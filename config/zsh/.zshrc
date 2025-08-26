@@ -94,8 +94,6 @@ hash -d icloud="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
 hash -d surge="$HOME/Library/Mobile Documents/iCloud~com~nssurge~inc/Documents"
 hash -d rime="$HOME/Library/Rime"
 
-[ -f $ZDOTDIR/secrets.sh.gpg ] && source <(gpg -q --decrypt $ZDOTDIR/secrets.sh.gpg)
-
 ### Alias
 for index ({1..9}) alias "$index"="cd -${index}"; unset index
 alias _='sudo'
@@ -216,6 +214,15 @@ sysup() {
   echo
 
   echo "${C_GREEN}✅ All update tasks are complete.${C_RESET}"
+}
+
+# lazy load claude
+claude () {
+    unfunction claude
+
+    [ -f $ZDOTDIR/secrets.sh.gpg ] && source <(gpg -q --decrypt $ZDOTDIR/secrets.sh.gpg 2>/dev/null) 2>/dev/null
+
+    claude "$@"
 }
 
 # lazy load conda
