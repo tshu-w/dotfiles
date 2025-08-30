@@ -39,9 +39,9 @@ link:
 		fi \
 	done
 	mkdir -p $(XDG_CONFIG_HOME) $(HOME)/.local
-	stow -v --dotfiles -t $(HOME) runcom
-	stow -v -t $(XDG_CONFIG_HOME) config
-	stow -v --no-folding -t $(HOME)/.local local
+	stow -v --adopt --dotfiles -t $(HOME) runcom
+	stow -v --adopt -t $(XDG_CONFIG_HOME) config
+	stow -v --adopt --no-folding -t $(HOME)/.local local
 
 unlink:
 	stow -v -D -t $(HOME) --dotfiles runcom
