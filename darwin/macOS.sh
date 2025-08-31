@@ -8,7 +8,7 @@ osascript -e 'tell application "System Preferences" to quit'
 # General UI/UX                                                               #
 ###############################################################################
 
-COMPUTER_NAME="MacBook-Pro"
+COMPUTER_NAME=$(system_profiler SPHardwareDataType | awk -F': *' '/Model Name/{gsub(/ /,"-",$2); print $2; exit}')
 # Set computer name (as done via System Preferences → Sharing)
 sudo scutil --set ComputerName "$COMPUTER_NAME"
 sudo scutil --set HostName "$COMPUTER_NAME"
