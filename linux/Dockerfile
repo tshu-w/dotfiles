@@ -24,11 +24,14 @@ RUN apt-get update --fix-missing && \
       zsh && \
     apt-get autoremove -y && \
     apt-get clean && \
-    rm -rf /root/.cache && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /root/.cache
 
 ARG USER=wangtianshu
-ARG SHELL=/bin/zsh
-RUN id -u ${USER} >/dev/null 2>&1 || \
-    ( useradd --password '*' --shell ${SHELL} --create-home ${USER} && \
-    echo ${USER}" ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers )
+ARG USER_SHELL=/usr/bin/zsh
+RUN id -u ${USER} >/dev/null 2>&1 || { \
+    useradd --create-home --shell ${USER_SHELL} --password '*' --no-user-group ${USER}; \
+    echo ${USER}" ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers; }
+
+RUN su - ${USER} -c 'cd ~ && \
+    git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git && \
+    cd dotfiles && make && exec zsh -i'

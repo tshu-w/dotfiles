@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euxo pipefail # -e=-o errexit, -u=-o nounset
 
-if [ -d /home/linuxbrew ]; then
-    PREFIX=/home/linuxbrew/.linuxbrew/
+: ${XDG_CACHE_HOME:=~/.cache}
+: ${XDG_CONFIG_HOME:=~/.config}
+: ${XDG_DATA_HOME:=~/.local/share}
+: ${XDG_STATE_HOME:=~/.local/state}
+export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
+
+if sudo -n true 2>/dev/null; then
+    PREFIX=/home/linuxbrew/.linuxbrew
     [ -d $PREFIX ] || \
         curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash
 else
@@ -17,10 +23,3 @@ eval $($PREFIX/bin/brew shellenv)
 
 # Install all dependencies from the Brewfile
 brew bundle -v || :
-
-# Installing miniconda
-if [ ! -d $XDG_DATA_HOME/conda ]; then
-    miniconda_script="Miniconda3-latest-Linux-x86_64.sh"
-    curl https://repo.anaconda.com/miniconda/$miniconda_script -o ~/$miniconda_script
-    (cd ~ && echo | bash $miniconda_script -b -p $XDG_DATA_HOME/conda)
-fi
