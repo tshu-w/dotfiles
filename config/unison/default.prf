@@ -23,6 +23,7 @@ path = current
 path = common
 
 ## macOS
+path = Library/Preferences/.GlobalPreferences.plist
 path = Library/KeyBindings/DefaultKeyBinding.dict
 path = Library/PDF Services
 path = Library/Preferences/com.apple.symbolichotkeys.plist
