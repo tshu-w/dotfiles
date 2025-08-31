@@ -44,7 +44,6 @@ zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
 zstyle ':completion:*:paths' path-completion yes
 zstyle ':completion:*:processes' command 'ps x'
 zstyle ':autocomplete:*' min-input 1
-zstyle ':autocomplete:*complete*:*' insert-unambiguous yes
 zstyle ':completion:*:*' matcher-list 'm:{[:lower:]-}={[:upper:]_}' '+r:|[.]=**'
 zstyle ':completion:*' completer _complete _complete:-fuzzy _correct _approximate _ignored
 bindkey -M menuselect "^[m" accept-and-hold
