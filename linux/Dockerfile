@@ -27,11 +27,15 @@ RUN apt-get update --fix-missing && \
     rm -rf /root/.cache
 
 ARG USER=wangtianshu
-ARG USER_SHELL=/usr/bin/zsh
+ARG USER_SHELL=/bin/zsh
+ARG UID=1000
+ARG GID=100
 RUN id -u ${USER} >/dev/null 2>&1 || { \
-    useradd --create-home --shell ${USER_SHELL} --password '*' --no-user-group ${USER}; \
+    id -u ubuntu >/dev/null 2>&1 && userdel -r ubuntu; \
+    useradd -m -u ${UID} -g ${GID} -s ${USER_SHELL} -p '*' -N ${USER}; \
     echo ${USER}" ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers; }
 
-RUN su - ${USER} -c 'cd ~ && \
+RUN --mount=type=cache,uid=${UID},gid=${GID},target=/home/${USER}/.cache \
+    su - ${USER} -c 'cd ~ && \
     git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git && \
     cd dotfiles && make && exec zsh -i'
