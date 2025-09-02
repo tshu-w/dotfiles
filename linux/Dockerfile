@@ -35,6 +35,7 @@ RUN id -u ${USER} >/dev/null 2>&1 || { \
     useradd -m -u ${UID} -g ${GID} -s ${USER_SHELL} -p '*' -N ${USER}; \
     echo ${USER}" ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers; }
 
+ARG CACHEBUST=0
 RUN --mount=type=cache,uid=${UID},gid=${GID},target=/home/${USER}/.cache \
     su - ${USER} -c 'cd ~ && \
     git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git && \
