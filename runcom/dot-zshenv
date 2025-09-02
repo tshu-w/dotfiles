@@ -29,9 +29,6 @@ case $VENDOR in
 
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
-    export CONDA_HOME=$HOMEBREW_PREFIX/Caskroom/miniconda/base
-    export PATH=$CONDA_HOME/bin:$PATH
-
     export PATH=$PATH:/Library/TeX/Distributions/Programs/texbin
     export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/Programs/texbin/man`
 
@@ -46,9 +43,6 @@ case $VENDOR in
 
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
-    export CONDA_HOME=$XDG_DATA_HOME/conda
-    export PATH=$CONDA_HOME/bin:$PATH
-
     export NPM_CONFIG_PREFIX=$HOME/.local
   ;;
 esac
@@ -59,7 +53,6 @@ esac
 export BUNDLE_USER_CONFIG=$XDG_CONFIG_HOME/bundle
 export BUNDLE_USER_CACHE=$XDG_CACHE_HOME/bundle
 export BUNDLE_USER_PLUGIN=$XDG_DATA_HOME/bundle
-export CONDARC=$XDG_CONFIG_HOME/conda/condarc
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
 export GEM_HOME=$XDG_DATA_HOME/gem
 export GEM_SPEC_CACHE=$XDG_CACHE_HOME/gem
@@ -67,6 +60,8 @@ export GNUPGHOME=$XDG_CONFIG_HOME/gnupg
 export IPYTHONDIR=$XDG_CONFIG_HOME/ipython
 export JUPYTER_CONFIG_DIR=$XDG_CONFIG_HOME/jupyter
 export MACHINE_STORAGE_PATH=$XDG_DATA_HOME/docker-machine
+export MAMBARC=$XDG_CONFIG_HOME/mamba/mambarc
+export MAMBA_ROOT_PREFIX=${XDG_DATA_HOME}/mamba
 export NPM_CONFIG_USERCONFIG=$XDG_CONFIG_HOME/npm/npmrc
 export PIPX_HOME=$XDG_DATA_HOME/pipx
 export PYTHONSTARTUP=$XDG_CONFIG_HOME/python/pythonrc

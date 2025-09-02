@@ -1,3 +1,7 @@
+layout_mamba() {
+    layout_anaconda "$@"
+}
+
 layout_conda() {
     layout_anaconda "$@"
 }
