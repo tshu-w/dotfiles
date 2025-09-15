@@ -68,7 +68,7 @@ path = Library/Application Support/LaunchBar/Configuration.plist
 path = Library/Application Support/LaunchBar/CustomShortcuts.plist
 atomic = Name *.lbaction
 ## LookAway
-path = Library/Application Support/LookAway
+# path = Library/Application Support/LookAway
 path = Library/Preferences/com.mysticalbits.lookaway.plist
 ## Quicklook
 path = Library/Quicklook
