@@ -72,6 +72,8 @@ export RUFF_CACHE_DIR=$XDG_CACHE_HOME/ruff
 export UNISON=$XDG_CONFIG_HOME/unison
 export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 
+export DET_MASTER="http://det.cipsup.cn"
+
 export GPG_TTY=$(tty)
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
     export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"

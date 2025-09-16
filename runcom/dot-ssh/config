@@ -4,32 +4,14 @@ HOST local
   Hostname localhost
   User wangtianshu
   Port 2048
-Host 16 17 103
-  Hostname 192.168.14.%h
-  User tianshu2020
-Host 70 71 72 74
-  Hostname 192.168.14.%h
-Host backup
-  User wangtianshu
-  Hostname 192.168.14.74
-HOST ext jumpbox
-  Hostname ext.cipsup.cn
-  Port 17022
-Host 140 141 142 143 144 147 148 150
-  Hostname 124.16.138.%h
 Host github.com
   Hostname ssh.github.com
   User git
   Port 443
-Match exec "{ echo %h | grep '192\|124' } && {echo %r | grep 'tianshu' }"
-  LocalCommand  { gpg-forward %n; emacs-forward %n } &
-  RemoteForward 2048 localhost:22
-  RemoteForward 6152 localhost:6152
-  RemoteForward 6153 localhost:6153
-Match exec "echo %h | grep '192\|124\|git' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match exec "echo %h | grep 'git' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host det
-  Hostname 6cfa63fd-ca78-4c91-91ef-7f472c20c3a4
+  Hostname 02661d2b-ce00-4249-a4ec-f04c964b9fb9
   User tianshu2020
   ProxyCommand ${HOME}/.local/share/uv/tools/determined/bin/python -m determined.cli.tunnel http://det.cipsup.cn %h
   StrictHostKeyChecking no
@@ -39,6 +21,16 @@ Host det
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
+Host backup
+  User wangtianshu
+  Hostname 192.168.14.74
+Match exec "{ echo %h | grep '172\|192\|124' } && {echo %r | grep 'tianshu' }"
+  LocalCommand  { gpg-forward %n; emacs-forward %n } &
+  RemoteForward 2048 localhost:22
+  RemoteForward 6152 localhost:6152
+  RemoteForward 6153 localhost:6153
+Match exec "echo %h | grep '172\|192\|124' && ! timeout 1 nc -z %h %p &> /dev/null"
+  ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
   HashKnownHosts yes
