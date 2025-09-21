@@ -62,8 +62,6 @@ brew bundle -v || :
 [ -d $HOMEBREW_PREFIX/share/info/emacs ] && \
     (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
 
-command -v yabai >/dev/null && yabai --start-service
-command -v skhd >/dev/null && skhd --start-service
 ln -sf $HOMEBREW_PREFIX/opt/emacs-head@31/Emacs.app /Applications
 mkdir -p $XDG_DATA_HOME
 
@@ -76,7 +74,7 @@ for dir in "fastmail" "iscas"; do
 done
 
 # Add login item
-for app in "AlDente" "Bartender 6" "Dropbox" "Easydict" "Emacs" "Focus" "iTerm" "LaunchBar" "LookAway" "Surge"; do
+for app in "AlDente" "Bartender 6" "Dropbox" "Easydict" "Emacs" "FlashSpace" "Focus" "Input Source Pro" "iTerm" "LaunchBar" "LookAway" "Loop" "Surge"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
