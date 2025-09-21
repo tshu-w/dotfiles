@@ -53,11 +53,8 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
 fi
 brew bundle -v || :
 
-# Codesign MoneyWiz 3 application if installed
-[ -d "/Applications/MoneyWiz 3.app" ] && codesign --force --deep --sign - "/Applications/MoneyWiz 3.app"
-
 # Install Rime configuration
-git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rime
+[ -d "$HOME/Library/Rime" ] || git clone --recurse-submodules https://github.com/tshu-w/rime-conf "$HOME/Library/Rime"
 (cd ~/Library/Rime/plum && bash rime-install ../plum-package.conf)
 
 # Install info files
@@ -79,7 +76,7 @@ for dir in "fastmail" "iscas"; do
 done
 
 # Add login item
-for app in "AlDente" "Dash" "Dropbox" "Easydict" "Emacs" "Focus" "iTerm" "Ice" "LaunchBar" "LookAway" "Surge"; do
+for app in "AlDente" "Bartender 6" "Dropbox" "Easydict" "Emacs" "Focus" "iTerm" "LaunchBar" "LookAway" "Surge"; do
     osascript <<EOF
     tell application "System Events"
         make new login item at end with properties {} & ¬
