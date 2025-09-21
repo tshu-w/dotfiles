@@ -1,0 +1,71 @@
+profiles:
+- id: DE5F721E-174F-4511-B47C-5151F87BE0FF
+  name: Default
+  workspaces:
+  - id: 4FAC5C32-6545-45DB-A066-492C4095C49C
+    name: Coding
+    display: Built-in Retina Display
+    shortcut: ctrl+1
+    apps:
+    - name: Emacs
+      bundleIdentifier: org.gnu.Emacs
+      iconPath: /opt/homebrew/Cellar/emacs-head@31/31.0.50_1/Emacs.app/Contents/Resources/Emacs.icns
+    symbolIconName: apple.terminal.on.rectangle
+    openAppsOnActivation: false
+  - id: 8BD10653-640A-4967-965F-41794A6FDFE7
+    name: Browsering
+    display: Built-in Retina Display
+    shortcut: ctrl+2
+    apps:
+    - name: Google Chrome
+      bundleIdentifier: com.google.Chrome
+      iconPath: /Applications/Google Chrome.app/Contents/Resources/app.icns
+    - name: Safari
+      bundleIdentifier: com.apple.Safari
+      iconPath: /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/Resources/AppIcon.icns
+    - name: Tor Browser
+      bundleIdentifier: org.torproject.torbrowser
+      iconPath: /Applications/Tor Browser.app/Contents/Resources/firefox.icns
+    symbolIconName: network
+    openAppsOnActivation: false
+  - id: EA86ACEB-A1B3-4CF0-95CE-82A9F7D4271C
+    name: Messaging
+    display: Built-in Retina Display
+    shortcut: ctrl+3
+    apps:
+    - name: WeChat
+      bundleIdentifier: com.tencent.xinWeChat
+      iconPath: /Applications/WeChat.app/Contents/Resources/AppIcon.icns
+    - name: WeCom
+      bundleIdentifier: com.tencent.WeWorkMac
+      iconPath: "/Applications/\u4F01\u4E1A\u5FAE\u4FE1.app/Contents/Resources/AppIcon.icns"
+    - name: Slack
+      bundleIdentifier: com.tinyspeck.slackmacgap
+      iconPath: /Applications/Slack.app/Contents/Resources/electron.icns
+    - name: TencentMeeting
+      bundleIdentifier: com.tencent.meeting
+      iconPath: /Applications/TencentMeeting.app/Contents/Resources/AppIcon.icns
+    - name: Telegram
+      bundleIdentifier: ru.keepcoder.Telegram
+      iconPath: /Applications/Telegram.app/Contents/Resources/AppIcon.icns
+    - name: Music
+      bundleIdentifier: com.apple.Music
+      iconPath: /System/Applications/Music.app/Contents/Resources/AppIcon.icns
+    - name: QQ
+      bundleIdentifier: com.tencent.qq
+      iconPath: /Applications/QQ.app/Contents/Resources/icon.icns
+    - name: Feishu
+      bundleIdentifier: com.bytedance.macos.feishu
+      iconPath: /Applications/Lark.app/Contents/Resources/app.icns
+    - name: Messages
+      bundleIdentifier: com.apple.MobileSMS
+      iconPath: /System/Applications/Messages.app/Contents/Resources/AppIcon.icns
+    symbolIconName: message.badge.waveform
+    openAppsOnActivation: false
+  - id: 2CCF25FD-9124-4711-98CD-9F4F8E92F7D7
+    name: Misc
+    display: Built-in Retina Display
+    shortcut: ctrl+4
+    apps: []
+    symbolIconName: scribble.variable
+    openAppsOnActivation: false
