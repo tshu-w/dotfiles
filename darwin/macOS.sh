@@ -292,9 +292,6 @@ defaults write com.apple.dock orientation -string "left"
 # Don’t show recent applications in Dock
 defaults write com.apple.dock show-recents -bool false
 
-# TODO: Reset icon on the Launchpad
-# rm -rf /private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad
-
 # Add a spacer to the left side of the Dock (where the applications are)
 #defaults write com.apple.dock persistent-apps -array-add '{tile-data={}; tile-type="spacer-tile";}'
 # Add a spacer to the right side of the Dock (where the Trash is)
@@ -422,9 +419,6 @@ hash tmutil &> /dev/null && sudo tmutil disable local
 # Others                                                                      #
 ###############################################################################
 
-# Enable the debug menu in Address Book
-defaults write com.apple.addressbook ABShowDebugMenu -bool true
-
 # Prevent Photos from opening automatically when devices are plugged in
 defaults -currentHost write com.apple.ImageCapture disableHotPlug -bool true
 
@@ -444,7 +438,7 @@ defaults write com.apple.Maps AppleLanguages -array "zh-Hans" "en-US"
 ###############################################################################
 # Kill affected applications                                                  #
 ###############################################################################
-for app in "Address Book" "Contacts" "cfprefsd" "Dock" "Finder" \
+for app in "Contacts" "cfprefsd" "Dock" "Finder" \
 	"Photos" "Safari" "SystemUIServer" "TextEdit"; do
     killall $app &> /dev/null || :
 done
