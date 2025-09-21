@@ -62,7 +62,8 @@ git clone --recurse-submodules https://github.com/tshu-w/rime-conf ~/Library/Rim
 
 # Install info files
 # https://github.com/d12frosted/homebrew-emacs-plus/issues/437
-(cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
+[ -d $HOMEBREW_PREFIX/share/info/emacs ] && \
+    (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
 
 command -v yabai >/dev/null && yabai --start-service
 command -v skhd >/dev/null && skhd --start-service
