@@ -21,7 +21,7 @@ sudo rm -rf ~/Documents && ln -s ~/Library/CloudStorage/Dropbox/Documents ~
 sudo chflags -h uchg ~/Documents
 ```
 
-6. Set youdao appID and key for Launchbar (\~ ID)
+6. Set YouDao appID and key for LaunchBar (\~ ID)
 
 7. Import GPG subkeys
 
@@ -29,13 +29,8 @@ sudo chflags -h uchg ~/Documents
 gpg --import private-subkeys.asc
 gpg --edit-key [key-id]
 gpg> trust
-```
-
-8. Authenticate Github CLI
-
-```shell
-gh auth login
-gh extension install github/gh-copilot
+gpg> save
+gpg-connect-agent "keyattr $(gpg --list-keys --with-keygrip | awk '/\[A\]/{f=1;next} f && /Keygrip =/{print $3; exit}') Use-for-ssh: true" /bye
 ```
 
 ## Server
@@ -43,14 +38,5 @@ gh extension install github/gh-copilot
 1. Import GPG public key
 
 ```shell
-gpg --search-keys mail@address
-gpg --export-ssh-key mail@address > ~/.ssh/authorized_keys
 gpg --import .config/gnupg/public.asc
-```
-
-2. Authenticate Github CLI
-
-```shell
-gh auth login
-gh extension install github/gh-copilot
 ```
