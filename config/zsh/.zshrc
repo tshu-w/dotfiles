@@ -26,6 +26,11 @@ source $ZNAP_HOME/znap.zsh
 zstyle ':znap:*:*' git-maintenance off
 unset ZNAP_HOME
 
+### Secrets
+if [[ -f $ZDOTDIR/secrets.sh.gpg ]]; then
+    source <(gpg -q --decrypt $ZDOTDIR/secrets.sh.gpg 2>/dev/null) 2>/dev/null
+fi
+
 ### Plugins
 # starship
 (( $+commands[starship] )) && { znap eval starship 'starship init zsh --print-full-init' ; znap prompt }
@@ -219,7 +224,6 @@ sysup() {
 claude () {
     unfunction claude
 
-    [ -f $ZDOTDIR/secrets.sh.gpg ] && source <(gpg -q --decrypt $ZDOTDIR/secrets.sh.gpg 2>/dev/null) 2>/dev/null
 
     claude "$@"
 }
