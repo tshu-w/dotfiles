@@ -220,14 +220,6 @@ sysup() {
   echo "${C_GREEN}✅ All update tasks are complete.${C_RESET}"
 }
 
-# lazy load claude
-claude () {
-    unfunction claude
-
-
-    claude "$@"
-}
-
 # lazy load mamba
 mamba () {
     unfunction mamba
