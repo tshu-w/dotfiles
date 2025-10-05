@@ -10,6 +10,9 @@ profiles:
     - name: Emacs
       bundleIdentifier: org.gnu.Emacs
       iconPath: /opt/homebrew/Cellar/emacs-head@31/31.0.50_1/Emacs.app/Contents/Resources/Emacs.icns
+    - name: Skim
+      bundleIdentifier: net.sourceforge.skim-app.skim
+      iconPath: /Applications/Skim.app/Contents/Resources/Skim.icns
     symbolIconName: apple.terminal.on.rectangle
     openAppsOnActivation: false
   - id: 8BD10653-640A-4967-965F-41794A6FDFE7
@@ -66,6 +69,18 @@ profiles:
     name: Misc
     display: Built-in Retina Display
     shortcut: ctrl+4
-    apps: []
+    apps:
+    - name: Microsoft Word
+      bundleIdentifier: com.microsoft.Word
+      iconPath: /Applications/Microsoft Word.app/Contents/Resources/MSWD.icns
+    - name: Microsoft PowerPoint
+      bundleIdentifier: com.microsoft.Powerpoint
+      iconPath: /Applications/Microsoft PowerPoint.app/Contents/Resources/PPT3.icns
+    - name: Microsoft Excel
+      bundleIdentifier: com.microsoft.Excel
+      iconPath: /Applications/Microsoft Excel.app/Contents/Resources/XCEL.icns
+    - name: Preview
+      bundleIdentifier: com.apple.Preview
+      iconPath: /System/Applications/Preview.app/Contents/Resources/AppIcon.icns
     symbolIconName: scribble.variable
     openAppsOnActivation: false
