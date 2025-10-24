@@ -1632,6 +1632,18 @@
                                         "value": 1
                                     }
                                 ],
+                                "from": { "key_code": "d" },
+                                "to": [{ "shell_command": "open -a DingTalk" }],
+                                "type": "basic"
+                            },
+                            {
+                                "conditions": [
+                                    {
+                                        "name": "spacefn_app_mode",
+                                        "type": "variable_if",
+                                        "value": 1
+                                    }
+                                ],
                                 "from": { "key_code": "p" },
                                 "to": [{ "shell_command": "open -a Preview" }],
                                 "type": "basic"
