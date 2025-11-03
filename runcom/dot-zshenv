@@ -2,7 +2,7 @@
 setopt no_global_rcs
 
 export LANG=en_US.UTF-8
-export LC_ALL=C.UTF-8
+export LC_ALL=en_US.UTF-8
 
 : ${XDG_CACHE_HOME:=~/.cache}
 : ${XDG_CONFIG_HOME:=~/.config}
