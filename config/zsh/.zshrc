@@ -84,7 +84,7 @@ setopt extended_history share_history \
        hist_expire_dups_first hist_ignore_all_dups \
        hist_ignore_space hist_verify
 
-zshaddhistory() {
+zshaddhistory () {
     local line=${1%%$'\n'}
     local cmd=${line%% *}
     [[ ${#line} -ge 5
@@ -191,7 +191,7 @@ proxy_forward () {
     ssh -fnNT -R :${http_port}:localhost:${http_port} -R :${socks_port}:localhost:${socks_port} $@
 }
 
-sysup() {
+sysup () {
   local C_BLUE="\033[1;34m"
   local C_GREEN="\033[1;32m"
   local C_BOLD="\033[1m"
@@ -261,7 +261,7 @@ cuda () {
     CUDA_VISIBLE_DEVICES="$devs" "$@"
 }
 
-onelink() {
+onelink () {
     echo -n "$1"|base64|sed "s/=$//;s/\//\_/g;s/\+/\-/g;s/^/https:\/\/api\.onedrive\.com\/v1\.0\/shares\/u\!/;s/$/\/root\/content/";
 }
 
@@ -339,7 +339,7 @@ EOF
     }
 fi
 
-ghcs() {
+ghcs () {
 	FUNCNAME="$funcstack[1]"
 	TARGET="shell"
 	local GH_DEBUG="$GH_DEBUG"
@@ -426,7 +426,7 @@ ghcs() {
 	fi
 }
 
-ghce() {
+ghce () {
 	FUNCNAME="$funcstack[1]"
 	local GH_DEBUG="$GH_DEBUG"
 	local GH_HOST="$GH_HOST"
