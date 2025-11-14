@@ -46,6 +46,7 @@ brew "screen"
 brew "starship"
 brew "stow"
 brew "switchaudio-osx"
+brew "syncthing", restart_service: :changed
 brew "tealdeer"
 brew "terminal-notifier"
 brew "texlab"
@@ -113,7 +114,6 @@ cask "telegram"
 cask "tencent-meeting"
 cask "tor-browser"
 cask "wechatwork"
-cask "zotero"
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
 mas "Keynote", id: 409183694
