@@ -1,0 +1,94 @@
+# Roots of the synchronization
+## unison currently not support ~/ or $HOME/ in preference file
+root = /Users/wangtianshu
+root = ssh://macbook-pro.sgponte//Users/wangtianshu/Library/Mobile Documents/com~apple~CloudDocs/Unison
+prefer = newer
+atomic = Name .git*
+
+# Keep a backup copy of every file in a central location
+backuplocation = central
+backupdir = /Users/wangtianshu/.cache/unison
+backup = Name *
+backupprefix = $VERSION.
+backupsuffix =
+
+# Treat a symbolic link transparently
+# Use case: Create a subdirectory called shared (or current, or whatever) in your home directory on each host,
+#   and put links to all the files you want to synchronize into this directory.
+follow = Name *
+
+# Paths to synchronize
+path = shared
+path = current
+path = common
+
+## macOS
+path = Library/Preferences/.GlobalPreferences.plist
+path = Library/KeyBindings/DefaultKeyBinding.dict
+path = Library/PDF Services
+path = Library/Preferences/com.apple.symbolichotkeys.plist
+path = Library/Scripts
+path = Library/Speech/Speakable Items
+path = Library/Workflows
+ignore = Name {.DS_Store}
+## AlDente
+path = Library/Preferences/com.apphousekitchen.aldente-pro.plist
+## Arq
+path = Library/Preferences/com.haystacksoftware.Arq.plist
+path = Library/Preferences/com.haystacksoftware.ArqMonitor.plist
+## Bartender
+path = Library/Preferences/com.surteesstudios.Bartender.plist
+path = Library/Application Support/Bartender/Bartender.BartenderPreferences
+## Dash
+path = Library/Application Support/Dash/library.dash
+path = Library/Application Support/Dash/License/license.dash-license
+path = Library/Preferences/com.kapeli.dash.plist
+path = Library/Preferences/com.kapeli.dashdoc.plist
+## Easydict
+path = Library/Preferences/com.izual.Easydict.plist
+## Elfeed
+path = .config/emacs/var/elfeed/db/index
+## Flashspace
+path = Library/Preferences/pl.wojciechkulik.FlashSpace.plist
+## Focus
+path = Library/Application Support/Focus/default.cfg
+## IINA
+path = Library/Application Support/com.colliderli.iina/input_conf
+path = Library/Preferences/com.colliderli.iina.plist
+## Input Source Pro
+path = Library/Preferences/com.runjuu.Input-Source-Pro.plist
+## iTerm2
+path = Library/Preferences/com.googlecode.iterm2.plist
+path = Library/Preferences/com.googlecode.iterm2.private.plist
+## Java
+path = Library/Application Support/Oracle/Java/Deployment/security/exception.sites
+## LaunchBar
+path = Library/Preferences/at.obdev.LaunchBar.plist
+path = Library/Preferences/at.obdev.LaunchBar.ActionEditor.plist
+path = Library/Application Support/LaunchBar/Actions
+path = Library/Application Support/LaunchBar/Snippets
+path = Library/Application Support/LaunchBar/Configuration.plist
+path = Library/Application Support/LaunchBar/CustomShortcuts.plist
+atomic = Name *.lbaction
+## LookAway
+# path = Library/Application Support/LookAway
+path = Library/Preferences/com.mysticalbits.lookaway.plist
+## Loop
+path = Library/Preferences/com.MrKai77.Loop.plist
+## Quicklook
+path = Library/Quicklook
+atomic = Name *.qlgenerator
+## Rime
+path = Library/Rime
+ignore = Name {*.userdb,installation.yaml,user.yaml,Rime/build}
+## Skim
+path = Library/Preferences/net.sourceforge.skim-app.skim.plist
+## Telegram
+path = Library/Preferences/ru.keepcoder.Telegram.plist
+## Terminal
+path = Library/Preferences/com.apple.Terminal.plist
+## Zotero
+path = Library/Application Support/Zotero
+path = Library/Preferences/org.zotero.zotero.plist
+## Zsh History
+path = .local/state/zsh/history
