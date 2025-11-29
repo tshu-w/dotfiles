@@ -63,6 +63,9 @@ profiles:
     - name: Messages
       bundleIdentifier: com.apple.MobileSMS
       iconPath: /System/Applications/Messages.app/Contents/Resources/AppIcon.icns
+    - name: Antding
+      bundleIdentifier: dd.work.exclusive4antding
+      iconPath: /Applications/Antding.app/Contents/Resources/AppIcon.icns
     symbolIconName: message.badge.waveform
     openAppsOnActivation: false
   - id: 2CCF25FD-9124-4711-98CD-9F4F8E92F7D7

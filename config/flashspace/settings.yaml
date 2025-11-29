@@ -29,6 +29,8 @@ enableWorkspaceTransitions: false
 workspaceTransitionDuration: 3e-1
 workspaceTransitionDimming: 2e-1
 loopWorkspaces: true
+loopWorkspacesOnAllDisplays: false
+switchWorkspaceOnCursorScreen: false
 alternativeDisplays: ''
 enablePictureInPictureSupport: true
 switchWorkspaceWhenPipCloses: true
@@ -45,4 +47,5 @@ enableIntegrations: true
 runScriptOnLaunch: ''
 runScriptOnWorkspaceChange: sketchybar --trigger flashspace_workspace_change WORKSPACE="$WORKSPACE"
   DISPLAY="$DISPLAY"
+runScriptAfterWorkspaceChange: ''
 runScriptOnProfileChange: sketchybar --reload
