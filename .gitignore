@@ -1,8 +1,3 @@
-### SSH ###
-**/dot-ssh/id_*
-**/dot-ssh/*_id_*
-**/dot-ssh/known_hosts
-
 ### GPG ###
 **/gnupg/*
 !**/gnupg/dirmngr.conf
@@ -10,18 +5,27 @@
 !**/gnupg/gpg-agent.conf
 !**/gnupg/public.asc
 
-### Jupyter ###
-**/jupyter/lab
-**/jupyter/migrated
-**/jupyter/serverconfig
+### Python ###
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+### SSH ###
+**/dot-ssh/id_*
+**/dot-ssh/*_id_*
+**/dot-ssh/known_hosts
 
 ### ZSH ###
 *.zwc
 .zprofile
 
-### Python ###
-# Byte-compiled / optimized / DLL files
-__pycache__/
+### CodeX ###
+**/codex/*
+!**/codex/config.toml
+
+### Jupyter ###
+**/jupyter/lab
+**/jupyter/migrated
+**/jupyter/serverconfig
 
 ### Unison ###
 **/unison/*

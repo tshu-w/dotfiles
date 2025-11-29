@@ -1,0 +1,28 @@
+model = "gpt-5.1-codex"
+model_reasoning_effort = "medium"
+# full-auto mode
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+
+[model_providers.aicoding]
+name = "aicoding"
+base_url = "https://aicoding.2233.ai"
+env_key = "AICODING_API_KEY"
+wire_api = "responses"
+
+[model_providers.lmrouter]
+name = "lmrouter"
+base_url = "https://lmrouter.ponte.top/openai/v1"
+env_key = "LMROUTER_API_KEY"
+wire_api = "responses"
+
+[features]
+streamable_shell = true
+web_search_request = true
+
+[notice]
+hide_gpt5_1_migration_prompt = true
+hide_gpt-5.1-codex-max_migration_prompt = true
