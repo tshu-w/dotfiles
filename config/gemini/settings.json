@@ -1,0 +1,20 @@
+{
+  "general": {
+    "previewFeatures": true,
+    "disableUpdateNag": true
+  },
+  "ui": {
+    "theme": "GitHub Light"
+  },
+  "context": {
+    "fileName": "AGENTS.md"
+  },
+  "tools": {
+    "sandbox": "sandbox-exec"
+  },
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal"
+    }
+  }
+}
