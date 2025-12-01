@@ -1,11 +1,10 @@
 ### macOS ###
 # General
 .DS_Store
+__MACOSX/
 .AppleDouble
 .LSOverride
-
-# Icon must end with two \r
-Icon
+Icon[]
 
 # Thumbnails
 ._*
@@ -32,7 +31,7 @@ Temporary Items
 # temporary files which can be created if a process still has a handle open of a deleted file
 .fuse_hidden*
 
-# KDE directory preferences
+# Metadata left by Dolphin file manager, which comes with KDE Plasma
 .directory
 
 # Linux trash folder which might appear on any partition or disk
@@ -40,6 +39,9 @@ Temporary Items
 
 # .nfs files are created when an open file is removed but is still being accessed
 .nfs*
+
+# Log files created by default by the nohup command
+nohup.out
 
 ### Emacs ###
 *~
@@ -90,10 +92,14 @@ flycheck_*.el
 # network security
 /network-security.data
 
+# undo-tree
+*.~undo-tree~
+
 ### Vim ###
 # Swap
 [._]*.s[a-v][a-z]
-!*.svg  # comment out if you don't need vector files
+# comment out the next line if you don't need vector files
+!*.svg
 [._]*.sw[a-p]
 [._]s[a-rt-v][a-z]
 [._]ss[a-gi-z]
@@ -111,6 +117,10 @@ tags
 # Persistent undo
 [._]*.un~
 
+### GnuPG ###
+secring.*
+
 ### Syncthing ###
-.stfolder/
-.stversions/
+# Syncthing caches
+.stversions
+
