@@ -1,4 +1,4 @@
-model = "gpt-5.1-codex"
+model = "gpt-5.2-codex"
 model_reasoning_effort = "medium"
 # full-auto mode
 approval_policy = "on-request"
@@ -22,7 +22,5 @@ wire_api = "responses"
 [features]
 streamable_shell = true
 web_search_request = true
-
-[notice]
-hide_gpt5_1_migration_prompt = true
-hide_gpt-5.1-codex-max_migration_prompt = true
+unified_exec = true
+shell_snapshot = true
