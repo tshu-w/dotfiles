@@ -138,6 +138,7 @@ alias ts='trash'
 alias cleanupds="find . \( -type f -name '*.DS_Store' -o -type d -name '__MACOSX' \) -ls -exec /bin/rm -r {} \;"
 
 alias magit='ec --eval "(magit-status)"'
+alias yless="jless --yaml"
 
 if [ $VENDOR = "apple" ]; then
     alias cleanupad="find . -type d -name '.AppleD*' -ls -exec /bin/rm -r {} \;"
