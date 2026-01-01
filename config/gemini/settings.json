@@ -3,9 +3,6 @@
     "previewFeatures": true,
     "disableUpdateNag": true
   },
-  "ui": {
-    "theme": "GitHub Light"
-  },
   "context": {
     "fileName": "AGENTS.md"
   },
