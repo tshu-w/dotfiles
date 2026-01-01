@@ -7,11 +7,13 @@
     "fileName": "AGENTS.md"
   },
   "tools": {
-    "sandbox": "sandbox-exec"
+    "sandbox": "sandbox-exec",
+    "autoAccept": true
   },
   "security": {
     "auth": {
       "selectedType": "oauth-personal"
-    }
+    },
+    "enablePermanentToolApproval": true
   }
 }
