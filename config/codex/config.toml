@@ -7,16 +7,16 @@ sandbox_mode = "workspace-write"
 [sandbox_workspace_write]
 network_access = true
 
+[model_providers.oneapi]
+name = "lmrouter"
+base_url = "https://one-api.ponte.top/v1"
+env_key = "ONEAPI_API_KEY"
+wire_api = "responses"
+
 [model_providers.aicoding]
 name = "aicoding"
 base_url = "https://aicoding.2233.ai"
 env_key = "AICODING_API_KEY"
-wire_api = "responses"
-
-[model_providers.lmrouter]
-name = "lmrouter"
-base_url = "https://lmrouter.ponte.top/openai/v1"
-env_key = "LMROUTER_API_KEY"
 wire_api = "responses"
 
 [features]
