@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Generic hook forwarder - symlink this to any hook name
+hook_name="$(basename "$0")"
+local_hook=".git/hooks/$hook_name"
+
+if [ -x "$local_hook" ]; then
+  exec "$local_hook" "$@"
+fi

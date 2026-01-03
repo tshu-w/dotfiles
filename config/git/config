@@ -2,10 +2,10 @@
 	name = Tianshu Wang
 	email = wang@tianshu.me
 	signingkey = 4525DA7EEF2D7C56
-[init]
-	defaultBranch = main
 [commit]
 	gpgsign = true
+[core]
+	hooksPath = ~/.config/git/hooks
 [push]
 	default = simple
 	autoSetupRemote = true

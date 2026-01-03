@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Initialize linked worktrees once.
+if [[ -f .git && ! -d .git ]]; then
+  gitdir="$(git rev-parse --git-dir)"
+  marker="$gitdir/worktree-initialized"
+  if [[ ! -f "$marker" ]]; then
+    COMMON_DIR="$(dirname "$(git rev-parse --git-common-dir)")"
+
+    items=(.env .envrc .venv .python-version data models results)
+
+    for item in "${items[@]}"; do
+      src="$COMMON_DIR/$item"
+      dest="$item"
+
+      if [[ ! -e "$src" ]]; then
+        echo "warning: $src does not exist; skipping link" >&2
+        continue
+      fi
+
+      if [[ -L "$dest" ]]; then
+        target="$(readlink "$dest")"
+        if [[ "$target" != /* ]]; then
+          target="$(cd "$(dirname "$dest")" && pwd)/$target"
+        fi
+        if command -v realpath >/dev/null 2>&1; then
+          target="$(realpath "$target")"
+          src="$(realpath "$src")"
+        fi
+        if [[ "$target" != "$src" ]]; then
+          echo "warning: $dest already links to $target (expected $src)" >&2
+        fi
+        continue
+      fi
+
+      if [[ -e "$dest" ]]; then
+        echo "warning: $dest already exists; skipping link" >&2
+        continue
+      fi
+
+      ln -s "$src" "$dest"
+    done
+
+    if [[ -f .gitmodules ]] && grep -q 'path = ' .gitmodules; then
+      git submodule update --init --recursive --depth 1
+    fi
+
+    if command -v direnv >/dev/null 2>&1; then
+      direnv allow
+    fi
+
+    printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$marker"
+  fi
+fi
+
+# Run project-level hook if exists
+"$(dirname "$0")/run-local-hook" "$@"
