@@ -1,3 +1,4 @@
+tap "d12frosted/emacs-plus"
 tap "daviderestivo/emacs-head"
 tap "deb-sig/tap"
 tap "felixkratz/formulae"
@@ -60,7 +61,7 @@ brew "uv"
 brew "vim"
 brew "wget"
 brew "zoxide"
-brew "daviderestivo/emacs-head/emacs-head@31", args: ["with-cocoa", "with-modern-icon-elrumo2", "with-mps", "with-native-full-aot", "with-tree-sitter", "with-xwidgets"]
+brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
 brew "deb-sig/tap/double-entry-generator"
 cask "aldente"
 cask "arq"
