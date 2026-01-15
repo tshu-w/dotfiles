@@ -9,7 +9,8 @@ export LC_ALL=en_US.UTF-8
 : ${XDG_DATA_HOME:=~/.local/share}
 : ${XDG_LIB_HOME:=~/.local/lib}
 : ${XDG_STATE_HOME:=~/.local/state}
-export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_LIB_HOME XDG_STATE_HOME
+: ${XDG_BIN_HOME:=~/.local/bin}
+export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_LIB_HOME XDG_STATE_HOME XDG_BIN_HOME
 
 ZDOTDIR=$XDG_CONFIG_HOME/zsh
 
@@ -28,7 +29,7 @@ case $VENDOR in
         export PATH=$HOMEBREW_PREFIX/opt/$pkg/libexec/gnubin:$PATH
     done
 
-    export PATH=$HOME/.local/bin:$PATH:/Library/TeX/Distributions/Programs/texbin
+    export PATH=$XDG_BIN_HOME:$PATH:/Library/TeX/Distributions/Programs/texbin
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
     export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/Programs/texbin/man`
 
@@ -41,7 +42,7 @@ case $VENDOR in
     [ -d /home/linuxbrew/.linuxbrew ] && eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
     [ -d $XDG_DATA_HOME/linuxbrew ] && eval $($XDG_DATA_HOME/linuxbrew/bin/brew shellenv)
 
-    export PATH=$HOME/.local/bin:$PATH
+    export PATH=$XDG_BIN_HOME:$PATH
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
 
     export NPM_CONFIG_PREFIX=$HOME/.local
@@ -54,6 +55,8 @@ esac
 export BUNDLE_USER_CACHE=$XDG_CACHE_HOME/bundle
 export BUNDLE_USER_CONFIG=$XDG_CONFIG_HOME/bundle
 export BUNDLE_USER_PLUGIN=$XDG_DATA_HOME/bundle
+export CARGO_HOME=$XDG_DATA_HOME/cargo
+export CARGO_INSTALL_ROOT=$HOME/.local
 export CODEX_HOME=$XDG_CONFIG_HOME/codex
 export DOCKER_CONFIG=$XDG_CONFIG_HOME/docker
 export FLY_CONFIG_DIR=$XDG_DATA_HOME/fly
@@ -61,7 +64,7 @@ export GEMINI_CLI_SYSTEM_SETTINGS_PATH=$XDG_CONFIG_HOME/gemini/settings.json
 export GEM_HOME=$XDG_DATA_HOME/gem
 export GEM_SPEC_CACHE=$XDG_CACHE_HOME/gem
 export GNUPGHOME=$XDG_CONFIG_HOME/gnupg
-export GOBIN=$HOME/.local/bin
+export GOBIN=$XDG_BIN_HOME
 export GOMODCACHE=$XDG_CACHE_HOME/go/mod
 export GOPATH=$XDG_DATA_HOME/go
 export IPYTHONDIR=$XDG_CONFIG_HOME/ipython
