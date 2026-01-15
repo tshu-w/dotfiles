@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-# Initialize linked worktrees once.
-if [[ -f .git && ! -d .git ]]; then
+# Initialize linked worktrees once (skip submodules).
+# Submodules also have .git as file, but they have a superproject.
+if [[ -f .git && ! -d .git ]] && [[ -z "$(git rev-parse --show-superproject-working-tree 2>/dev/null)" ]]; then
   gitdir="$(git rev-parse --git-dir)"
   marker="$gitdir/worktree-initialized"
   if [[ ! -f "$marker" ]]; then
