@@ -1,5 +1,5 @@
 model = "gpt-5.2-codex"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 # full-auto mode
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
@@ -20,7 +20,9 @@ env_key = "AICODING_API_KEY"
 wire_api = "responses"
 
 [features]
-streamable_shell = true
-web_search_request = true
-unified_exec = true
+apply_patch_freeform = true
 shell_snapshot = true
+skills = true
+streamable_shell = true
+unified_exec = true
+web_search_request = true
