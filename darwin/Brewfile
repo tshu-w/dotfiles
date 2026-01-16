@@ -9,6 +9,7 @@ tap "zurawiki/brews"
 brew "node"
 brew "bitwarden-cli"
 brew "blueutil"
+brew "cliproxyapi", restart_service: :changed
 brew "coreutils"
 brew "difftastic"
 brew "direnv"
