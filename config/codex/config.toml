@@ -3,12 +3,13 @@ model_reasoning_effort = "high"
 # full-auto mode
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
+notify = ["codex-sync", "hook", "agent-turn-complete"]
 
 [sandbox_workspace_write]
 network_access = true
 
 [model_providers.oneapi]
-name = "lmrouter"
+name = "oneapi"
 base_url = "https://one-api.ponte.top/v1"
 env_key = "ONEAPI_API_KEY"
 wire_api = "responses"
@@ -20,9 +21,9 @@ env_key = "AICODING_API_KEY"
 wire_api = "responses"
 
 [features]
-apply_patch_freeform = true
 shell_snapshot = true
 skills = true
 streamable_shell = true
 unified_exec = true
 web_search_request = true
+steer = true
