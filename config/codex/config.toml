@@ -25,5 +25,6 @@ shell_snapshot = true
 skills = true
 streamable_shell = true
 unified_exec = true
-web_search_request = true
+# renamed from web_search_request
+web_search = true
 steer = true
