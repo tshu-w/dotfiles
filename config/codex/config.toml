@@ -1,5 +1,6 @@
 model = "gpt-5.2-codex"
 model_reasoning_effort = "high"
+web_search = "live"
 # full-auto mode
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
@@ -25,5 +26,4 @@ shell_snapshot = true
 skills = true
 streamable_shell = true
 unified_exec = true
-web_search = true
 steer = true
