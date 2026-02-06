@@ -22,6 +22,7 @@ env_key = "AICODING_API_KEY"
 wire_api = "responses"
 
 [features]
+collaboration_modes = true
 shell_snapshot = true
 skills = true
 streamable_shell = true
