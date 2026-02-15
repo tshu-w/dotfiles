@@ -1,0 +1,7 @@
+context.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+files.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+loop.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+review.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+session-breakdown.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+uv.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
+whimsical.ts	mitsuhiko/agent-stuff	https://github.com/mitsuhiko/agent-stuff/tree/main/pi-extensions
