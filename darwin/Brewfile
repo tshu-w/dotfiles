@@ -68,6 +68,7 @@ brew "zoxide"
 brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
 brew "deb-sig/tap/double-entry-generator"
 brew "specstoryai/tap/specstory"
+brew "tshu-w/malt/pi-mono"
 cask "aldente"
 cask "arq"
 cask "bartender"

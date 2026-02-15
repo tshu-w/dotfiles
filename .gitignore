@@ -22,6 +22,10 @@ __pycache__/
 **/codex/*
 !**/codex/config.toml
 
+### Pi ###
+**/pi/auth.json
+**/pi/sessions/**
+
 ### Jupyter ###
 **/jupyter/lab
 **/jupyter/migrated
