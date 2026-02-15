@@ -1,7 +1,8 @@
 {
   "general": {
     "previewFeatures": true,
-    "disableUpdateNag": true
+    "disableUpdateNag": true,
+    "enableAutoUpdateNotification": false
   },
   "context": {
     "fileName": "AGENTS.md"
