@@ -25,6 +25,8 @@ __pycache__/
 ### Pi ###
 **/pi/auth.json
 **/pi/sessions/**
+**/pi-friday/auth.json
+**/pi-friday/friday.env
 
 ### Jupyter ###
 **/jupyter/lab
