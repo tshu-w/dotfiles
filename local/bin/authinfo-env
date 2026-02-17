@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Extract password from ~/.authinfo.gpg
+# Usage: authinfo-env <machine> [login]
+
+machine="$1"
+login="$2"
+
+if [[ -z "$machine" ]]; then
+    echo "Usage: authinfo-env <machine> [login]" >&2
+    exit 1
+fi
+
+# Use gpg to decrypt and awk to find the password
+# We look for the line starting with "machine <machine>"
+# If login is provided, we also match "login <login>"
+# We then find the word "password" and return the next word.
+
+gpg --quiet --decrypt ~/.authinfo.gpg | awk -v m="$machine" -v l="$login" '
+{
+    is_machine = 0;
+    for (i=1; i<NF; i++) {
+        if ($i == "machine" && $(i+1) == m) {
+            is_machine = 1;
+            break;
+        }
+    }
+
+    if (is_machine) {
+        if (l != "") {
+            has_login = 0;
+            for (i=1; i<NF; i++) {
+                if ($i == "login" && $(i+1) == l) {
+                    has_login = 1;
+                    break;
+                }
+            }
+            if (!has_login) next;
+        }
+
+        for (i=1; i<NF; i++) {
+            if ($i == "password") {
+                print $(i+1);
+                exit;
+            }
+        }
+    }
+}'

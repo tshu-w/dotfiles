@@ -26,9 +26,30 @@ source $ZNAP_HOME/znap.zsh
 zstyle ':znap:*:*' git-maintenance off
 unset ZNAP_HOME
 
-### Secrets
-if [[ -f $ZDOTDIR/secrets.sh.gpg ]]; then
-    source <(gpg -q --decrypt $ZDOTDIR/secrets.sh.gpg 2>/dev/null) 2>/dev/null
+### Secrets - Decrypt once, read from cache
+if [[ -f ~/.authinfo.gpg ]]; then
+    # Prefer XDG_RUNTIME_DIR (tmpfs, more secure), fallback to XDG_CACHE_HOME
+    _AUTHINFO_DIR="${XDG_RUNTIME_DIR:-$XDG_CACHE_HOME/authinfo}"
+    _AUTHINFO_CACHE="$_AUTHINFO_DIR/authinfo.env"
+
+    # Refresh cache if missing or older than 1 day
+    if [[ ! -f "$_AUTHINFO_CACHE" || -n $(find "$_AUTHINFO_CACHE" -mtime +1 2>/dev/null) ]]; then
+        mkdir -p -m 700 "$_AUTHINFO_DIR"
+        gpg -qd ~/.authinfo.gpg > "$_AUTHINFO_CACHE.$$" 2>/dev/null && \
+            chmod 600 "$_AUTHINFO_CACHE.$$" && \
+            mv "$_AUTHINFO_CACHE.$$" "$_AUTHINFO_CACHE"
+    fi
+
+    if [[ -f "$_AUTHINFO_CACHE" ]]; then
+        export OPENROUTER_API_KEY=$(awk '/^machine openrouter\.ai/ {print $NF}' "$_AUTHINFO_CACHE")
+        export DEEPSEEK_API_KEY=$(awk '/^machine api\.deepseek\.com/ {print $NF}' "$_AUTHINFO_CACHE")
+        export KIMI_API_KEY=$(awk '/^machine api\.moonshot\.cn/ {print $NF}' "$_AUTHINFO_CACHE")
+        export ZAI_API_KEY=$(awk '/^machine open\.bigmodel\.cn/ {print $NF}' "$_AUTHINFO_CACHE")
+        export AICODING_API_KEY=$(awk '/^machine aicoding\.2233\.ai/ {print $NF}' "$_AUTHINFO_CACHE")
+        export GOOGLE_CLOUD_PROJECT=$(awk '/^machine cloud\.google\.com.*login wangtianshu/ {print $NF}' "$_AUTHINFO_CACHE")
+        export ONEAPI_API_KEY=$(awk '/^machine one-api\.ponte\.top.*login envkey/ {print $NF}' "$_AUTHINFO_CACHE")
+    fi
+    unset _AUTHINFO_CACHE _AUTHINFO_DIR
 fi
 
 ### Plugins
@@ -219,6 +240,63 @@ sysup () {
   echo
 
   echo "${C_GREEN}✅ All update tasks are complete.${C_RESET}"
+}
+
+claude () {
+  local profile
+  local opts=()
+
+  if [[ "$1" =~ ^(openrouter|deepseek|glm|kimi|aicoding)$ ]]; then
+    profile="$1"
+    shift
+
+    case "$profile" in
+      openrouter)
+        opts=(
+          "ANTHROPIC_BASE_URL=https://lmrouter.ponte.top/anthropic"
+          "ANTHROPIC_API_KEY=$OPENROUTER_API_KEY"
+          "ANTHROPIC_MODEL=claude-sonnet-4.5"
+          "ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4.5"
+        )
+        ;;
+      deepseek)
+        opts=(
+          "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
+          "ANTHROPIC_API_KEY=$DEEPSEEK_API_KEY"
+          "ANTHROPIC_MODEL=deepseek-chat"
+          "ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat"
+        )
+        ;;
+      glm)
+        opts=(
+          "ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic"
+          "ANTHROPIC_API_KEY=$ZAI_API_KEY"
+          "ANTHROPIC_MODEL="
+          "ANTHROPIC_SMALL_FAST_MODEL="
+        )
+        ;;
+      kimi)
+        opts=(
+          "ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic"
+          "ANTHROPIC_API_KEY=$KIMI_API_KEY"
+          "ANTHROPIC_MODEL="
+          "ANTHROPIC_SMALL_FAST_MODEL="
+        )
+        ;;
+      aicoding)
+        opts=(
+          "ANTHROPIC_BASE_URL=https://aicoding.2233.ai"
+          "ANTHROPIC_AUTH_TOKEN=$AICODING_API_KEY"
+        )
+        ;;
+    esac
+
+    if [[ ${#opts[@]} -gt 0 ]]; then
+      export "${opts[@]}"
+    fi
+  fi
+
+  command claude "$@"
 }
 
 # lazy load mamba
