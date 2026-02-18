@@ -3,5 +3,59 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.3-codex",
   "defaultThinkingLevel": "high",
-  "theme": "dark"
+  "extensions": [
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/dirty-repo-guard.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/handoff.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/interactive-shell.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/mac-system-theme.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/notify.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/permission-gate.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/preset.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/plan-mode",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/protected-paths.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/question.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/questionnaire.ts",
+    "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/ssh.ts"
+  ],
+  "packages": [
+    "git:github.com/badlogic/pi-mono",
+    {
+      "source": "git:github.com/mitsuhiko/agent-stuff",
+      "extensions": [
+        "pi-extensions/context.ts",
+        "pi-extensions/files.ts",
+        "pi-extensions/go-to-bed.ts",
+        "pi-extensions/loop.ts",
+        "pi-extensions/review.ts",
+        "pi-extensions/session-breakdown.ts",
+        "pi-extensions/whimsical.ts"
+      ],
+      "skills": [
+        "skills/commit/**",
+        "skills/frontend-design/**",
+        "skills/github/**",
+        "skills/mermaid/**",
+        "skills/summarize/**",
+        "skills/tmux/**",
+        "skills/update-changelog/**",
+        "skills/uv/**",
+        "skills/web-browser/**"
+      ],
+      "prompts": [],
+      "themes": []
+    },
+    {
+      "source": "git:github.com/anthropics/skills",
+      "extensions": [],
+      "skills": [
+        "skills/docx/**",
+        "skills/pdf/**",
+        "skills/pptx/**",
+        "skills/xlsx/**"
+      ],
+      "prompts": [],
+      "themes": []
+    },
+    "git:github.com/skyfallsin/pi-mem"
+  ]
 }
