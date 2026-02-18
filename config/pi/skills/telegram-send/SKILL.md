@@ -10,6 +10,7 @@ Send content to Telegram.
 ## Preconditions
 - `TELEGRAM_BOT_TOKEN` must be set.
 - Prefer `TELEGRAM_DEFAULT_CHAT_ID` for inbound conversations.
+- Telegram Markdown (Legacy) differs from standard: use `*text*` for bold (not `**`), `_text_` for italic (not `*`), and it does not support tables (use fenced code blocks instead).
 
 ## Option A: `telegram-send` binary (preferred when available)
 
@@ -65,7 +66,7 @@ chat_id = ${TELEGRAM_DEFAULT_CHAT_ID}
 # reply_to_message_id = ${TELEGRAM_REPLY_TO_MESSAGE_ID}
 EOF
 
-printf '%s' "YOUR_MESSAGE" | telegram-send --config "$CONF" --stdin --disable-web-page-preview
+printf '%s' "YOUR_MESSAGE" | telegram-send --config "$CONF" --stdin --format markdown --disable-web-page-preview
 rm -f "$CONF"
 ```
 
@@ -76,7 +77,7 @@ rm -f "$CONF"
 MSG="YOUR_MESSAGE"
 curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H 'Content-Type: application/json' \
-  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"disable_web_page_preview\":true}"
+  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"parse_mode\":\"Markdown\",\"disable_web_page_preview\":true}"
 ```
 
 ### Reply / quote
@@ -85,7 +86,7 @@ MSG="YOUR_MESSAGE"
 REPLY_TO="${TELEGRAM_REPLY_TO_MESSAGE_ID:-null}"
 curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H 'Content-Type: application/json' \
-  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"disable_web_page_preview\":true,\"reply_to_message_id\":${REPLY_TO}}"
+  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"parse_mode\":\"Markdown\",\"disable_web_page_preview\":true,\"reply_to_message_id\":${REPLY_TO}}"
 ```
 
 ## Common Bot API snippets (useful in practice)
