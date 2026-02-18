@@ -245,7 +245,20 @@ sysup () {
 claude () {
   local profile
   local opts=()
+  local cleanup_needed=0
 
+  # Setup XDG-compatible symlinks
+  if [[ -d "$XDG_DATA_HOME/claude" ]]; then
+    # Create symlinks only if they don't exist
+    if [[ ! -L ~/.claude ]]; then
+      ln -sf "$XDG_DATA_HOME/claude" ~/.claude && cleanup_needed=1
+    fi
+    if [[ ! -L ~/.claude.json ]]; then
+      ln -sf "$XDG_DATA_HOME/claude/.claude.json" ~/.claude.json 2>/dev/null && cleanup_needed=1
+    fi
+  fi
+
+  # Profile switching
   if [[ "$1" =~ ^(openrouter|deepseek|glm|kimi|aicoding)$ ]]; then
     profile="$1"
     shift
@@ -297,6 +310,13 @@ claude () {
   fi
 
   command claude "$@"
+
+  # Cleanup symlinks if we created them
+  if [[ $cleanup_needed -eq 1 ]]; then
+    [[ -L ~/.claude ]] && unlink ~/.claude 2>/dev/null
+    [[ -L ~/.claude.json ]] && unlink ~/.claude.json 2>/dev/null
+    rm -f ~/.claude.json* 2>/dev/null
+  fi
 }
 
 # lazy load mamba
