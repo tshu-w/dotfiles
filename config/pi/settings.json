@@ -4,6 +4,7 @@
   "defaultModel": "gpt-5.3-codex",
   "defaultThinkingLevel": "high",
   "extensions": [
+    "extensions/subagent",
     "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/dirty-repo-guard.ts",
     "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/handoff.ts",
     "git/github.com/badlogic/pi-mono/packages/coding-agent/examples/extensions/interactive-shell.ts",
