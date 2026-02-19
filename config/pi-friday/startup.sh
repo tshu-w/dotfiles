@@ -42,7 +42,7 @@ if [[ -f "$FRIDAY_PROJECT_DIR/friday.env" ]]; then
   source "$FRIDAY_PROJECT_DIR/friday.env"
 fi
 
-mkdir -p "$FRIDAY_DATA_HOME/sessions" "$FRIDAY_DATA_HOME/logs" "$FRIDAY_DATA_HOME/runtime"
+mkdir -p "$FRIDAY_DATA_HOME/logs" "$FRIDAY_DATA_HOME/runtime"
 cd "$FRIDAY_PROJECT_DIR"
 
 STARTUP_MAIN="$FRIDAY_PROJECT_DIR/startup.mjs"

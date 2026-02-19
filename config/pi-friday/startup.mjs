@@ -1,7 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { execSync, spawn } from "node:child_process"
-import { randomBytes } from "node:crypto"
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -39,79 +38,28 @@ const STOP_MODE_SHUTDOWN = "shutdown"
 mkdirSync(sessionsDir, { recursive: true })
 mkdirSync(runtimeDir, { recursive: true })
 
-function formatSessionTimestamp(date) {
-    const pad = (value) => String(value).padStart(2, "0")
-    const yyyy = date.getFullYear()
-    const mm = pad(date.getMonth() + 1)
-    const dd = pad(date.getDate())
-    const hh = pad(date.getHours())
-    const min = pad(date.getMinutes())
-    return `${yyyy}${mm}${dd}-${hh}${min}`
-}
-
-function generateSessionId(date = new Date()) {
-    return `${formatSessionTimestamp(date)}_${randomBytes(3).toString("hex")}`
-}
-
 function getChatSessionDir(chatId) {
-    return path.join(sessionsDir, String(chatId))
+    const chatDir = path.join(sessionsDir, String(chatId))
+    mkdirSync(chatDir, { recursive: true })
+    return chatDir
 }
 
-function getCurrentSessionLink(chatDir) {
-    return path.join(chatDir, "current")
-}
-
-function readCurrentSession(chatDir) {
-    const linkPath = getCurrentSessionLink(chatDir)
-    // NOTE: fs.existsSync() follows symlinks; it returns false for a dangling link.
-    // We still want to treat a dangling `current` as present (pi will create the session file).
+function getLatestSessionFile(chatDir) {
     try {
-        const target = readlinkSync(linkPath)
-        return path.isAbsolute(target) ? target : path.resolve(chatDir, target)
+        const files = readdirSync(chatDir)
+            .filter((name) => name.endsWith(".jsonl"))
+            .map((name) => {
+                const file = path.join(chatDir, name)
+                return { file, name, mtimeMs: statSync(file).mtimeMs }
+            })
+            .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        return files[0] || null
     } catch (err) {
-        // ENOENT: no link yet
         if (err?.code !== "ENOENT") {
-            console.error("[friday] failed reading current session link:", err)
+            console.error("[friday] failed listing sessions:", err)
         }
         return null
     }
-}
-
-function setCurrentSession(chatDir, sessionFile) {
-    const linkPath = getCurrentSessionLink(chatDir)
-    // unlinkSync() also works for dangling symlinks; existsSync() would return false.
-    try {
-        unlinkSync(linkPath)
-    } catch (err) {
-        if (err?.code !== "ENOENT") {
-            console.error("[friday] failed removing current session link:", err)
-        }
-    }
-    try {
-        symlinkSync(sessionFile, linkPath)
-    } catch (err) {
-        console.error("[friday] failed creating current session link:", err)
-    }
-}
-
-function createNewSession(chatDir) {
-    mkdirSync(chatDir, { recursive: true })
-    const now = new Date()
-    const sessionId = generateSessionId(now)
-    const sessionFile = path.join(chatDir, `${sessionId}.jsonl`)
-    setCurrentSession(chatDir, sessionFile)
-    return { sessionId, sessionFile }
-}
-
-function resolveChatSession(chatId) {
-    const chatDir = getChatSessionDir(chatId)
-    mkdirSync(chatDir, { recursive: true })
-
-    const current = readCurrentSession(chatDir)
-    if (current) return { chatDir, sessionFile: current }
-
-    const created = createNewSession(chatDir)
-    return { chatDir, sessionFile: created.sessionFile }
 }
 
 function parseUserIdSet(...envNames) {
@@ -136,6 +84,7 @@ if (userIds.size === 0) {
 // Track running processes per chat to allow /stop
 const runningTasks = new Map() // chatId -> { child, stopHeartbeat, stopped }
 const chatQueues = new Map()   // chatId -> Promise (tail of FIFO queue)
+const pendingNewSessions = new Set() // chatId -> next message should start a new session
 
 async function withChatQueue(chatId, fn) {
     let releaseTurn
@@ -473,15 +422,16 @@ function createProgressReporter(chatId) {
     }
 }
 
-function runPi(prompt, sessionFile, chatId, replyToMessageId, onEvent, { provider, model } = {}) {
+function runPi(prompt, sessionDir, continueSession, chatId, replyToMessageId, onEvent, { provider, model } = {}) {
     return new Promise((resolve) => {
         const args = [
             "-p",
             "--mode",
             "json",
-            "--session",
-            sessionFile,
+            "--session-dir",
+            sessionDir,
         ]
+        if (continueSession) args.push("--continue")
         if (provider) args.push("--provider", provider)
         if (model) args.push("--model", model)
         args.push(prompt)
@@ -593,7 +543,7 @@ function loadProjectSettings() {
     }
 }
 
-async function runPiWithFallback(prompt, sessionFile, chatId, replyToMessageId, onEvent, { onProviderSwitch } = {}) {
+async function runPiWithFallback(prompt, sessionDir, continueSession, chatId, replyToMessageId, onEvent, { onProviderSwitch } = {}) {
     let lastError = null
     const triedProviders = []
 
@@ -624,7 +574,8 @@ async function runPiWithFallback(prompt, sessionFile, chatId, replyToMessageId, 
         console.log(`[friday] Trying ${provider}/${model}...`)
         onProviderSwitch?.(provider, model)
 
-        const result = await runPi(prompt, sessionFile, chatId, replyToMessageId, onEvent, { provider, model })
+        const shouldContinue = i === 0 ? continueSession : true
+        const result = await runPi(prompt, sessionDir, shouldContinue, chatId, replyToMessageId, onEvent, { provider, model })
 
         if (result.ok) {
             if (i > 0) {
@@ -671,12 +622,15 @@ async function handleCommand(chatId, text, message) {
             )
             return true
         case "/status": {
-            const { sessionFile } = resolveChatSession(chatId)
+            const chatDir = getChatSessionDir(chatId)
+            const latest = getLatestSessionFile(chatDir)
             const isRunning = !!runningTasks.get(chatId)?.child
             const stats = [
                 "📊 *运行状态*",
                 `状态: ${isRunning ? "🔴 正在思考/执行工具" : "🟢 空闲"}`,
-                `当前会话: \`${path.basename(sessionFile)}\``,
+                `会话目录: \`${chatDir}\``,
+                `最近会话: \`${latest ? latest.name : "(none)"}\``,
+                `下条消息: ${pendingNewSessions.has(chatId) ? "🆕 新会话" : "↪️ 续接最近会话"}`,
                 `内存占用: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)}MB`,
                 `当前 Offset: ${loadOffset()}`
             ]
@@ -684,9 +638,8 @@ async function handleCommand(chatId, text, message) {
             return true
         }
         case "/new": {
-            const chatDir = getChatSessionDir(chatId)
-            const { sessionId } = createNewSession(chatDir)
-            await sendText(chatId, `🆕 已开启新会话: \`${sessionId}\``, message.message_id)
+            pendingNewSessions.add(chatId)
+            await sendText(chatId, "🆕 已设置：下一条消息将开启新会话。", message.message_id)
             return true
         }
         case "/stop": {
@@ -756,7 +709,9 @@ async function handleUpdate(update) {
     }
 
     await withChatQueue(chatId, async () => {
-        const { sessionFile } = resolveChatSession(chatId)
+        const chatDir = getChatSessionDir(chatId)
+        const continueSession = !pendingNewSessions.has(chatId)
+        pendingNewSessions.delete(chatId)
 
         const progressState = {
             phase: "思考中",
@@ -778,7 +733,7 @@ async function handleUpdate(update) {
 
         const prompt = buildPrompt(message, text)
         try {
-            const result = await runPiWithFallback(prompt, sessionFile, chatId, message.message_id, makeEventHandler(progressReporter, progressState), {
+            const result = await runPiWithFallback(prompt, chatDir, continueSession, chatId, message.message_id, makeEventHandler(progressReporter, progressState), {
                 onProviderSwitch: (_provider, model) => {
                     progressState.modelLabel = model
                 },
