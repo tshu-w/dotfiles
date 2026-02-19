@@ -30,6 +30,12 @@ const PROVIDER_FALLBACK = [
     { provider: "openrouter", model: "auto" },
 ]
 
+const FORCE_KILL_DELAY_MS = 3000
+const PROGRESS_MESSAGE_DELAY_MS = 1500
+
+const STOP_MODE_USER = "user"
+const STOP_MODE_SHUTDOWN = "shutdown"
+
 mkdirSync(sessionsDir, { recursive: true })
 mkdirSync(runtimeDir, { recursive: true })
 
@@ -128,8 +134,23 @@ if (userIds.size === 0) {
 }
 
 // Track running processes per chat to allow /stop
-const runningTasks = new Map() // chatId -> { child, progressReporter, stopHeartbeat }
+const runningTasks = new Map() // chatId -> { child, stopHeartbeat, stopped }
 const chatQueues = new Map()   // chatId -> Promise (tail of FIFO queue)
+
+async function withChatQueue(chatId, fn) {
+    let releaseTurn
+    const myTurn = new Promise((resolve) => { releaseTurn = resolve })
+    const prevTurn = chatQueues.get(chatId)
+    chatQueues.set(chatId, myTurn)
+    if (prevTurn) await prevTurn
+
+    try {
+        return await fn()
+    } finally {
+        releaseTurn()
+        if (chatQueues.get(chatId) === myTurn) chatQueues.delete(chatId)
+    }
+}
 
 function loadOffset() {
     if (!existsSync(offsetFile)) return 0
@@ -211,6 +232,17 @@ async function sendText(chatId, text, replyToMessageId) {
     }
 }
 
+async function notifyOnlineOnStartup() {
+    const chatId = String(process.env.TELEGRAM_DEFAULT_CHAT_ID || "").trim()
+    if (!chatId) return
+
+    try {
+        await sendText(chatId, "🟢 Friday 已重新上线")
+    } catch (err) {
+        console.error("[friday] failed sending startup online message:", err)
+    }
+}
+
 async function sendTyping(chatId) {
     await tgApiRetry("sendChatAction", { chat_id: chatId, action: "typing" }, { attempts: 2 })
 }
@@ -222,6 +254,62 @@ function startTypingHeartbeat(chatId, intervalMs = 4500) {
         })
     }, intervalMs)
     return () => clearInterval(timer)
+}
+
+function stopTask(task, mode = STOP_MODE_USER) {
+    if (!task) return false
+
+    task.stopped = true
+    if (task.stopHeartbeat) {
+        try { task.stopHeartbeat() } catch {}
+        task.stopHeartbeat = null
+    }
+
+    const childRef = task.child
+    if (!childRef) return true
+
+    try { childRef.kill("SIGTERM") } catch {}
+
+    if (mode === STOP_MODE_USER) {
+        setTimeout(() => {
+            try { childRef.kill("SIGKILL") } catch {}
+        }, FORCE_KILL_DELAY_MS).unref()
+    }
+
+    return true
+}
+
+function getRunState(result, stopRequested) {
+    if (result.stopped) return "stopped"
+    if (stopRequested && result.ok) return "stop-no-effect"
+    if (stopRequested) return "stop-failed"
+    if (!result.ok) return "failed"
+    return "ok"
+}
+
+async function finalizeRun(chatId, replyToMessageId, result, stopRequested) {
+    switch (getRunState(result, stopRequested)) {
+        case "stopped":
+            console.log("[friday] task was stopped by user")
+            await sendText(chatId, "🛑 当前任务已中断。", replyToMessageId)
+            return
+        case "stop-no-effect":
+            await sendText(chatId, "❌ 中断未生效：任务已执行完成。", replyToMessageId)
+            return
+        case "stop-failed":
+            console.error("[friday] pi call failed during stop:", result.error)
+            await sendText(chatId, `❌ 中断失败：${truncateText(result.error, 160)}`, replyToMessageId)
+            return
+        case "failed":
+            console.error("[friday] pi call failed:", result.error)
+            await sendText(chatId, `🔴 处理失败：${truncateText(result.error, 300)}`, replyToMessageId)
+            return
+        case "ok":
+            if (result.output) console.log("[friday] pi stdout:", result.output)
+            return
+        default:
+            return
+    }
 }
 
 function cleanPiOutput(raw) {
@@ -336,7 +424,7 @@ function createProgressReporter(chatId) {
         } finally {
             resolveCreatedOnce()
         }
-    }, 1500)
+    }, PROGRESS_MESSAGE_DELAY_MS)
 
     function queueEdit(nextText) {
         desiredText = nextText
@@ -602,20 +690,7 @@ async function handleCommand(chatId, text, message) {
             return true
         }
         case "/stop": {
-            const task = runningTasks.get(chatId)
-            if (task) {
-                // Mark task as stopped so fallback chain won't try next provider
-                task.stopped = true
-                if (task.child) {
-                    task.child.kill("SIGTERM")
-                    // Escalate to SIGKILL if still alive after 3 seconds
-                    const childRef = task.child
-                    setTimeout(() => {
-                        try { childRef.kill("SIGKILL") } catch {}
-                    }, 3000)
-                }
-                await sendText(chatId, "🛑 正在中断任务…", message.message_id)
-            } else {
+            if (!stopTask(runningTasks.get(chatId))) {
                 await sendText(chatId, "ℹ️ 当前没有正在运行的任务。", message.message_id)
             }
             return true
@@ -649,11 +724,10 @@ async function handleCommand(chatId, text, message) {
             return true
         }
         case "/restart":
-            await sendText(chatId, "🔄 正在重启 Friday 服务...", message.message_id)
             setTimeout(() => {
                 const uid = process.getuid ? process.getuid() : 501
-                spawn("launchctl", ["kickstart", "-k", `gui/${uid}/dev.friday.bot`], { detached: true, stdio: 'ignore' }).unref()
-            }, 500)
+                spawn("launchctl", ["kickstart", "-k", `gui/${uid}/dev.friday.bot`], { detached: true, stdio: "ignore" }).unref()
+            }, 100)
             return true
         default:
             return false
@@ -681,58 +755,45 @@ async function handleUpdate(update) {
         if (handled) return
     }
 
-    // Queue behind any pending task for this chat
-    let releaseTurn
-    const myTurn = new Promise((r) => { releaseTurn = r })
-    const prevTurn = chatQueues.get(chatId)
-    chatQueues.set(chatId, myTurn)
-    if (prevTurn) await prevTurn
+    await withChatQueue(chatId, async () => {
+        const { sessionFile } = resolveChatSession(chatId)
 
-    const { sessionFile } = resolveChatSession(chatId)
-
-    const progressState = {
-        phase: "思考中",
-        toolCount: 0,
-        lastTool: "",
-        lastDetail: "",
-        modelLabel: "",
-    }
-
-    const progressReporter = createProgressReporter(chatId)
-    const hbStop = startTypingHeartbeat(chatId)
-    await sendTyping(chatId).catch(() => {})
-
-    // Register task
-    runningTasks.set(chatId, { child: null, reporter: progressReporter, stopHeartbeat: hbStop, stopped: false })
-
-    const prompt = buildPrompt(message, text)
-
-    try {
-        const result = await runPiWithFallback(prompt, sessionFile, chatId, message.message_id, makeEventHandler(progressReporter, progressState), {
-            onProviderSwitch: (provider, model) => {
-                progressState.modelLabel = model
-            },
-        })
-
-        hbStop()
-        await progressReporter.finish()
-
-        if (!result.ok) {
-            console.error("[friday] pi call failed:", result.error)
-            if (result.stopped) {
-                // User-initiated /stop — silently clean up
-                console.log("[friday] task was stopped by user")
-            } else {
-                await sendText(chatId, `🔴 处理失败：${truncateText(result.error, 300)}`, message.message_id)
-            }
-        } else if (result.output) {
-            console.log("[friday] pi stdout:", result.output)
+        const progressState = {
+            phase: "思考中",
+            toolCount: 0,
+            lastTool: "",
+            lastDetail: "",
+            modelLabel: "",
         }
-    } finally {
-        runningTasks.delete(chatId)
-        releaseTurn()
-        if (chatQueues.get(chatId) === myTurn) chatQueues.delete(chatId)
-    }
+
+        const progressReporter = createProgressReporter(chatId)
+        const task = {
+            child: null,
+            stopHeartbeat: startTypingHeartbeat(chatId),
+            stopped: false,
+        }
+
+        await sendTyping(chatId).catch(() => {})
+        runningTasks.set(chatId, task)
+
+        const prompt = buildPrompt(message, text)
+        try {
+            const result = await runPiWithFallback(prompt, sessionFile, chatId, message.message_id, makeEventHandler(progressReporter, progressState), {
+                onProviderSwitch: (_provider, model) => {
+                    progressState.modelLabel = model
+                },
+            })
+
+            if (task.stopHeartbeat) {
+                try { task.stopHeartbeat() } catch {}
+                task.stopHeartbeat = null
+            }
+            await progressReporter.finish()
+            await finalizeRun(chatId, message.message_id, result, task.stopped)
+        } finally {
+            runningTasks.delete(chatId)
+        }
+    })
 }
 
 function makeEventHandler(pr, ps) {
@@ -780,25 +841,19 @@ let stop = false
 
 function shutdownRunningTasks() {
     if (runningTasks.size === 0) return
+
     console.log(`[friday] shutting down ${runningTasks.size} running task(s)...`)
-    for (const [chatId, task] of runningTasks) {
-        task.stopped = true
-        if (task.child) {
-            try { task.child.kill("SIGTERM") } catch {}
-        }
-        if (task.stopHeartbeat) {
-            try { task.stopHeartbeat() } catch {}
-        }
+    for (const task of runningTasks.values()) {
+        stopTask(task, STOP_MODE_SHUTDOWN)
     }
-    // Escalate to SIGKILL after 3 seconds, then exit
+
     setTimeout(() => {
-        for (const [chatId, task] of runningTasks) {
-            if (task.child) {
-                try { task.child.kill("SIGKILL") } catch {}
-            }
+        for (const task of runningTasks.values()) {
+            if (!task.child) continue
+            try { task.child.kill("SIGKILL") } catch {}
         }
         process.exit(1)
-    }, 3000).unref()
+    }, FORCE_KILL_DELAY_MS).unref()
 }
 
 process.on("SIGINT", () => {
@@ -811,6 +866,7 @@ process.on("SIGTERM", () => {
 })
 
 let offset = loadOffset()
+await notifyOnlineOnStartup()
 console.log(`[friday] startup loop online, offset=${offset}`)
 
 while (!stop) {
