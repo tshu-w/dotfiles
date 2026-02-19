@@ -41,7 +41,9 @@ pi-friday/
         └── session/        # session symlink management
 ```
 
-Runtime data lives in `~/.local/share/friday/` (sessions, logs, offset).
+Runtime data:
+- Friday runtime/logs: `~/.local/share/friday/`
+- Telegram sessions: `~/.local/state/pi/sessions/friday/telegram/`
 
 ## Commands
 

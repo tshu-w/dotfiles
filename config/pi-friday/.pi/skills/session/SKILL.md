@@ -10,7 +10,7 @@ Use this skill when you need to **inspect**, **rotate**, or **set** the current 
 ## Session layout
 
 ```
-$FRIDAY_DATA_HOME/sessions/{chat_id}/
+$XDG_STATE_HOME/pi/sessions/friday/telegram/{chat_id}/
   current -> YYYYMMDD-HHMM_<shortid>.jsonl
   YYYYMMDD-HHMM_<shortid>.jsonl
 ```
@@ -31,14 +31,14 @@ Use `TELEGRAM_DEFAULT_CHAT_ID` (exported by Friday) as `{chat_id}`.
 ## Read current session
 
 ```bash
-BASE="${FRIDAY_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/friday}/sessions/${TELEGRAM_DEFAULT_CHAT_ID}"
+BASE="${XDG_STATE_HOME:-$HOME/.local/state}/pi/sessions/friday/telegram/${TELEGRAM_DEFAULT_CHAT_ID}"
 readlink "$BASE/current"
 ```
 
 ## Rotate to a new session
 
 ```bash
-BASE="${FRIDAY_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/friday}/sessions/${TELEGRAM_DEFAULT_CHAT_ID}"
+BASE="${XDG_STATE_HOME:-$HOME/.local/state}/pi/sessions/friday/telegram/${TELEGRAM_DEFAULT_CHAT_ID}"
 STAMP="$(date +%Y%m%d-%H%M)"
 RAND="$(openssl rand -hex 3)"
 TARGET="$BASE/${STAMP}_${RAND}.jsonl"
@@ -52,6 +52,6 @@ Notes:
 ## Set current to an existing session
 
 ```bash
-BASE="${FRIDAY_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/friday}/sessions/${TELEGRAM_DEFAULT_CHAT_ID}"
+BASE="${XDG_STATE_HOME:-$HOME/.local/state}/pi/sessions/friday/telegram/${TELEGRAM_DEFAULT_CHAT_ID}"
 ln -sf "/abs/path/to/existing.jsonl" "$BASE/current"
 ```

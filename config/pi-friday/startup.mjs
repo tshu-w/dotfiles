@@ -8,10 +8,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const home = process.env.HOME || ""
 const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
 const xdgData = process.env.XDG_DATA_HOME || path.join(home, ".local", "share")
+const xdgState = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 
 const projectDir = process.env.FRIDAY_PROJECT_DIR || path.join(xdgConfig, "pi-friday")
 const dataDir = process.env.FRIDAY_DATA_HOME || path.join(xdgData, "friday")
-const sessionsDir = path.join(dataDir, "sessions")
+const sessionsDir = path.join(xdgState, "pi", "sessions", "friday", "telegram")
 const runtimeDir = path.join(dataDir, "runtime")
 const offsetFile = path.join(runtimeDir, "tg.offset")
 
