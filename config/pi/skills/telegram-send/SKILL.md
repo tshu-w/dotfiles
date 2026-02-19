@@ -26,7 +26,9 @@ telegram-send "hello"
 
 ### Send from stdin
 ```bash
-printf '%s' "YOUR_MESSAGE" | telegram-send --stdin --disable-web-page-preview
+cat <<'MSG' | telegram-send --stdin --disable-web-page-preview
+YOUR_MESSAGE
+MSG
 ```
 
 ### Silent send
@@ -66,7 +68,9 @@ chat_id = ${TELEGRAM_DEFAULT_CHAT_ID}
 # reply_to_message_id = ${TELEGRAM_REPLY_TO_MESSAGE_ID}
 EOF
 
-printf '%s' "YOUR_MESSAGE" | telegram-send --config "$CONF" --stdin --format markdown --disable-web-page-preview
+cat <<'MSG' | telegram-send --config "$CONF" --stdin --format markdown --disable-web-page-preview
+YOUR_MESSAGE
+MSG
 rm -f "$CONF"
 ```
 
