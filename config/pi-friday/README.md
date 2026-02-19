@@ -38,7 +38,6 @@ pi-friday/
 └── .pi/
     ├── settings.json       # default provider/model for Friday
     └── skills/
-        └── session/        # session symlink management
 ```
 
 Runtime data:
