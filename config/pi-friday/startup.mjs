@@ -362,7 +362,6 @@ function createProgressReporter(chatId) {
             const result = await tgApi("sendMessage", {
                 chat_id: chatId,
                 text: desiredText,
-                parse_mode: "Markdown",
                 disable_web_page_preview: true,
                 disable_notification: true,
             })
@@ -385,7 +384,6 @@ function createProgressReporter(chatId) {
                     chat_id: chatId,
                     message_id: statusMessageId,
                     text: desiredText,
-                    parse_mode: "Markdown",
                     disable_web_page_preview: true,
                 }, { attempts: 2 })
                 lastSentText = desiredText
