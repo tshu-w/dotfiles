@@ -1,7 +1,6 @@
 {
   "general": {
     "previewFeatures": true,
-    "disableUpdateNag": true,
     "enableAutoUpdateNotification": false
   },
   "context": {
