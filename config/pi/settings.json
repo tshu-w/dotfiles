@@ -57,6 +57,7 @@
       "prompts": [],
       "themes": []
     },
-    "git:github.com/skyfallsin/pi-mem"
+    "git:github.com/tshu-w/pi-reflect",
+    "git:github.com/tshu-w/pi-mem"
   ]
 }
