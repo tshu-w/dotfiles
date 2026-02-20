@@ -31,6 +31,12 @@ const PROVIDER_FALLBACK = [
 
 const FORCE_KILL_DELAY_MS = 3000
 const PROGRESS_MESSAGE_DELAY_MS = 1500
+const DEFAULT_AUTO_NEW_SESSION_IDLE_SEC = 2 * 60 * 60
+const AUTO_NEW_SESSION_IDLE_SEC = (() => {
+    const raw = Number.parseInt(String(process.env.FRIDAY_AUTO_NEW_SESSION_IDLE_SEC || "").trim(), 10)
+    if (!Number.isFinite(raw) || raw < 0) return DEFAULT_AUTO_NEW_SESSION_IDLE_SEC
+    return raw
+})()
 
 const STOP_MODE_USER = "user"
 const STOP_MODE_SHUTDOWN = "shutdown"
@@ -85,6 +91,7 @@ if (userIds.size === 0) {
 const runningTasks = new Map() // chatId -> { child, stopHeartbeat, stopped }
 const chatQueues = new Map()   // chatId -> Promise (tail of FIFO queue)
 const pendingNewSessions = new Set() // chatId -> next message should start a new session
+const lastInboundAtByChat = new Map() // chatId -> previous inbound Telegram message timestamp (seconds)
 
 async function withChatQueue(chatId, fn) {
     let releaseTurn
@@ -628,7 +635,6 @@ async function handleCommand(chatId, text, message) {
                 `状态: ${isRunning ? "🔴 正在思考/执行工具" : "🟢 空闲"}`,
                 `会话目录: \`${chatDir}\``,
                 `最近会话: \`${latest ? latest.name : "(none)"}\``,
-                `下条消息: ${pendingNewSessions.has(chatId) ? "🆕 新会话" : "↪️ 续接最近会话"}`,
                 `内存占用: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)}MB`,
                 `当前 Offset: ${loadOffset()}`
             ]
@@ -708,8 +714,20 @@ async function handleUpdate(update) {
 
     await withChatQueue(chatId, async () => {
         const chatDir = getChatSessionDir(chatId)
-        const continueSession = !pendingNewSessions.has(chatId)
+        const forceNew = pendingNewSessions.has(chatId)
         pendingNewSessions.delete(chatId)
+
+        const hasQuote = !!message.reply_to_message
+        const prevTs = lastInboundAtByChat.get(chatId)
+        const messageTs = Number(message.date)
+        const nowTs = Number.isFinite(messageTs) && messageTs > 0
+            ? Math.floor(messageTs)
+            : Math.floor(Date.now() / 1000)
+        const idleTooLong = Number.isFinite(prevTs) && nowTs >= prevTs && (nowTs - prevTs >= AUTO_NEW_SESSION_IDLE_SEC)
+        const autoNew = !hasQuote && idleTooLong
+        const continueSession = hasQuote ? true : !(forceNew || autoNew)
+
+        lastInboundAtByChat.set(chatId, nowTs)
 
         const progressState = {
             phase: "思考中",
