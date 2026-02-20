@@ -10,6 +10,7 @@ Send content to Telegram.
 ## Preconditions
 - `TELEGRAM_BOT_TOKEN` must be set.
 - Prefer `TELEGRAM_DEFAULT_CHAT_ID` for inbound conversations.
+- Use real newline characters in message text (e.g., heredoc/multiline variable), not literal `\\n`; otherwise Telegram renders `\n` as plain text.
 - Telegram Markdown (Legacy) differs from standard: use `*text*` for bold (not `**`), `_text_` for italic (not `*`), and it does not support tables (use fenced code blocks instead).
 
 ## Option A: `telegram-send` binary (preferred when available)
