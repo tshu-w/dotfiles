@@ -797,7 +797,7 @@ function makeEventHandler(pr, ps) {
         }
 
         if (updated) {
-            const modelTag = ps.modelLabel ? ` [${ps.modelLabel}]` : ""
+            const modelTag = ps.modelLabel ? ` ${ps.modelLabel}` : ""
             if (ps.toolCount > 0) {
                 const detail = ps.lastDetail || ps.lastTool
                 pr.update(`✨ ${ps.phase}…${modelTag}\n第${ps.toolCount}步：${detail}`)
