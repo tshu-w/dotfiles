@@ -52,6 +52,7 @@
         "skills/docx/**",
         "skills/pdf/**",
         "skills/pptx/**",
+        "skills/skill-creator/**",
         "skills/xlsx/**"
       ],
       "prompts": [],
