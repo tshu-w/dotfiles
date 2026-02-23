@@ -5,176 +5,136 @@ description: Send a Telegram message via Bot API. Use when the user asks to repl
 
 # Telegram Send
 
-Send content to Telegram.
+Send messages and files to Telegram via Bot API (curl).
 
-## Preconditions
-- `TELEGRAM_BOT_TOKEN` must be set.
-- Prefer `TELEGRAM_DEFAULT_CHAT_ID` for inbound conversations.
-- Use real newline characters in message text (e.g., heredoc/multiline variable), not literal `\\n`; otherwise Telegram renders `\n` as plain text.
-- Telegram Markdown (Legacy) differs from standard: use `*text*` for bold (not `**`), `_text_` for italic (not `*`), and it does not support tables (use fenced code blocks instead).
+## Setup
 
-## Option A: `telegram-send` binary (preferred when available)
-
-Install:
-```bash
-uv tool install telegram-send
-```
-
-### Send text
-```bash
-telegram-send "hello"
-```
-
-### Send from stdin
-```bash
-cat <<'MSG' | telegram-send --stdin --disable-web-page-preview
-YOUR_MESSAGE
-MSG
-```
-
-### Silent send
-```bash
-telegram-send --silent "background done"
-```
-
-### Markdown / HTML
-```bash
-telegram-send --format markdown "*bold* _italic_"
-telegram-send --format html "<b>bold</b>"
-```
-
-### Send files/media
-```bash
-telegram-send --file report.pdf
-telegram-send --image screenshot.png --caption "result"
-telegram-send --video demo.mp4 --caption "preview"
-telegram-send --audio note.mp3
-telegram-send --sticker sticker.webp
-```
-
-### Get/delete message IDs
-```bash
-telegram-send --showids "track this"
-telegram-send --delete 12345
-```
-
-### Use explicit config (ephemeral)
-```bash
-CONF="$(mktemp)"
-cat >"$CONF" <<EOF
-[telegram]
-token = ${TELEGRAM_BOT_TOKEN}
-chat_id = ${TELEGRAM_DEFAULT_CHAT_ID}
-# optional:
-# reply_to_message_id = ${TELEGRAM_REPLY_TO_MESSAGE_ID}
-EOF
-
-cat <<'MSG' | telegram-send --config "$CONF" --stdin --format markdown --disable-web-page-preview
-YOUR_MESSAGE
-MSG
-rm -f "$CONF"
-```
-
-## Option B: Bot API via curl (fallback)
-
-### Direct send
-```bash
-MSG="YOUR_MESSAGE"
-curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -H 'Content-Type: application/json' \
-  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"parse_mode\":\"Markdown\",\"disable_web_page_preview\":true}"
-```
-
-### Reply / quote
-```bash
-MSG="YOUR_MESSAGE"
-REPLY_TO="${TELEGRAM_REPLY_TO_MESSAGE_ID:-null}"
-curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -H 'Content-Type: application/json' \
-  -d "{\"chat_id\":\"${TELEGRAM_DEFAULT_CHAT_ID}\",\"text\":\"${MSG}\",\"parse_mode\":\"Markdown\",\"disable_web_page_preview\":true,\"reply_to_message_id\":${REPLY_TO}}"
-```
-
-## Common Bot API snippets (useful in practice)
-
-Set shared vars:
 ```bash
 BASE="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 CHAT_ID="${TELEGRAM_DEFAULT_CHAT_ID}"
 ```
 
-### 1) Send photo
+Both env vars must be set. `TELEGRAM_REPLY_TO_MESSAGE_ID` is optional (for quoting).
+
+## ⚠ Formatting rules
+
+- **Newlines**: use real newlines (heredoc / multiline string). Literal `\n` renders as plain text.
+- **Markdown mode** (`parse_mode: Markdown`): `*bold*` (not `**`), `_italic_` (not `*`). No tables — use code blocks instead.
+- **HTML mode** (`parse_mode: HTML`): `<b>`, `<i>`, `<code>`, `<pre>`, `<a href="">`. Safer for complex formatting.
+- Use `jq -n` to build JSON payloads — avoids shell quoting bugs.
+
+## Send text message
+
 ```bash
-curl -sS -X POST "$BASE/sendPhoto" \
-  -F chat_id="$CHAT_ID" \
-  -F photo="@/path/to/image.png" \
-  -F caption="build result"
+MSG='Your message here'
+
+jq -n \
+  --arg chat "$CHAT_ID" \
+  --arg text "$MSG" \
+  '{chat_id: $chat, text: $text, parse_mode: "Markdown", disable_web_page_preview: true}' |
+curl -sS -X POST "$BASE/sendMessage" -H 'Content-Type: application/json' -d @-
 ```
 
-### 2) Send document
+### With reply / quote
+
 ```bash
+jq -n \
+  --arg chat "$CHAT_ID" \
+  --arg text "$MSG" \
+  --argjson reply "${TELEGRAM_REPLY_TO_MESSAGE_ID:-null}" \
+  '{chat_id: $chat, text: $text, parse_mode: "Markdown",
+    disable_web_page_preview: true, reply_to_message_id: $reply}' |
+curl -sS -X POST "$BASE/sendMessage" -H 'Content-Type: application/json' -d @-
+```
+
+### Long / multiline message
+
+```bash
+MSG=$(cat <<'EOF'
+*Report*
+
+Line 1
+Line 2
+`code block`
+EOF
+)
+
+jq -n --arg chat "$CHAT_ID" --arg text "$MSG" \
+  '{chat_id: $chat, text: $text, parse_mode: "Markdown"}' |
+curl -sS -X POST "$BASE/sendMessage" -H 'Content-Type: application/json' -d @-
+```
+
+## Send files
+
+All file uploads use multipart form (`-F`).
+
+```bash
+# Document (any file)
 curl -sS -X POST "$BASE/sendDocument" \
-  -F chat_id="$CHAT_ID" \
-  -F document="@/path/to/report.pdf" \
-  -F caption="latest report"
+  -F chat_id="$CHAT_ID" -F document="@report.pdf" -F caption="Latest report"
+
+# Photo
+curl -sS -X POST "$BASE/sendPhoto" \
+  -F chat_id="$CHAT_ID" -F photo="@screenshot.png" -F caption="Result"
+
+# Video
+curl -sS -X POST "$BASE/sendVideo" \
+  -F chat_id="$CHAT_ID" -F video="@demo.mp4" -F caption="Preview"
+
+# Audio
+curl -sS -X POST "$BASE/sendAudio" \
+  -F chat_id="$CHAT_ID" -F audio="@note.mp3"
 ```
 
-### 3) Send media group (album)
+## Less common operations
+
+### Edit message
+```bash
+jq -n --arg chat "$CHAT_ID" --argjson mid 12345 --arg text "updated" \
+  '{chat_id: $chat, message_id: $mid, text: $text}' |
+curl -sS -X POST "$BASE/editMessageText" -H 'Content-Type: application/json' -d @-
+```
+
+### Delete message
+```bash
+jq -n --arg chat "$CHAT_ID" --argjson mid 12345 \
+  '{chat_id: $chat, message_id: $mid}' |
+curl -sS -X POST "$BASE/deleteMessage" -H 'Content-Type: application/json' -d @-
+```
+
+### Forward / copy message
+```bash
+# Forward (shows original sender)
+jq -n --arg chat "$CHAT_ID" --arg from "$CHAT_ID" --argjson mid 12345 \
+  '{chat_id: $chat, from_chat_id: $from, message_id: $mid}' |
+curl -sS -X POST "$BASE/forwardMessage" -H 'Content-Type: application/json' -d @-
+
+# Copy (hides original sender)
+# Same payload, use $BASE/copyMessage
+```
+
+### Send media group (album)
 ```bash
 curl -sS -X POST "$BASE/sendMediaGroup" \
   -F chat_id="$CHAT_ID" \
-  -F media='[{"type":"photo","media":"attach://img1"},{"type":"photo","media":"attach://img2"}]' \
-  -F img1=@/path/to/1.jpg \
-  -F img2=@/path/to/2.jpg
+  -F media='[{"type":"photo","media":"attach://a"},{"type":"photo","media":"attach://b"}]' \
+  -F a=@1.jpg -F b=@2.jpg
 ```
 
-### 4) Edit text message
-```bash
-curl -sS -X POST "$BASE/editMessageText" \
-  -H 'Content-Type: application/json' \
-  -d '{"chat_id":"'"$CHAT_ID"'","message_id":12345,"text":"updated text"}'
-```
-
-### 5) Delete message
-```bash
-curl -sS -X POST "$BASE/deleteMessage" \
-  -H 'Content-Type: application/json' \
-  -d '{"chat_id":"'"$CHAT_ID"'","message_id":12345}'
-```
-
-### 6) Send inline keyboard
-```bash
-curl -sS -X POST "$BASE/sendMessage" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "chat_id":"'"$CHAT_ID"'",
-    "text":"Choose one",
-    "reply_markup":{"inline_keyboard":[[{"text":"A","callback_data":"pick_a"},{"text":"B","callback_data":"pick_b"}]]}
-  }'
-```
-
-### 7) Answer callback query
-```bash
-curl -sS -X POST "$BASE/answerCallbackQuery" \
-  -H 'Content-Type: application/json' \
-  -d '{"callback_query_id":"<callback_query_id>","text":"Done"}'
-```
-
-### 8) Send chat action (typing/uploading)
+### Typing indicator
 ```bash
 curl -sS -X POST "$BASE/sendChatAction" \
   -H 'Content-Type: application/json' \
-  -d '{"chat_id":"'"$CHAT_ID"'","action":"typing"}'
+  -d "{\"chat_id\":\"$CHAT_ID\",\"action\":\"typing\"}"
 ```
 
-### 9) Copy / forward message
+### Inline keyboard
 ```bash
-# copy (keeps sender hidden)
-curl -sS -X POST "$BASE/copyMessage" \
-  -H 'Content-Type: application/json' \
-  -d '{"chat_id":"'"$CHAT_ID"'","from_chat_id":"'"$CHAT_ID"'","message_id":12345}'
-
-# forward
-curl -sS -X POST "$BASE/forwardMessage" \
-  -H 'Content-Type: application/json' \
-  -d '{"chat_id":"'"$CHAT_ID"'","from_chat_id":"'"$CHAT_ID"'","message_id":12345}'
+jq -n --arg chat "$CHAT_ID" --arg text "Choose one" \
+  '{chat_id: $chat, text: $text,
+    reply_markup: {inline_keyboard: [[
+      {text: "A", callback_data: "a"},
+      {text: "B", callback_data: "b"}
+    ]]}}' |
+curl -sS -X POST "$BASE/sendMessage" -H 'Content-Type: application/json' -d @-
 ```
