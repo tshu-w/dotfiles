@@ -346,8 +346,8 @@ function extractAssistantText(message) {
         .trim()
 }
 
-function createProgressReporter(chatId) {
-    let desiredText = "✨ 请稍等…"
+function createProgressReporter(chatId, isNewSession = false) {
+    let desiredText = isNewSession ? "✨ 新会话…" : "✨ 请稍等…"
     let lastSentText = ""
     let statusMessageId
     let editQueue = Promise.resolve()
@@ -737,7 +737,7 @@ async function handleUpdate(update) {
             modelLabel: "",
         }
 
-        const progressReporter = createProgressReporter(chatId)
+        const progressReporter = createProgressReporter(chatId, !continueSession)
         const task = {
             child: null,
             stopHeartbeat: startTypingHeartbeat(chatId),
