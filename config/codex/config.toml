@@ -27,6 +27,9 @@ skills = true
 streamable_shell = true
 unified_exec = true
 steer = true
+multi_agent = true
+apps = true
+prevent_idle_sleep = true
 
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-remaining", "five-hour-limit"]
