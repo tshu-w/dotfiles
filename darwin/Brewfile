@@ -1,3 +1,4 @@
+tap "ampcode/tap"
 tap "d12frosted/emacs-plus"
 tap "daviderestivo/emacs-head"
 tap "deb-sig/tap"
@@ -64,6 +65,7 @@ brew "uv"
 brew "vim"
 brew "wget"
 brew "zoxide"
+brew "ampcode/tap/ampcode"
 brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
 brew "deb-sig/tap/double-entry-generator"
 brew "specstoryai/tap/specstory"
