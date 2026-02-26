@@ -21,6 +21,7 @@ __pycache__/
 ### CodeX ###
 **/codex/*
 !**/codex/config.toml
+!**/codex/AGENTS.md
 
 ### Pi ###
 **/pi/auth.json
