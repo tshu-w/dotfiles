@@ -242,82 +242,114 @@ sysup () {
   echo "${C_GREEN}✅ All update tasks are complete.${C_RESET}"
 }
 
-claude () {
-  local profile
-  local opts=()
+_ai_run_claude () {
+  local profile="$1"
+  shift
+  local env_opts=(
+    -u ANTHROPIC_BASE_URL
+    -u ANTHROPIC_API_KEY
+    -u ANTHROPIC_MODEL
+    -u ANTHROPIC_SMALL_FAST_MODEL
+    -u ANTHROPIC_AUTH_TOKEN
+  )
   local cleanup_needed=0
 
-  # Setup XDG-compatible symlinks
   if [[ -d "$XDG_DATA_HOME/claude" ]]; then
-    # Create symlinks only if they don't exist
-    if [[ ! -L ~/.claude ]]; then
-      ln -sf "$XDG_DATA_HOME/claude" ~/.claude && cleanup_needed=1
-    fi
-    if [[ ! -L ~/.claude.json ]]; then
-      ln -sf "$XDG_DATA_HOME/claude/.claude.json" ~/.claude.json 2>/dev/null && cleanup_needed=1
-    fi
+    [[ ! -L ~/.claude ]] && ln -sfn "$XDG_DATA_HOME/claude" ~/.claude && cleanup_needed=1
+    [[ ! -L ~/.claude.json ]] && ln -sf "$XDG_DATA_HOME/claude/.claude.json" ~/.claude.json && cleanup_needed=1
   fi
 
-  # Profile switching
-  if [[ "$1" =~ ^(openrouter|deepseek|glm|kimi|aicoding)$ ]]; then
-    profile="$1"
-    shift
+  case "$profile" in
+    default)
+      ;;
+    openrouter)
+      env_opts+=(
+        "ANTHROPIC_BASE_URL=https://lmrouter.ponte.top/anthropic"
+        "ANTHROPIC_API_KEY=$OPENROUTER_API_KEY"
+        "ANTHROPIC_MODEL=claude-sonnet-4.5"
+        "ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4.5"
+      )
+      ;;
+    deepseek)
+      env_opts+=(
+        "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
+        "ANTHROPIC_API_KEY=$DEEPSEEK_API_KEY"
+        "ANTHROPIC_MODEL=deepseek-chat"
+        "ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat"
+      )
+      ;;
+    glm)
+      env_opts+=(
+        "ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic"
+        "ANTHROPIC_API_KEY=$ZAI_API_KEY"
+      )
+      ;;
+    kimi)
+      env_opts+=(
+        "ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic"
+        "ANTHROPIC_API_KEY=$KIMI_API_KEY"
+      )
+      ;;
+    aicoding)
+      env_opts+=(
+        "ANTHROPIC_BASE_URL=https://aicoding.2233.ai"
+        "ANTHROPIC_AUTH_TOKEN=$AICODING_API_KEY"
+      )
+      ;;
+    *)
+      echo "Unknown claude profile: $profile" >&2
+      if [[ $cleanup_needed -eq 1 ]]; then
+        [[ -L ~/.claude ]] && unlink ~/.claude 2>/dev/null
+        [[ -L ~/.claude.json ]] && unlink ~/.claude.json 2>/dev/null
+      fi
+      return 1
+      ;;
+  esac
 
-    case "$profile" in
-      openrouter)
-        opts=(
-          "ANTHROPIC_BASE_URL=https://lmrouter.ponte.top/anthropic"
-          "ANTHROPIC_API_KEY=$OPENROUTER_API_KEY"
-          "ANTHROPIC_MODEL=claude-sonnet-4.5"
-          "ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4.5"
-        )
-        ;;
-      deepseek)
-        opts=(
-          "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
-          "ANTHROPIC_API_KEY=$DEEPSEEK_API_KEY"
-          "ANTHROPIC_MODEL=deepseek-chat"
-          "ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat"
-        )
-        ;;
-      glm)
-        opts=(
-          "ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic"
-          "ANTHROPIC_API_KEY=$ZAI_API_KEY"
-          "ANTHROPIC_MODEL="
-          "ANTHROPIC_SMALL_FAST_MODEL="
-        )
-        ;;
-      kimi)
-        opts=(
-          "ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic"
-          "ANTHROPIC_API_KEY=$KIMI_API_KEY"
-          "ANTHROPIC_MODEL="
-          "ANTHROPIC_SMALL_FAST_MODEL="
-        )
-        ;;
-      aicoding)
-        opts=(
-          "ANTHROPIC_BASE_URL=https://aicoding.2233.ai"
-          "ANTHROPIC_AUTH_TOKEN=$AICODING_API_KEY"
-        )
-        ;;
-    esac
+  env "${env_opts[@]}" command claude "$@"
 
-    if [[ ${#opts[@]} -gt 0 ]]; then
-      export "${opts[@]}"
-    fi
-  fi
-
-  command claude "$@"
-
-  # Cleanup symlinks if we created them
   if [[ $cleanup_needed -eq 1 ]]; then
     [[ -L ~/.claude ]] && unlink ~/.claude 2>/dev/null
     [[ -L ~/.claude.json ]] && unlink ~/.claude.json 2>/dev/null
     rm -f ~/.claude.json* 2>/dev/null
   fi
 }
+
+_ai_run_codex () {
+  local profile="$1"
+  shift
+
+  if [[ "$profile" == "default" ]]; then
+    command codex "$@"
+  else
+    command codex -c "model_provider=\"$profile\"" "$@"
+  fi
+}
+
+aswitch () {
+  if [[ $# -lt 2 ]]; then
+    echo "Usage: aswitch <aicoding|openrouter|deepseek|glm|kimi|default> <claude|codex> [args...]" >&2
+    return 1
+  fi
+  local profile="$1"
+  local target="$2"
+  shift 2
+
+  case "$target" in
+    claude) _ai_run_claude "$profile" "$@" ;;
+    codex) _ai_run_codex "$profile" "$@" ;;
+    *)
+      echo "Unknown target: $target (expected: claude or codex)" >&2
+      return 1
+      ;;
+  esac
+}
+
+aicoding () { aswitch aicoding "$@"; }
+openrouter () { aswitch openrouter "$@"; }
+deepseek () { aswitch deepseek "$@"; }
+glm () { aswitch glm "$@"; }
+kimi () { aswitch kimi "$@"; }
 
 # lazy load mamba
 mamba () {
