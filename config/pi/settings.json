@@ -57,6 +57,17 @@
       ],
       "prompts": [],
       "themes": []
+    },
+    {
+      "source": "git:github.com/ttttmr/pi-context",
+      "extensions": [
+        "src/tools.ts"
+      ],
+      "skills": [
+        "skills/context-management/**"
+      ],
+      "prompts": [],
+      "themes": []
     }
   ]
 }
