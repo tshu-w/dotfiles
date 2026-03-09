@@ -16,7 +16,7 @@
     "extensions/official/protected-paths.ts",
     "extensions/official/question.ts",
     "extensions/official/questionnaire.ts",
-    "extensions/official/ssh.ts"
+    "extensions/ssh.ts"
   ],
   "packages": [
     "git:github.com/badlogic/pi-mono",
