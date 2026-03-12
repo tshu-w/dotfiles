@@ -101,30 +101,27 @@ function sshExec(remote: string, command: string): Promise<Buffer> {
   });
 }
 
-function isWithinRoot(targetPath: string, rootPath: string): boolean {
-  const relative = path.relative(rootPath, targetPath);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
-}
-
 function localToRemotePath(localPath: string, state: SshState): string {
-  const absolutePath = path.resolve(localPath);
-  const absoluteRoot = path.resolve(state.localRootCwd);
-
-  if (!isWithinRoot(absolutePath, absoluteRoot)) {
-    throw new Error(`Path is outside SSH root: ${absolutePath} (root: ${absoluteRoot})`);
+  // Handle remote absolute paths directly (agent may use paths from the SSH CWD prompt)
+  if (localPath.startsWith(state.remoteRootCwd)) {
+    return localPath;
   }
 
+  const absolutePath = path.resolve(localPath);
+  const absoluteRoot = path.resolve(state.localRootCwd);
   const relative = path.relative(absoluteRoot, absolutePath);
+
+  const isWithinRoot =
+    relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+
+  if (!isWithinRoot) return absolutePath;
+
   const posixRelative = relative.split(path.sep).filter(Boolean).join("/");
   return posixRelative ? path.posix.join(state.remoteRootCwd, posixRelative) : state.remoteRootCwd;
 }
 
 function getCurrentRemoteCwd(state: SshState): string {
-  try {
-    return localToRemotePath(process.cwd(), state);
-  } catch {
-    return state.remoteRootCwd;
-  }
+  return localToRemotePath(process.cwd(), state);
 }
 
 function requireSshState(getSsh: () => SshState | null): SshState {
