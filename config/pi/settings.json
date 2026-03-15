@@ -1,11 +1,11 @@
 {
-  "lastChangelogVersion": "0.52.12",
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.3-codex",
+  "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "high",
+  "followUpMode": "all",
+  "steeringMode": "all",
   "extensions": [
     "extensions/official/subagent",
-    "extensions/official/dirty-repo-guard.ts",
     "extensions/official/handoff.ts",
     "extensions/official/interactive-shell.ts",
     "extensions/official/mac-system-theme.ts",
