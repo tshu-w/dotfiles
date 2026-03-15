@@ -1,4 +1,4 @@
-model = "gpt-5.3-codex"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 web_search = "live"
 # full-auto mode
@@ -28,7 +28,6 @@ streamable_shell = true
 unified_exec = true
 steer = true
 multi_agent = true
-apps = true
 prevent_idle_sleep = true
 
 [tui]
