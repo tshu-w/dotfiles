@@ -264,10 +264,10 @@ _ai_run_claude () {
       ;;
     openrouter)
       env_opts+=(
-        "ANTHROPIC_BASE_URL=https://lmrouter.ponte.top/anthropic"
+        "ANTHROPIC_BASE_URL=https://openrouter.ai/api"
         "ANTHROPIC_API_KEY=$OPENROUTER_API_KEY"
-        "ANTHROPIC_MODEL=claude-sonnet-4.5"
-        "ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4.5"
+        "ANTHROPIC_MODEL=anthropic/claude-sonnet-4.5"
+        "ANTHROPIC_SMALL_FAST_MODEL=anthropic/claude-haiku-4.5"
       )
       ;;
     deepseek)
