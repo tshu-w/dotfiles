@@ -14,7 +14,6 @@
     "extensions/official/preset.ts",
     "extensions/official/plan-mode",
     "extensions/official/protected-paths.ts",
-    "extensions/official/question.ts",
     "extensions/official/questionnaire.ts",
     "extensions/ssh.ts"
   ],
