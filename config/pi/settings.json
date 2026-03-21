@@ -54,15 +54,6 @@
       "skills": [
         "skills/agentd/**"
       ]
-    },
-    {
-      "source": "git:github.com/obra/superpowers",
-      "extensions": [],
-      "skills": [
-        "skills/**"
-      ],
-      "prompts": [],
-      "themes": []
     }
   ]
 }
