@@ -16,7 +16,6 @@
     "extensions/ssh.ts"
   ],
   "packages": [
-    "git:github.com/badlogic/pi-mono",
     {
       "source": "git:github.com/mitsuhiko/agent-stuff",
       "extensions": [
