@@ -11,7 +11,6 @@
     "extensions/official/notify.ts",
     "extensions/official/permission-gate.ts",
     "extensions/official/preset.ts",
-    "extensions/official/protected-paths.ts",
     "extensions/official/questionnaire.ts",
     "extensions/ssh.ts"
   ],
@@ -47,12 +46,13 @@
       "prompts": [],
       "themes": []
     },
-
     {
       "source": "/Users/wangtianshu/Developer/agentd",
       "skills": [
         "skills/agentd/**"
       ]
     }
-  ]
+  ],
+  "lastChangelogVersion": "0.61.1",
+  "theme": "light"
 }
