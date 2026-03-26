@@ -41,6 +41,7 @@ if [[ -f ~/.authinfo.gpg ]]; then
     fi
 
     if [[ -f "$_AUTHINFO_CACHE" ]]; then
+        export GH_TOKEN=$(awk '/^machine github\.com.*login tshu-w password / {print $NF; exit}' "$_AUTHINFO_CACHE")
         export OPENROUTER_API_KEY=$(awk '/^machine openrouter\.ai/ {print $NF}' "$_AUTHINFO_CACHE")
         export DEEPSEEK_API_KEY=$(awk '/^machine api\.deepseek\.com/ {print $NF}' "$_AUTHINFO_CACHE")
         export KIMI_API_KEY=$(awk '/^machine api\.moonshot\.cn/ {print $NF}' "$_AUTHINFO_CACHE")
