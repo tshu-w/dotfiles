@@ -12,7 +12,8 @@
     "extensions/official/permission-gate.ts",
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
-    "extensions/ssh.ts"
+    "extensions/ssh.ts",
+    "extensions/secret-guard.ts"
   ],
   "packages": [
     {
