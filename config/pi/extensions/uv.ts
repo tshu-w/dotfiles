@@ -28,6 +28,7 @@ function splitShellSegments(input: string): string[] {
   let buf = "";
   let quote: "'" | '"' | null = null;
   let escaped = false;
+  let heredocDelim: string | null = null; // pending heredoc delimiter (body not yet started)
 
   const flush = () => {
     const trimmed = buf.trim();
@@ -62,7 +63,58 @@ function splitShellSegments(input: string): string[] {
       continue;
     }
 
-    if (ch === ";" || ch === "\n") {
+    // Detect heredoc marker: << or <<- followed by optional quotes and a word
+    if (ch === "<" && input[i + 1] === "<" && input[i + 2] !== "<") {
+      let j = i + 2;
+      if (j < input.length && input[j] === "-") j++;
+      while (j < input.length && input[j] === " ") j++;
+
+      let delim = "";
+      if (j < input.length && (input[j] === "'" || input[j] === '"')) {
+        const q = input[j];
+        j++;
+        while (j < input.length && input[j] !== q) {
+          delim += input[j];
+          j++;
+        }
+        if (j < input.length) j++; // closing quote
+      } else {
+        while (j < input.length && /[A-Za-z0-9_]/.test(input[j])) {
+          delim += input[j];
+          j++;
+        }
+      }
+
+      if (delim) {
+        heredocDelim = delim;
+        buf += input.slice(i, j);
+        i = j - 1;
+        continue;
+      }
+    }
+
+    if (ch === "\n") {
+      flush();
+      // If a heredoc was started on the flushed line, skip body lines
+      if (heredocDelim !== null) {
+        const delim = heredocDelim;
+        heredocDelim = null;
+        // Skip lines until we find one that matches the delimiter
+        i++; // move past the newline
+        while (i < input.length) {
+          const lineEnd = input.indexOf("\n", i);
+          const line = lineEnd === -1 ? input.slice(i) : input.slice(i, lineEnd);
+          if (line.trim() === delim) {
+            i = lineEnd === -1 ? input.length - 1 : lineEnd;
+            break;
+          }
+          i = lineEnd === -1 ? input.length : lineEnd + 1;
+        }
+      }
+      continue;
+    }
+
+    if (ch === ";") {
       flush();
       continue;
     }
