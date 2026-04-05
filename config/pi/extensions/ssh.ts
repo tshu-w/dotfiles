@@ -61,12 +61,12 @@ type NotifyUI = StatusUI & {
 };
 
 type StatusContext = {
+  cwd: string;
   hasUI: boolean;
   ui: StatusUI;
 };
 
-type MutationContext = {
-  hasUI: boolean;
+type MutationContext = StatusContext & {
   ui: NotifyUI;
 };
 
@@ -101,27 +101,18 @@ function sshExec(remote: string, command: string): Promise<Buffer> {
   });
 }
 
-function localToRemotePath(localPath: string, state: SshState): string {
-  // Handle remote absolute paths directly (agent may use paths from the SSH CWD prompt)
-  if (localPath.startsWith(state.remoteRootCwd)) {
-    return localPath;
-  }
-
-  const absolutePath = path.resolve(localPath);
+function mapCwdToRemote(localCwd: string, state: SshState): string {
+  const absolutePath = path.resolve(localCwd);
   const absoluteRoot = path.resolve(state.localRootCwd);
   const relative = path.relative(absoluteRoot, absolutePath);
 
   const isWithinRoot =
     relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 
-  if (!isWithinRoot) return absolutePath;
+  if (!isWithinRoot) return state.remoteRootCwd;
 
   const posixRelative = relative.split(path.sep).filter(Boolean).join("/");
   return posixRelative ? path.posix.join(state.remoteRootCwd, posixRelative) : state.remoteRootCwd;
-}
-
-function getCurrentRemoteCwd(state: SshState): string {
-  return localToRemotePath(process.cwd(), state);
 }
 
 function requireSshState(getSsh: () => SshState | null): SshState {
@@ -134,18 +125,18 @@ function createRemoteReadOps(getSsh: () => SshState | null): ReadOperations {
   return {
     readFile: async (filePath) => {
       const ssh = requireSshState(getSsh);
-      return sshExec(ssh.remote, `cat ${JSON.stringify(localToRemotePath(filePath, ssh))}`);
+      return sshExec(ssh.remote, `cat ${JSON.stringify(filePath)}`);
     },
     access: async (filePath) => {
       const ssh = requireSshState(getSsh);
-      await sshExec(ssh.remote, `test -r ${JSON.stringify(localToRemotePath(filePath, ssh))}`);
+      await sshExec(ssh.remote, `test -r ${JSON.stringify(filePath)}`);
     },
     detectImageMimeType: async (filePath) => {
       const ssh = getSsh();
       if (!ssh) return null;
 
       try {
-        const result = await sshExec(ssh.remote, `file --mime-type -b ${JSON.stringify(localToRemotePath(filePath, ssh))}`);
+        const result = await sshExec(ssh.remote, `file --mime-type -b ${JSON.stringify(filePath)}`);
         const mimeType = result.toString().trim();
         return IMAGE_MIME_TYPES.includes(mimeType) ? mimeType : null;
       } catch {
@@ -162,12 +153,12 @@ function createRemoteWriteOps(getSsh: () => SshState | null): WriteOperations {
       const base64 = Buffer.from(content).toString("base64");
       await sshExec(
         ssh.remote,
-        `echo ${JSON.stringify(base64)} | base64 -d > ${JSON.stringify(localToRemotePath(filePath, ssh))}`,
+        `echo ${JSON.stringify(base64)} | base64 -d > ${JSON.stringify(filePath)}`,
       );
     },
     mkdir: async (dirPath) => {
       const ssh = requireSshState(getSsh);
-      await sshExec(ssh.remote, `mkdir -p ${JSON.stringify(localToRemotePath(dirPath, ssh))}`);
+      await sshExec(ssh.remote, `mkdir -p ${JSON.stringify(dirPath)}`);
     },
   };
 }
@@ -183,7 +174,7 @@ function createRemoteEditOps(getSsh: () => SshState | null): EditOperations {
   };
 }
 
-function createRemoteBashOps(getSsh: () => SshState | null): BashOperations {
+function createRemoteBashOps(getSsh: () => SshState | null, { mapLocalCwd = false } = {}): BashOperations {
   return {
     exec: (command, cwd, { onData, signal, timeout }) =>
       new Promise((resolve, reject) => {
@@ -195,7 +186,7 @@ function createRemoteBashOps(getSsh: () => SshState | null): BashOperations {
           return;
         }
 
-        const remoteCwd = localToRemotePath(cwd, ssh);
+        const remoteCwd = mapLocalCwd ? mapCwdToRemote(cwd, ssh) : cwd;
         const remoteCommand = `cd ${JSON.stringify(remoteCwd)} && ${command}`;
         const child = spawn("ssh", [ssh.remote, remoteCommand], { stdio: ["ignore", "pipe", "pipe"] });
         let timedOut = false;
@@ -313,10 +304,6 @@ function writeStateToEnv(state: SshState | null): void {
   process.env[ENV_LOCAL_ROOT_CWD] = state.localRootCwd;
 }
 
-function formatStatusText(state: SshState | null): string {
-  if (!state) return SSH_OFF_TEXT;
-  return `SSH: ${state.remote}:${getCurrentRemoteCwd(state)}`;
-}
 
 function readSshHostCompletions(): string[] {
   const sshConfigPath = path.join(os.homedir(), ".ssh", "config");
@@ -382,11 +369,11 @@ function findPersistedState(ctx: SessionRestoreContext): { found: boolean; state
 export default function (pi: ExtensionAPI) {
   pi.registerFlag("ssh", { description: "SSH remote: user@host or user@host:/path", type: "string" });
 
-  const localCwd = process.cwd();
-  const localRead = createReadTool(localCwd);
-  const localWrite = createWriteTool(localCwd);
-  const localEdit = createEditTool(localCwd);
-  const localBash = createBashTool(localCwd);
+  const initialCwd = process.cwd();
+  const baseRead = createReadTool(initialCwd);
+  const baseWrite = createWriteTool(initialCwd);
+  const baseEdit = createEditTool(initialCwd);
+  const baseBash = createBashTool(initialCwd);
 
   let activeSsh: SshState | null = null;
 
@@ -400,7 +387,8 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    ctx.ui.setStatus("ssh", ctx.ui.theme.fg("accent", formatStatusText(activeSsh)));
+    const remoteCwd = mapCwdToRemote(ctx.cwd, activeSsh);
+    ctx.ui.setStatus("ssh", ctx.ui.theme.fg("accent", `SSH: ${activeSsh.remote}:${remoteCwd}`));
   };
 
   const applyState = async (
@@ -417,7 +405,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (options?.notify !== false && ctx.hasUI) {
-      ctx.ui.notify(activeSsh ? `SSH mode: ${activeSsh.remote}:${getCurrentRemoteCwd(activeSsh)}` : "SSH mode disabled", "info");
+      ctx.ui.notify(activeSsh ? `SSH mode: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)}` : "SSH mode disabled", "info");
     }
   };
 
@@ -428,50 +416,43 @@ export default function (pi: ExtensionAPI) {
     updateStatus(ctx);
   };
 
-  const executeWithOptionalSsh = async <TResult>(
-    executeLocal: () => Promise<TResult>,
-    executeRemote: () => Promise<TResult>,
-  ): Promise<TResult> => {
-    return getSsh() ? executeRemote() : executeLocal();
-  };
-
   pi.registerTool({
-    ...localRead,
-    async execute(id, params, signal, onUpdate) {
-      return executeWithOptionalSsh(
-        () => localRead.execute(id, params, signal, onUpdate),
-        () => createReadTool(localCwd, { operations: createRemoteReadOps(getSsh) }).execute(id, params, signal, onUpdate),
-      );
+    ...baseRead,
+    async execute(id, params, signal, onUpdate, ctx) {
+      const ssh = getSsh();
+      if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
+      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh) }).execute(id, params, signal, onUpdate);
     },
   });
 
   pi.registerTool({
-    ...localWrite,
-    async execute(id, params, signal, onUpdate) {
-      return executeWithOptionalSsh(
-        () => localWrite.execute(id, params, signal, onUpdate),
-        () => createWriteTool(localCwd, { operations: createRemoteWriteOps(getSsh) }).execute(id, params, signal, onUpdate),
-      );
+    ...baseWrite,
+    async execute(id, params, signal, onUpdate, ctx) {
+      const ssh = getSsh();
+      if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
+      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh) }).execute(id, params, signal, onUpdate);
     },
   });
 
   pi.registerTool({
-    ...localEdit,
-    async execute(id, params, signal, onUpdate) {
-      return executeWithOptionalSsh(
-        () => localEdit.execute(id, params, signal, onUpdate),
-        () => createEditTool(localCwd, { operations: createRemoteEditOps(getSsh) }).execute(id, params, signal, onUpdate),
-      );
+    ...baseEdit,
+    async execute(id, params, signal, onUpdate, ctx) {
+      const ssh = getSsh();
+      if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
+      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh) }).execute(id, params, signal, onUpdate);
     },
   });
 
   pi.registerTool({
-    ...localBash,
-    async execute(id, params, signal, onUpdate) {
-      return executeWithOptionalSsh(
-        () => localBash.execute(id, params, signal, onUpdate),
-        () => createBashTool(localCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate),
-      );
+    ...baseBash,
+    async execute(id, params, signal, onUpdate, ctx) {
+      const ssh = getSsh();
+      if (!ssh) return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
+      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate);
     },
   });
 
@@ -482,7 +463,10 @@ export default function (pi: ExtensionAPI) {
       const trimmed = args?.trim() ?? "";
 
       if (!trimmed) {
-        if (ctx.hasUI) ctx.ui.notify(formatStatusText(activeSsh), "info");
+        if (ctx.hasUI) {
+          const status = activeSsh ? `SSH: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)}` : SSH_OFF_TEXT;
+          ctx.ui.notify(status, "info");
+        }
         return;
       }
 
@@ -497,7 +481,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       try {
-        const nextState = await resolveSshTarget(trimmed, localCwd);
+        const nextState = await resolveSshTarget(trimmed, ctx.cwd);
         await applyState(nextState, ctx, { persist: true });
         pi.sendMessage({
           customType: "ssh-state-change",
@@ -517,7 +501,7 @@ export default function (pi: ExtensionAPI) {
 
     if (typeof flag === "string" && flag.trim()) {
       try {
-        await applyState(await resolveSshTarget(flag, localCwd), ctx, { notify: shouldNotify });
+        await applyState(await resolveSshTarget(flag, ctx.cwd), ctx, { notify: shouldNotify });
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -534,17 +518,17 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("user_bash", () => {
     if (!getSsh()) return;
-    return { operations: createRemoteBashOps(getSsh) };
+    return { operations: createRemoteBashOps(getSsh, { mapLocalCwd: true }) };
   });
 
-  pi.on("before_agent_start", async (event) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     const ssh = getSsh();
     if (!ssh) return;
 
-    const remoteCwd = getCurrentRemoteCwd(ssh);
+    const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
     return {
       systemPrompt: event.systemPrompt.replace(
-        `Current working directory: ${localCwd}`,
+        `Current working directory: ${ctx.cwd}`,
         `Current working directory: ${remoteCwd} (via SSH: ${ssh.remote})`,
       ),
     };
