@@ -369,13 +369,14 @@ function getCommandCompletions(currentState: SshState | null, prefix: string): A
   return filtered.length > 0 ? filtered : null;
 }
 
-function findPersistedState(ctx: SessionRestoreContext): SshState | null {
+function findPersistedState(ctx: SessionRestoreContext): { found: boolean; state: SshState | null } {
   const entry = ctx.sessionManager
     .getEntries()
     .filter((item) => item.type === "custom" && item.customType === ENTRY_TYPE)
     .pop();
 
-  return deserializeState(entry?.data);
+  if (!entry) return { found: false, state: null };
+  return { found: true, state: deserializeState(entry.data) };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -421,7 +422,8 @@ export default function (pi: ExtensionAPI) {
   };
 
   const restoreState = (ctx: SessionRestoreContext) => {
-    activeSsh = loadStateFromEnv() ?? findPersistedState(ctx);
+    const persisted = findPersistedState(ctx);
+    activeSsh = persisted.found ? persisted.state : loadStateFromEnv();
     writeStateToEnv(activeSsh);
     updateStatus(ctx);
   };
@@ -486,12 +488,22 @@ export default function (pi: ExtensionAPI) {
 
       if (["off", "disable", "clear"].includes(trimmed)) {
         await applyState(null, ctx, { persist: true });
+        pi.sendMessage({
+          customType: "ssh-state-change",
+          content: "SSH mode disabled. All tool calls (read, write, edit, bash) and user ! commands now execute locally.",
+          display: true,
+        }, { deliverAs: "nextTurn" });
         return;
       }
 
       try {
         const nextState = await resolveSshTarget(trimmed, localCwd);
         await applyState(nextState, ctx, { persist: true });
+        pi.sendMessage({
+          customType: "ssh-state-change",
+          content: `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.`,
+          display: true,
+        }, { deliverAs: "nextTurn" });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (ctx.hasUI) ctx.ui.notify(`Failed to enable SSH mode: ${message}`, "error");
@@ -499,11 +511,13 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     const flag = pi.getFlag("ssh");
+    const shouldNotify = !event.reason || event.reason === "startup" || event.reason === "reload";
+
     if (typeof flag === "string" && flag.trim()) {
       try {
-        await applyState(await resolveSshTarget(flag, localCwd), ctx, { notify: true });
+        await applyState(await resolveSshTarget(flag, localCwd), ctx, { notify: shouldNotify });
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -515,10 +529,6 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_tree", async (_event, ctx) => {
-    restoreState(ctx);
-  });
-
-  pi.on("session_fork", async (_event, ctx) => {
     restoreState(ctx);
   });
 
