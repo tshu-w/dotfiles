@@ -13,7 +13,8 @@
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
     "extensions/ssh.ts",
-    "extensions/secret-guard.ts"
+    "extensions/secret-guard.ts",
+    "extensions/auto-continue.ts"
   ],
   "packages": [
     {
