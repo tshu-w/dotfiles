@@ -74,6 +74,13 @@ If removing a section does not affect decision-making, do not include it.
 - Provide examples only when they are essential for understanding key logic.
 - When the cost of asking a follow-up question is lower than the cost of a mistake requiring rework, ask. Otherwise, offer the best judgment and clearly note any assumptions.
 
+## Command Clipboard
+
+When providing a command or script for the user to run manually:
+- Copy it to the system clipboard instead of only displaying it
+- macOS: `pbcopy`, Linux: `xclip -selection clipboard` or `xsel --clipboard`
+- Ensure proper escaping for quotes and special characters
+
 ## Language Convention
 
 - Discussion, analysis, summaries: Simplified Chinese
