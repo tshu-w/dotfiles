@@ -476,7 +476,7 @@ export default function (pi: ExtensionAPI) {
           customType: "ssh-state-change",
           content: "SSH mode disabled. All tool calls (read, write, edit, bash) and user ! commands now execute locally.",
           display: true,
-        }, { deliverAs: "nextTurn" });
+        }, { triggerTurn: false });
         return;
       }
 
@@ -487,7 +487,7 @@ export default function (pi: ExtensionAPI) {
           customType: "ssh-state-change",
           content: `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.`,
           display: true,
-        }, { deliverAs: "nextTurn" });
+        }, { triggerTurn: false });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (ctx.hasUI) ctx.ui.notify(`Failed to enable SSH mode: ${message}`, "error");
