@@ -11,20 +11,19 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 		name: "models",
 		label: "Models",
 		description: [
-			"Model control router.",
+			"Model listing, switching, and consultation.",
 			"list: show available models (scoped or all).",
-			"switch: change active model for subsequent turns.",
+			"switch: change active model for subsequent turns; preferably include `message` to continue work immediately.",
 			"consult: one-shot call to another model (no tool access, result inline).",
-			"queue_message: inject a user message into the session.",
 		].join(" "),
-		promptSnippet: "Model control: list, switch, consult, queue_message",
+		promptSnippet: "Model control: list, switch, consult",
 		promptGuidelines: [
 			"Use models(action='list') to discover available models before switching.",
+			"Prefer models(action='switch', ..., message=...) when handing work to another model.",
 			"Use models(action='consult') for second opinions or cross-model review.",
-			"Use models(action='queue_message') for model-to-model task handoff.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["list", "switch", "consult", "queue_message"] as const, {
+			action: StringEnum(["list", "switch", "consult"] as const, {
 				description: "Action to perform",
 			}),
 			// list params
@@ -34,12 +33,10 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 			provider: Type.Optional(Type.String({ description: 'Model provider, e.g. "anthropic", "openai". For switch/consult.' })),
 			modelId: Type.Optional(Type.String({ description: 'Model ID, e.g. "claude-sonnet-4-5". For switch/consult.' })),
 			thinkingLevel: Type.Optional(StringEnum(THINKING_LEVELS, { description: "Thinking level. For switch." })),
+			message: Type.Optional(Type.String({ description: "Optional continuation message after switching. For switch." })),
 			// consult params
 			prompt: Type.Optional(Type.String({ description: "Prompt to send. For consult." })),
 			systemPrompt: Type.Optional(Type.String({ description: "Optional system prompt. For consult." })),
-			// queue_message params
-			message: Type.Optional(Type.String({ description: "Message content. For queue_message." })),
-			deliverAs: Type.Optional(StringEnum(["steer", "followUp"] as const, { description: '"followUp" (default) or "steer". For queue_message.' })),
 		}),
 		async execute(_id, params, signal, onUpdate, ctx) {
 			switch (params.action) {
@@ -110,9 +107,23 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 					if (params.thinkingLevel) pi.setThinkingLevel(params.thinkingLevel);
 
 					const level = pi.getThinkingLevel();
+
+					// Send continuation message if provided
+					if (params.message) {
+						if (ctx.isIdle()) {
+							await pi.sendUserMessage(params.message);
+						} else {
+							await pi.sendUserMessage(params.message, { deliverAs: "steer" });
+						}
+						return {
+							content: [{ type: "text", text: `Switched to **${params.provider}/${params.modelId}** (thinking: ${level}). Continuation message sent.` }],
+							details: { provider: params.provider, modelId: params.modelId, thinkingLevel: level, messageSent: true },
+						};
+					}
+
 					return {
-						content: [{ type: "text", text: `Switched to **${params.provider}/${params.modelId}** (thinking: ${level}).` }],
-						details: { provider: params.provider, modelId: params.modelId, thinkingLevel: level },
+						content: [{ type: "text", text: `Switched to **${params.provider}/${params.modelId}** (thinking: ${level}). No continuation message sent.` }],
+						details: { provider: params.provider, modelId: params.modelId, thinkingLevel: level, messageSent: false },
 					};
 				}
 
@@ -163,19 +174,6 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text", text: `**Response from ${params.provider}/${params.modelId}** ${stats}\n\n${truncation.content}${truncNote}` }],
 						details: { provider: params.provider, modelId: params.modelId, usage, truncated: truncation.truncated },
-					};
-				}
-
-				// ── queue_message ────────────────────────────────────
-				case "queue_message": {
-					if (!params.message) {
-						return { content: [{ type: "text", text: "`message` is required for queue_message." }], details: {} };
-					}
-					const deliverAs = params.deliverAs ?? "followUp";
-					pi.sendUserMessage(params.message, { deliverAs });
-					return {
-						content: [{ type: "text", text: `Message queued as ${deliverAs}.` }],
-						details: { deliverAs },
 					};
 				}
 

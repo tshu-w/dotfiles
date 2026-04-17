@@ -10,21 +10,23 @@ export function registerSessionsRouter(pi: ExtensionAPI) {
 		name: "sessions",
 		label: "Sessions",
 		description: [
-			"Session management router.",
-			"info: current session state (model, tokens, cwd).",
+			"Session management.",
+			"info: current session details (model, tokens, cwd).",
 			"search: find past sessions by keyword (metadata or fulltext).",
 			"resume: switch to a different session by file path.",
 			"new: start a new session.",
 			"name: set session display name.",
+			"queue_message: inject a user message into the session.",
 		].join(" "),
-		promptSnippet: "Session management: info, search, resume, new, name",
+		promptSnippet: "Session management: info, search, resume, new, name, queue_message",
 		promptGuidelines: [
 			"Use sessions(action='info') to check current model, tokens, and cwd.",
 			"Use sessions(action='search') to find past sessions, then sessions(action='resume') to switch.",
 			"Confirm with the user before resume or new, as current context will be lost.",
+			"Use sessions(action='queue_message') for injecting messages without switching model.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["info", "search", "resume", "new", "name"] as const, {
+			action: StringEnum(["info", "search", "resume", "new", "name", "queue_message"] as const, {
 				description: "Action to perform",
 			}),
 			// search params
@@ -39,6 +41,9 @@ export function registerSessionsRouter(pi: ExtensionAPI) {
 			linkParent: Type.Optional(Type.Boolean({ description: "Link current session as parent. Default: true. For new." })),
 			// name params
 			name: Type.Optional(Type.String({ description: "Display name for the session. For name." })),
+			// queue_message params
+			message: Type.Optional(Type.String({ description: "Message content. For queue_message." })),
+			deliverAs: Type.Optional(StringEnum(["steer", "followUp"] as const, { description: '"followUp" (default) or "steer". For queue_message.' })),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			switch (params.action) {
@@ -133,6 +138,19 @@ export function registerSessionsRouter(pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text", text: `Session named: "${params.name}"` }],
 						details: {},
+					};
+				}
+
+				// ── queue_message ────────────────────────────────────
+				case "queue_message": {
+					if (!params.message) {
+						return { content: [{ type: "text", text: "`message` is required for queue_message." }], details: {} };
+					}
+					const deliverAs = params.deliverAs ?? "followUp";
+					pi.sendUserMessage(params.message, { deliverAs });
+					return {
+						content: [{ type: "text", text: `Message queued as ${deliverAs}.` }],
+						details: { deliverAs },
 					};
 				}
 

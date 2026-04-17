@@ -2,9 +2,9 @@
  * Pi Control — self-control layer for pi.
  *
  * 3 router tools, always active:
- *   sessions  — session info + cross-session management
- *   context   — current session navigation + compact
- *   models    — model switching, consultation, message routing
+ *   sessions  — session management (info, search, resume, new, name, queue_message)
+ *   tree      — session entry operations (list, search, labels, navigate, fork, compact)
+ *   models    — model listing, switching, and consultation
  *
  * Uses a private API hack to capture command-only closures from
  * ExtensionRunner.prototype.bindCommandContext, then executes
@@ -15,7 +15,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { patchBindCommandContext, runPending, clearPending, isArmed, hasPending } from "./command-actions.js";
 import { registerSessionsRouter } from "./session.js";
-import { registerContextRouter } from "./context.js";
+import { registerTreeRouter } from "./tree.js";
 import { registerModelsRouter } from "./model.js";
 
 export default function (pi: ExtensionAPI) {
@@ -25,7 +25,7 @@ export default function (pi: ExtensionAPI) {
 	const patchOk = patchBindCommandContext();
 
 	registerSessionsRouter(pi);
-	registerContextRouter(pi);
+	registerTreeRouter(pi);
 	registerModelsRouter(pi);
 
 	// Execute pending session/navigation actions after agent fully settles.

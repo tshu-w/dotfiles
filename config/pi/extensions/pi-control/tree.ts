@@ -4,12 +4,12 @@ import { Type } from "@sinclair/typebox";
 import { formatEntryPreview } from "./utils.js";
 import { isArmed, setPendingNav, setPendingFork } from "./command-actions.js";
 
-export function registerContextRouter(pi: ExtensionAPI) {
+export function registerTreeRouter(pi: ExtensionAPI) {
 	pi.registerTool({
-		name: "context",
-		label: "Context",
+		name: "tree",
+		label: "Tree",
 		description: [
-			"Current session context router.",
+			"Session entry operations.",
 			"list: browse entries (IDs, types, previews).",
 			"search: find entries by keyword.",
 			"labels: show labeled/bookmarked entries.",
@@ -17,10 +17,10 @@ export function registerContextRouter(pi: ExtensionAPI) {
 			"fork: create a new session forked from a specific entry.",
 			"compact: summarize older messages to free up context window.",
 		].join(" "),
-		promptSnippet: "Context navigation: list, search, labels, navigate, fork, compact",
+		promptSnippet: "Session tree: list, search, labels, navigate, fork, compact",
 		promptGuidelines: [
-			"Use context(action='list') or context(action='search') first to find entry IDs before navigate or fork.",
-			"Use context(action='compact') proactively when context usage is high.",
+			"Use tree(action='list') or tree(action='search') to find entry IDs before navigate or fork.",
+			"Use tree(action='compact') proactively when context usage is high.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["list", "search", "labels", "navigate", "fork", "compact"] as const, {
@@ -36,7 +36,7 @@ export function registerContextRouter(pi: ExtensionAPI) {
 			// navigate params
 			entryId: Type.Optional(Type.String({ description: "Target entry ID (8-char hex). For navigate/fork." })),
 			summarize: Type.Optional(Type.Boolean({ description: "Summarize abandoned branch. Default: false. For navigate." })),
-			customInstructions: Type.Optional(Type.String({ description: "Instructions for summarizer. For navigate/compact." })),
+			customInstructions: Type.Optional(Type.String({ description: "Custom instructions for context summarization. For navigate/compact." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			switch (params.action) {
