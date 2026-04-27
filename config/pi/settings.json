@@ -52,8 +52,11 @@
       "skills": [
         "skills/agentd/**"
       ]
-    }
+    },
+    "git:github.com/addyosmani/agent-skills"
   ],
-  "lastChangelogVersion": "0.61.1",
-  "theme": "light"
+  "lastChangelogVersion": "0.70.2",
+  "theme": "light",
+  "treeFilterMode": "all",
+  "doubleEscapeAction": "tree"
 }
