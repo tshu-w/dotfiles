@@ -1,10 +1,35 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as readline from "node:readline";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 
 export function getSessionsDir(): string {
 	return path.join(getAgentDir(), "sessions");
+}
+
+/**
+ * Walk the sessions directory and return all .jsonl files sorted newest-first by mtime.
+ */
+function listSessionFiles(): Array<{ file: string; mtime: number }> {
+	const sessionsDir = getSessionsDir();
+	if (!fs.existsSync(sessionsDir)) return [];
+
+	const all: Array<{ file: string; mtime: number }> = [];
+	for (const subdir of fs.readdirSync(sessionsDir)) {
+		const subdirPath = path.join(sessionsDir, subdir);
+		let stat: fs.Stats;
+		try { stat = fs.statSync(subdirPath); } catch { continue; }
+		if (!stat.isDirectory()) continue;
+		for (const file of fs.readdirSync(subdirPath)) {
+			if (!file.endsWith(".jsonl")) continue;
+			const fullPath = path.join(subdirPath, file);
+			try {
+				const fstat = fs.statSync(fullPath);
+				all.push({ file: fullPath, mtime: fstat.mtimeMs });
+			} catch { /* skip */ }
+		}
+	}
+	all.sort((a, b) => b.mtime - a.mtime);
+	return all;
 }
 
 export function getEnabledModels(cwd?: string): string[] {
@@ -29,6 +54,7 @@ export interface SessionScanResult {
 	timestamp: string;
 	name?: string;
 	firstMessage?: string;
+	matchSnippets?: string[];
 	cwd?: string;
 }
 
@@ -36,107 +62,111 @@ export async function scanSessions(
 	keyword?: string,
 	limit = 10,
 	signal?: AbortSignal,
-	mode: "metadata" | "fulltext" = "metadata",
+	options?: { scope?: "cwd" | "all"; cwd?: string },
 ): Promise<SessionScanResult[]> {
-	const sessionsDir = getSessionsDir();
-	if (!fs.existsSync(sessionsDir)) return [];
-
+	const scope = options?.scope ?? "all";
+	const filterCwd = scope === "cwd" ? options?.cwd : undefined;
+	const lowerKw = keyword?.toLowerCase();
 	const results: SessionScanResult[] = [];
-	const allFiles: { file: string; mtime: number }[] = [];
 
-	for (const subdir of fs.readdirSync(sessionsDir)) {
-		const subdirPath = path.join(sessionsDir, subdir);
-		let stat: fs.Stats;
-		try { stat = fs.statSync(subdirPath); } catch { continue; }
-		if (!stat.isDirectory()) continue;
-		for (const file of fs.readdirSync(subdirPath)) {
-			if (!file.endsWith(".jsonl")) continue;
-			const fullPath = path.join(subdirPath, file);
-			try {
-				const fstat = fs.statSync(fullPath);
-				allFiles.push({ file: fullPath, mtime: fstat.mtimeMs });
-			} catch { /* skip */ }
-		}
-	}
-
-	allFiles.sort((a, b) => b.mtime - a.mtime);
-	const lowerKeyword = keyword?.toLowerCase();
-
-	for (const { file } of allFiles) {
+	for (const { file } of listSessionFiles()) {
 		if (signal?.aborted || results.length >= limit) break;
 
+		let raw: string;
+		try { raw = fs.readFileSync(file, "utf-8"); } catch { continue; }
+		if (lowerKw && !raw.toLowerCase().includes(lowerKw)) continue;
+
+		const lines = raw.split("\n");
 		let header: any = null;
 		let sessionName: string | undefined;
 		let firstUserMsg: string | undefined;
-		let fulltextMatch = false;
+		let skip = false;
+		let seen = 0;
 
-		try {
-			if (mode === "fulltext" && lowerKeyword) {
-				// Fast whole-file string search
-				const raw = fs.readFileSync(file, "utf-8");
-				if (!raw.toLowerCase().includes(lowerKeyword)) continue;
-				fulltextMatch = true;
+		for (const line of lines) {
+			if (signal?.aborted) break;
+			if (!line.trim()) continue;
+			seen++;
+			if (seen > 50) break;
+			if (header && firstUserMsg && sessionName) break;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+
+			if (entry.type === "session") {
+				header = entry;
+				if (filterCwd && header.cwd !== filterCwd) { skip = true; break; }
 			}
-
-			// Parse header + metadata from first 50 lines
-			const fileStream = fs.createReadStream(file, { encoding: "utf-8" });
-			const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-			let lineCount = 0;
-
-			for await (const line of rl) {
-				if (signal?.aborted) break;
-				if (!line.trim()) continue;
-				lineCount++;
-				if (lineCount > 50) break;
-				try {
-					const entry = JSON.parse(line);
-					if (entry.type === "session") header = entry;
-					if (entry.type === "session_info" && entry.name) sessionName = entry.name;
-					if (!firstUserMsg && entry.type === "message" && entry.message?.role === "user") {
-						const content = entry.message.content;
-						if (typeof content === "string") {
-							firstUserMsg = content.slice(0, 300);
-						} else if (Array.isArray(content)) {
-							for (const c of content) {
-								if (c.type === "text") { firstUserMsg = c.text.slice(0, 300); break; }
-							}
-						}
+			if (entry.type === "session_info" && entry.name) sessionName = entry.name;
+			if (!firstUserMsg && entry.type === "message" && entry.message?.role === "user") {
+				const content = entry.message.content;
+				if (typeof content === "string") firstUserMsg = content.slice(0, 300);
+				else if (Array.isArray(content)) {
+					for (const c of content) {
+						if (c.type === "text") { firstUserMsg = c.text.slice(0, 300); break; }
 					}
-					if (header && firstUserMsg) break;
-				} catch { /* skip malformed */ }
-			}
-			rl.close();
-			fileStream.destroy();
-		} catch { continue; }
-
-		if (mode === "fulltext") {
-			// Already confirmed match via raw string search above
-			if (fulltextMatch) {
-				results.push({
-					file,
-					sessionId: header?.id ?? path.basename(file, ".jsonl"),
-					timestamp: header?.timestamp ?? "",
-					name: sessionName,
-					firstMessage: firstUserMsg,
-					cwd: header?.cwd,
-				});
-			}
-		} else {
-			const searchTarget = [sessionName ?? "", firstUserMsg ?? "", file, header?.cwd ?? ""].join(" ").toLowerCase();
-			if (!lowerKeyword || searchTarget.includes(lowerKeyword)) {
-				results.push({
-					file,
-					sessionId: header?.id ?? path.basename(file, ".jsonl"),
-					timestamp: header?.timestamp ?? "",
-					name: sessionName,
-					firstMessage: firstUserMsg,
-					cwd: header?.cwd,
-				});
+				}
 			}
 		}
+		if (skip) continue;
+
+		let snippets: string[] | undefined;
+		if (lowerKw) {
+			snippets = [];
+			for (const line of lines) {
+				if (snippets.length >= 3) break;
+				if (!line.toLowerCase().includes(lowerKw)) continue;
+				let entry: any;
+				try { entry = JSON.parse(line); } catch { continue; }
+				const text = getEntryText(entry);
+				const role = entry.type === "message" ? (entry.message?.role ?? entry.type) : entry.type;
+				if (!text || !text.toLowerCase().includes(lowerKw)) continue;
+				const idx = text.toLowerCase().indexOf(lowerKw);
+				const start = Math.max(0, idx - 40);
+				const end = Math.min(text.length, idx + lowerKw.length + 60);
+				const snippet = (start > 0 ? "..." : "") + text.slice(start, end).replace(/\n/g, " ") + (end < text.length ? "..." : "");
+				snippets.push(`[${role}] ${snippet}`);
+			}
+			if (snippets.length === 0) snippets = undefined;
+		}
+
+		results.push({
+			file,
+			sessionId: header?.id ?? path.basename(file, ".jsonl"),
+			timestamp: header?.timestamp ?? "",
+			name: sessionName,
+			firstMessage: firstUserMsg,
+			matchSnippets: snippets,
+			cwd: header?.cwd,
+		});
 	}
 
 	return results;
+}
+
+
+/**
+ * Extract searchable text from any entry type.
+ */
+export function getEntryText(entry: any): string {
+	switch (entry.type) {
+		case "message": {
+			const msg = entry.message;
+			if (!msg) return "";
+			const content = msg.content;
+			if (typeof content === "string") return content;
+			if (Array.isArray(content)) {
+				return content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ");
+			}
+			return "";
+		}
+		case "compaction":
+		case "branch_summary":
+			return entry.summary ?? "";
+		case "custom_message":
+			return typeof entry.content === "string" ? entry.content : "";
+		default:
+			return "";
+	}
 }
 
 export function formatEntryPreview(entry: any): string {
@@ -154,7 +184,7 @@ export function formatEntryPreview(entry: any): string {
 				else if (Array.isArray(content)) {
 					for (const c of content) {
 						if (c.type === "text") { preview = c.text.slice(0, 120); break; }
-						if (c.type === "toolCall") { preview = `[tool: ${c.name}]`; break; }
+						if (c.type === "toolCall") { preview = `[tool: ${c.name ?? "?"}]`; break; }
 					}
 				}
 			} else if (role === "toolResult") {
@@ -170,16 +200,24 @@ export function formatEntryPreview(entry: any): string {
 			return `[${id}] ${ts} model_change: ${entry.provider}/${entry.modelId}`;
 		case "thinking_level_change":
 			return `[${id}] ${ts} thinking: ${entry.thinkingLevel}`;
-		case "compaction":
-			return `[${id}] ${ts} compaction: ${(entry.summary as string)?.slice(0, 80)}...`;
-		case "branch_summary":
-			return `[${id}] ${ts} branch_summary: ${(entry.summary as string)?.slice(0, 80)}...`;
+		case "compaction": {
+			const s = (entry.summary as string) ?? "";
+			return `[${id}] ${ts} compaction: ${s.slice(0, 80)}${s.length > 80 ? "..." : ""}`;
+		}
+		case "branch_summary": {
+			const s = (entry.summary as string) ?? "";
+			return `[${id}] ${ts} branch_summary: ${s.slice(0, 80)}${s.length > 80 ? "..." : ""}`;
+		}
 		case "label":
 			return `[${id}] ${ts} label: "${entry.label}" → ${entry.targetId}`;
 		case "session_info":
 			return `[${id}] ${ts} session_info: name="${entry.name}"`;
 		case "custom":
 			return `[${id}] ${ts} custom: ${entry.customType}`;
+		case "custom_message": {
+			const content = typeof entry.content === "string" ? entry.content : "";
+			return `[${id}] ${ts} custom_message: [${entry.customType}] ${content.slice(0, 80).replace(/\n/g, " ")}`;
+		}
 		default:
 			return `[${id}] ${ts} ${entry.type}`;
 	}

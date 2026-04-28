@@ -13,48 +13,94 @@ import { ExtensionRunner } from "@mariozechner/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────
 
+/**
+ * A pending deferred action. Discriminated on `kind`.
+ *
+ * At most one action can be pending at a time — enforced by `setPending()`.
+ * The exhaustive switch in `runPending()` guarantees every kind is handled.
+ */
+export type PendingAction =
+	| { kind: "resume"; file: string; message?: string }
+	| { kind: "new"; parentSession?: string; message?: string }
+	| { kind: "nav"; targetId: string; summarize?: boolean; customInstructions?: string; message?: string }
+	| { kind: "fork"; id: string; message?: string }
+	| { kind: "reload"; message?: string };
+
+export interface RuntimeContext {
+	sendFollowUp: (msg: string) => void;
+}
+
 export interface CommandOps {
-	switchSession: (sessionPath: string) => Promise<{ cancelled: boolean }>;
-	newSession: (options?: { parentSession?: string; setup?: any }) => Promise<{ cancelled: boolean }>;
+	switchSession: (sessionPath: string, options?: {
+		withSession?: (ctx: any) => Promise<void>;
+	}) => Promise<{ cancelled: boolean }>;
+	newSession: (options?: {
+		parentSession?: string;
+		setup?: any;
+		withSession?: (ctx: any) => Promise<void>;
+	}) => Promise<{ cancelled: boolean }>;
 	navigateTree: (targetId: string, options?: {
 		summarize?: boolean;
 		customInstructions?: string;
 		replaceInstructions?: boolean;
 		label?: string;
 	}) => Promise<{ cancelled: boolean }>;
-	fork: (entryId: string) => Promise<{ cancelled: boolean }>;
+	fork: (entryId: string, options?: {
+		position?: "before" | "at";
+		withSession?: (ctx: any) => Promise<void>;
+	}) => Promise<{ cancelled: boolean }>;
 	reload: () => Promise<void>;
 }
 
 // ── State ───────────────────────────────────────────────────
 
 let _ops: CommandOps | null = null;
-
-let _pendingResume: string | null = null;
-let _pendingNew: { parentSession?: string } | null = null;
-let _pendingNav: { targetId: string; summarize?: boolean; customInstructions?: string } | null = null;
-let _pendingFork: string | null = null;
+let _pending: PendingAction | null = null;
 
 // ── Accessors ───────────────────────────────────────────────
 
 export function isArmed(): boolean { return _ops !== null; }
-export function hasPending(): boolean { return _pendingResume !== null || _pendingNew !== null || _pendingNav !== null || _pendingFork !== null; }
+export function hasPending(): boolean { return _pending !== null; }
 
-export function setPendingResume(file: string) { _pendingResume = file; }
-export function setPendingNew(opts: { parentSession?: string }) { _pendingNew = opts; }
-export function setPendingNav(opts: { targetId: string; summarize?: boolean; customInstructions?: string }) { _pendingNav = opts; }
-export function setPendingFork(id: string) { _pendingFork = id; }
+export function clearPending(): void {
+	_pending = null;
+}
 
-function consumePendingResume() { const v = _pendingResume; _pendingResume = null; return v; }
-function consumePendingNew() { const v = _pendingNew; _pendingNew = null; return v; }
-function consumePendingNav() { const v = _pendingNav; _pendingNav = null; return v; }
-function consumePendingFork() { const v = _pendingFork; _pendingFork = null; return v; }
+/**
+ * Router-facing helper: dispatch a pending action.
+ *
+ * Callers do action-specific validation first, then hand off to scheduleAction
+ * which handles the isArmed / hasPending / set / response boilerplate.
+ */
+export interface ScheduleParams {
+	/** Short hint pointing at the built-in fallback command, e.g. "Use built-in `/resume` instead." */
+	fallbackHint: string;
+	/** The action to schedule. */
+	action: PendingAction;
+	/** Success text shown to the model when the action was scheduled. */
+	successText: string;
+	/** Structured details echoed back to the model. */
+	details?: Record<string, any>;
+}
 
-export function clearPending() {
-	_pendingResume = null;
-	_pendingNew = null;
-	_pendingNav = null;
-	_pendingFork = null;
+export function scheduleAction(params: ScheduleParams): { content: Array<{ type: "text"; text: string }>; details: Record<string, any> } {
+	if (!isArmed()) {
+		return {
+			content: [{ type: "text", text: `Command context not captured. ${params.fallbackHint}` }],
+			details: {},
+		};
+	}
+	if (hasPending()) {
+		return {
+			content: [{ type: "text", text: `Another pending action (${_pending?.kind}) is already scheduled. Wait for the current turn to finish.` }],
+			details: {},
+		};
+	}
+	_pending = params.action;
+	return {
+		content: [{ type: "text", text: params.successText }],
+		details: params.details ?? {},
+	};
 }
 
 // ── Patch ───────────────────────────────────────────────────
@@ -89,45 +135,91 @@ export function patchBindCommandContext(): boolean {
 
 export async function runPending(
 	notify?: (msg: string, level: "info" | "warning" | "error") => void,
+	runtime?: RuntimeContext,
 ): Promise<void> {
 	if (!_ops) return;
+	// Consume before awaiting so a long-running action does not block further
+	// scheduling. During the await below, `hasPending()` returns false and the
+	// session is typically being replaced anyway.
+	const action = _pending;
+	_pending = null;
+	if (!action) return;
 
-	const resume = consumePendingResume();
-	if (resume) {
-		try {
-			const r = await _ops.switchSession(resume);
-			if (r.cancelled) notify?.("Session switch cancelled", "warning");
-		} catch (e) { notify?.(`Session switch failed: ${e}`, "error"); }
-		return;
-	}
+	const reportError = (message: string, error?: unknown) => {
+		if (notify) {
+			notify(error === undefined ? message : `${message}: ${error}`, "error");
+			return;
+		}
+		if (error === undefined) console.error(`[pi-control] ${message}`);
+		else console.error(`[pi-control] ${message}:`, error);
+	};
 
-	const newOpts = consumePendingNew();
-	if (newOpts) {
-		try {
-			const r = await _ops.newSession(newOpts);
-			if (r.cancelled) notify?.("New session cancelled", "warning");
-		} catch (e) { notify?.(`New session failed: ${e}`, "error"); }
-		return;
-	}
+	// Builds a withSession option that injects `message` into the replaced session.
+	const withMessage = (message: string | undefined) => {
+		if (!message) return undefined;
+		return async (newCtx: any) => {
+			await newCtx.sendUserMessage(message);
+		};
+	};
 
-	const nav = consumePendingNav();
-	if (nav) {
-		try {
-			const r = await _ops.navigateTree(nav.targetId, {
-				summarize: nav.summarize,
-				customInstructions: nav.customInstructions,
-			});
-			if (r.cancelled) notify?.("Navigation cancelled", "warning");
-		} catch (e) { notify?.(`Navigation failed: ${e}`, "error"); }
-		return;
-	}
+	switch (action.kind) {
+		case "resume": {
+			try {
+				const opts: any = {};
+				const ws = withMessage(action.message);
+				if (ws) opts.withSession = ws;
+				const r = await _ops.switchSession(action.file, opts);
+				if (r.cancelled) notify?.("Session switch cancelled", "warning");
+			} catch (e) { reportError("Session switch failed", e); }
+			return;
+		}
 
-	const fork = consumePendingFork();
-	if (fork) {
-		try {
-			const r = await _ops.fork(fork);
-			if (r.cancelled) notify?.("Fork cancelled", "warning");
-		} catch (e) { notify?.(`Fork failed: ${e}`, "error"); }
-		return;
+		case "new": {
+			try {
+				const opts: any = { parentSession: action.parentSession };
+				const ws = withMessage(action.message);
+				if (ws) opts.withSession = ws;
+				const r = await _ops.newSession(opts);
+				if (r.cancelled) notify?.("New session cancelled", "warning");
+			} catch (e) { reportError("New session failed", e); }
+			return;
+		}
+
+		case "nav": {
+			try {
+				const r = await _ops.navigateTree(action.targetId, {
+					summarize: action.summarize,
+					customInstructions: action.customInstructions,
+				});
+				if (r.cancelled) notify?.("Navigation cancelled", "warning");
+				else if (action.message && runtime) runtime.sendFollowUp(action.message);
+			} catch (e) { reportError("Navigation failed", e); }
+			return;
+		}
+
+		case "fork": {
+			try {
+				const opts: any = {};
+				const ws = withMessage(action.message);
+				if (ws) opts.withSession = ws;
+				const r = await _ops.fork(action.id, opts);
+				if (r.cancelled) notify?.("Fork cancelled", "warning");
+			} catch (e) { reportError("Fork failed", e); }
+			return;
+		}
+
+		case "reload": {
+			try {
+				await _ops.reload();
+				if (action.message && runtime) runtime.sendFollowUp(action.message);
+			} catch (e) { reportError("Reload failed", e); }
+			return;
+		}
+
+		default: {
+			// Exhaustiveness: if a new kind is added without a case, TS surfaces it here.
+			const _exhaustive: never = action;
+			return _exhaustive;
+		}
 	}
 }

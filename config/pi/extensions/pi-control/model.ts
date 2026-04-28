@@ -6,6 +6,43 @@ import { getEnabledModels } from "./utils.js";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
+/** Filter `available` models to those matching the enabledModels patterns. */
+function filterScoped(available: any[], patterns: string[]): any[] {
+	if (patterns.length === 0) return available;
+	return available.filter((m: any) => {
+		const key = `${m.provider}/${m.id}`;
+		return patterns.some(p => key === p || m.id === p);
+	});
+}
+
+/**
+ * Resolve a model by id (and optional provider), preferring scoped models.
+ *
+ * If `provider` is given, looks up directly via the registry.
+ * If not, prefers a scoped match (matching settings.json `enabledModels`),
+ * then falls back to any available model with the same id.
+ *
+ * `includeUnregistered` (only for consult) lets callers fall back to
+ * `getModel(provider, modelId)` so consult can hit a model the registry
+ * doesn't yet know but that does have an API key configured.
+ */
+async function resolveModel(
+	ctx: any,
+	provider: string | undefined,
+	modelId: string,
+	opts?: { includeUnregistered?: boolean },
+): Promise<any | null> {
+	if (provider) {
+		const found = ctx.modelRegistry.find(provider, modelId);
+		if (found) return found;
+		if (opts?.includeUnregistered) return getModel(provider, modelId);
+		return null;
+	}
+	const available = await ctx.modelRegistry.getAvailable();
+	const scoped = filterScoped(available, getEnabledModels(ctx.cwd));
+	return scoped.find((m: any) => m.id === modelId) ?? available.find((m: any) => m.id === modelId) ?? null;
+}
+
 export function registerModelsRouter(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "models",
@@ -30,10 +67,11 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 			scope: Type.Optional(StringEnum(["scoped", "all"] as const, { description: '"scoped" (default) or "all". For list.' })),
 			filter: Type.Optional(Type.String({ description: "Filter by provider or model name substring. For list." })),
 			// switch / consult params
-			provider: Type.Optional(Type.String({ description: 'Model provider, e.g. "anthropic", "openai". For switch/consult.' })),
+			provider: Type.Optional(Type.String({ description: 'Model provider. Optional: auto-resolved from scoped models if omitted. For switch/consult.' })),
 			modelId: Type.Optional(Type.String({ description: 'Model ID, e.g. "claude-sonnet-4-5". For switch/consult.' })),
-			thinkingLevel: Type.Optional(StringEnum(THINKING_LEVELS, { description: "Thinking level. For switch." })),
+			thinkingLevel: Type.Optional(StringEnum(THINKING_LEVELS, { description: "Thinking level. For switch or consult." })),
 			message: Type.Optional(Type.String({ description: "Optional continuation message after switching. For switch." })),
+			deliverAs: Type.Optional(StringEnum(["steer", "followUp"] as const, { description: '"followUp" (default) or "steer". For switch (with message).' })),
 			// consult params
 			prompt: Type.Optional(Type.String({ description: "Prompt to send. For consult." })),
 			systemPrompt: Type.Optional(Type.String({ description: "Optional system prompt. For consult." })),
@@ -47,26 +85,23 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 					const enabledPatterns = getEnabledModels(ctx.cwd);
 
 					let candidates = available;
-					if (scope === "scoped" && enabledPatterns.length > 0) {
-						candidates = available.filter(m => {
-							const key = `${m.provider}/${m.id}`;
-							return enabledPatterns.some(p => key === p || m.id === p);
-						});
+					if (scope === "scoped") {
+						candidates = filterScoped(available, enabledPatterns);
 					}
 
 					const filter = params.filter?.toLowerCase();
 					const filtered = filter
 						? candidates.filter(m =>
 							`${m.provider}/${m.id}`.toLowerCase().includes(filter)
-							|| m.name.toLowerCase().includes(filter)
+							|| (m.name ?? "").toLowerCase().includes(filter)
 						)
 						: candidates;
 
 					const header = scope === "scoped" && enabledPatterns.length > 0
-						? `**Scoped models** (${enabledPatterns.length} configured):`
+						? `scoped models (${enabledPatterns.length} configured)`
 						: scope === "scoped"
-							? "**No scoped models configured.** Showing all:"
-							: "**All available models:**";
+							? "no scoped models configured, showing all:"
+							: "all available models:";
 
 					if (filtered.length === 0) {
 						return {
@@ -87,21 +122,21 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 
 				// ── switch ──────────────────────────────────────────
 				case "switch": {
-					if (!params.provider || !params.modelId) {
-						return { content: [{ type: "text", text: "`provider` and `modelId` are required for switch." }], details: {} };
+					if (!params.modelId) {
+						return { content: [{ type: "text", text: "`modelId` is required for switch." }], details: {} };
 					}
 
-					const model = ctx.modelRegistry.find(params.provider, params.modelId);
+					const model = await resolveModel(ctx, params.provider, params.modelId);
 					if (!model) {
 						return {
-							content: [{ type: "text", text: `Model not found: ${params.provider}/${params.modelId}. Use models(action='list') to find valid models.` }],
+							content: [{ type: "text", text: `Model not found: ${params.provider ?? "(auto)"}/${params.modelId}. Use models(action='list') to find valid models.` }],
 							details: {},
 						};
 					}
 
 					const success = await pi.setModel(model);
 					if (!success) {
-						return { content: [{ type: "text", text: `No API key for ${params.provider}/${params.modelId}.` }], details: {} };
+						return { content: [{ type: "text", text: `No API key for ${model.provider}/${model.id}.` }], details: {} };
 					}
 
 					if (params.thinkingLevel) pi.setThinkingLevel(params.thinkingLevel);
@@ -110,41 +145,41 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 
 					// Send continuation message if provided
 					if (params.message) {
-						if (ctx.isIdle()) {
-							await pi.sendUserMessage(params.message);
-						} else {
-							await pi.sendUserMessage(params.message, { deliverAs: "steer" });
-						}
+						await pi.sendUserMessage(params.message, { deliverAs: params.deliverAs ?? "followUp" });
 						return {
-							content: [{ type: "text", text: `Switched to **${params.provider}/${params.modelId}** (thinking: ${level}). Continuation message sent.` }],
-							details: { provider: params.provider, modelId: params.modelId, thinkingLevel: level, messageSent: true },
+							content: [{ type: "text", text: `switched to ${model.provider}/${model.id} (thinking: ${level}). continuation message sent.` }],
+							details: { provider: model.provider, modelId: model.id, thinkingLevel: level, messageSent: true },
 						};
 					}
 
 					return {
-						content: [{ type: "text", text: `Switched to **${params.provider}/${params.modelId}** (thinking: ${level}). No continuation message sent.` }],
-						details: { provider: params.provider, modelId: params.modelId, thinkingLevel: level, messageSent: false },
+						content: [{ type: "text", text: `switched to ${model.provider}/${model.id} (thinking: ${level}). no continuation message sent.` }],
+						details: { provider: model.provider, modelId: model.id, thinkingLevel: level, messageSent: false },
 					};
 				}
 
 				// ── consult ─────────────────────────────────────────
 				case "consult": {
-					if (!params.provider || !params.modelId || !params.prompt) {
-						return { content: [{ type: "text", text: "`provider`, `modelId`, and `prompt` are required for consult." }], details: {} };
+					if (!params.modelId || !params.prompt) {
+						return { content: [{ type: "text", text: "`modelId` and `prompt` are required for consult." }], details: {} };
 					}
 
-					const model = ctx.modelRegistry.find(params.provider, params.modelId)
-						?? getModel(params.provider, params.modelId);
+					const model = await resolveModel(ctx, params.provider, params.modelId, { includeUnregistered: true });
 					if (!model) {
-						return { content: [{ type: "text", text: `Model not found: ${params.provider}/${params.modelId}` }], details: {} };
+						return { content: [{ type: "text", text: `Model not found: ${params.provider ?? "(auto)"}/${params.modelId}` }], details: {} };
 					}
 
 					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 					if (!auth.ok || !auth.apiKey) {
-						return { content: [{ type: "text", text: `No API key for ${params.provider}/${params.modelId}` }], details: {} };
+						return { content: [{ type: "text", text: `No API key for ${model.provider}/${model.id}` }], details: {} };
 					}
 
-					onUpdate?.({ content: [{ type: "text", text: `Consulting ${params.provider}/${params.modelId}...` }], details: {} });
+					const thinkingLevel = params.thinkingLevel;
+					const useReasoning = !!(model.reasoning && thinkingLevel && thinkingLevel !== "off");
+					const completeOpts: any = { apiKey: auth.apiKey, headers: auth.headers, signal };
+					if (useReasoning) completeOpts.reasoning = thinkingLevel;
+
+					onUpdate?.({ content: [{ type: "text", text: `Consulting ${model.provider}/${model.id}${useReasoning ? ` (thinking: ${thinkingLevel})` : ""}...` }], details: {} });
 
 					const response = await complete(
 						model,
@@ -152,7 +187,7 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 							systemPrompt: params.systemPrompt ?? "You are a helpful assistant. Be concise and precise.",
 							messages: [{ role: "user", content: [{ type: "text", text: params.prompt }], timestamp: Date.now() }],
 						},
-						{ apiKey: auth.apiKey, headers: auth.headers, signal },
+						completeOpts,
 					);
 
 					if (response.stopReason === "aborted") {
@@ -172,8 +207,8 @@ export function registerModelsRouter(pi: ExtensionAPI) {
 					const truncNote = truncation.truncated ? "\n\n*(output truncated)*" : "";
 
 					return {
-						content: [{ type: "text", text: `**Response from ${params.provider}/${params.modelId}** ${stats}\n\n${truncation.content}${truncNote}` }],
-						details: { provider: params.provider, modelId: params.modelId, usage, truncated: truncation.truncated },
+						content: [{ type: "text", text: `response from ${model.provider}/${model.id}${useReasoning ? ` (thinking: ${thinkingLevel})` : ""} ${stats}\n\n${truncation.content}${truncNote}` }],
+						details: { provider: model.provider, modelId: model.id, thinkingLevel: useReasoning ? thinkingLevel : undefined, usage, truncated: truncation.truncated },
 					};
 				}
 
