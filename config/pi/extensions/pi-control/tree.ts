@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatEntryPreview, getEntryText } from "./utils.js";
 import { scheduleAction } from "./command-actions.js";
+import { getAnchors } from "./context/anchors.js";
 import { buildGroupedOverview, renderGroupedOverview } from "./grouped.js";
 
 const SETTINGS_TYPES = new Set(["label", "custom", "custom_message", "model_change", "thinking_level_change", "session_info"]);
@@ -16,8 +17,8 @@ export function registerTreeRouter(pi: ExtensionAPI) {
 			"list: browse current-branch entries or a session-wide branch overview.",
 			"search: find entries by keyword.",
 			"labels: show labeled/bookmarked entries.",
-			"set_label: set or clear a label on an entry (lightweight bookmark).",
-			"navigate: jump to a different point in the session tree.",
+			"set_label: set or clear a label on an entry (lightweight bookmark; use context(anchor) for checkpoints with summary).",
+			"navigate: jump to a different point in the session tree (low-level; use context(action='pivot') for deliberate checkpoint recovery with carryover).",
 			"fork: create a new session forked before a specific user-message entry.",
 			"compact: summarize older messages to free up context window.",
 		].join(" "),
@@ -273,6 +274,15 @@ export function registerTreeRouter(pi: ExtensionAPI) {
 								details: {},
 							};
 						}
+					}
+
+					// Reject collisions with anchor names so target names stay unambiguous across context and tree.
+					const anchorMatch = getAnchors(ctx.sessionManager).find(a => a.data.name === params.label);
+					if (anchorMatch) {
+						return {
+							content: [{ type: "text", text: `"${params.label}" is already used by an anchor. Choose a different label.` }],
+							details: {},
+						};
 					}
 
 					pi.setLabel(params.entryId, params.label);

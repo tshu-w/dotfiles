@@ -24,7 +24,11 @@ export type PendingAction =
 	| { kind: "new"; parentSession?: string; message?: string }
 	| { kind: "nav"; targetId: string; summarize?: boolean; customInstructions?: string; message?: string }
 	| { kind: "fork"; id: string; message?: string }
+	| { kind: "pivot"; targetId: string; carryover: string; message?: string }
 	| { kind: "reload"; message?: string };
+
+/** The pivot action payload. Useful for hooks that introspect the active pivot. */
+export type PendingPivot = Extract<PendingAction, { kind: "pivot" }>;
 
 export interface RuntimeContext {
 	sendFollowUp: (msg: string) => void;
@@ -56,14 +60,17 @@ export interface CommandOps {
 
 let _ops: CommandOps | null = null;
 let _pending: PendingAction | null = null;
+let _activePivot: PendingPivot | null = null;
 
 // ── Accessors ───────────────────────────────────────────────
 
 export function isArmed(): boolean { return _ops !== null; }
 export function hasPending(): boolean { return _pending !== null; }
+export function getActivePivot(): PendingPivot | null { return _activePivot; }
 
 export function clearPending(): void {
 	_pending = null;
+	_activePivot = null;
 }
 
 /**
@@ -205,6 +212,25 @@ export async function runPending(
 				const r = await _ops.fork(action.id, opts);
 				if (r.cancelled) notify?.("Fork cancelled", "warning");
 			} catch (e) { reportError("Fork failed", e); }
+			return;
+		}
+
+		case "pivot": {
+			if (!runtime) {
+				reportError("Pivot failed: runtime context not available");
+				return;
+			}
+			try {
+				// Let navigateTree build the new branch summary so agent state stays in sync.
+				_activePivot = action;
+				const r = await _ops.navigateTree(action.targetId, { summarize: true });
+				if (r.cancelled) notify?.("Pivot cancelled", "warning");
+				else {
+					const msg = action.message ?? "Pivot complete. Continue from the target anchor.";
+					runtime.sendFollowUp(msg);
+				}
+			} catch (e) { reportError("Pivot failed", e); }
+			finally { _activePivot = null; }
 			return;
 		}
 

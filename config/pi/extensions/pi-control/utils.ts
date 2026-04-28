@@ -58,6 +58,16 @@ export interface SessionScanResult {
 	cwd?: string;
 }
 
+export interface AnchorScanResult {
+	sessionFile: string;
+	sessionId: string;
+	sessionCwd?: string;
+	anchorName: string;
+	anchorId: string;
+	summary: string;
+	timestamp: string;
+}
+
 export async function scanSessions(
 	keyword?: string,
 	limit = 10,
@@ -143,6 +153,120 @@ export async function scanSessions(
 	return results;
 }
 
+export async function scanAnchors(
+	keyword: string,
+	scope: "cwd" | "all",
+	cwd: string,
+	limit = 10,
+	signal?: AbortSignal,
+): Promise<AnchorScanResult[]> {
+	if (limit <= 0) return [];
+
+	const lowerKw = keyword.toLowerCase();
+	const results: AnchorScanResult[] = [];
+	const timeValue = (ts: string) => {
+		const value = Date.parse(ts);
+		return Number.isFinite(value) ? value : 0;
+	};
+
+	for (const { file, mtime } of listSessionFiles()) {
+		if (signal?.aborted) break;
+
+		const cached = loadSessionAnchors(file, mtime);
+		if (scope === "cwd" && cached.cwd !== cwd) continue;
+		if (cached.anchors.length === 0) continue;
+
+		for (const a of cached.anchors) {
+			if (signal?.aborted) break;
+			const haystack = `${a.anchorName}\n${a.summary}`.toLowerCase();
+			if (!haystack.includes(lowerKw)) continue;
+			results.push({
+				sessionFile: file,
+				sessionId: cached.sessionId ?? "",
+				sessionCwd: cached.cwd,
+				anchorName: a.anchorName,
+				anchorId: a.anchorId,
+				summary: a.summary,
+				timestamp: a.timestamp,
+			});
+		}
+	}
+
+	results.sort((a, b) => timeValue(b.timestamp) - timeValue(a.timestamp));
+	return results.slice(0, limit);
+}
+
+// ── Anchor cache ────────────────────────────────────
+// Caches parsed anchor entries per session file. Keyed by (file, mtime);
+// mtime invalidates naturally when pi's session-manager appends new entries.
+// Memory bound: typical session has O(10) anchors × O(hundreds) of sessions.
+
+interface CachedAnchorEntry {
+	anchorId: string;
+	anchorName: string;
+	summary: string;
+	timestamp: string;
+}
+
+interface CachedSessionAnchors {
+	mtime: number;
+	sessionId?: string;
+	cwd?: string;
+	anchors: CachedAnchorEntry[];
+}
+
+const _anchorCache = new Map<string, CachedSessionAnchors>();
+
+function loadSessionAnchors(file: string, mtime: number): CachedSessionAnchors {
+	const cached = _anchorCache.get(file);
+	if (cached && cached.mtime === mtime) return cached;
+
+	let raw: string;
+	try { raw = fs.readFileSync(file, "utf-8"); }
+	catch {
+		const empty: CachedSessionAnchors = { mtime, anchors: [] };
+		_anchorCache.set(file, empty);
+		return empty;
+	}
+
+	let header: any = null;
+	const anchors: CachedAnchorEntry[] = [];
+	for (const line of raw.split("\n")) {
+		if (!line.trim()) continue;
+		let entry: any;
+		try { entry = JSON.parse(line); } catch { continue; }
+
+		if (entry.type === "session") {
+			header = entry;
+			continue;
+		}
+
+		if (
+			entry.type === "message" &&
+			entry.message?.role === "toolResult" &&
+			entry.message?.toolName === "context" &&
+			entry.message?.details?.anchor
+		) {
+			const a = entry.message.details.anchor;
+			if (!a?.name || !a?.summary) continue;
+			anchors.push({
+				anchorId: entry.id,
+				anchorName: a.name,
+				summary: a.summary,
+				timestamp: entry.timestamp ?? "",
+			});
+		}
+	}
+
+	const result: CachedSessionAnchors = {
+		mtime,
+		sessionId: header?.id,
+		cwd: header?.cwd,
+		anchors,
+	};
+	_anchorCache.set(file, result);
+	return result;
+}
 
 /**
  * Extract searchable text from any entry type.
