@@ -31,7 +31,7 @@ export type PendingAction =
 export type PendingPivot = Extract<PendingAction, { kind: "pivot" }>;
 
 export interface RuntimeContext {
-	sendFollowUp: (msg: string) => void;
+	sendFollowUp: (msg: string) => Promise<void>;
 }
 
 export interface CommandOps {
@@ -162,10 +162,12 @@ export async function runPending(
 	};
 
 	// Builds a withSession option that injects `message` into the replaced session.
+	// Pass deliverAs: "followUp" defensively in case the target session happens to be
+	// streaming; non-streaming sessions ignore deliverAs so it is a no-op otherwise.
 	const withMessage = (message: string | undefined) => {
 		if (!message) return undefined;
 		return async (newCtx: any) => {
-			await newCtx.sendUserMessage(message);
+			await newCtx.sendUserMessage(message, { deliverAs: "followUp" });
 		};
 	};
 
@@ -199,7 +201,7 @@ export async function runPending(
 					customInstructions: action.customInstructions,
 				});
 				if (r.cancelled) notify?.("Navigation cancelled", "warning");
-				else if (action.message && runtime) runtime.sendFollowUp(action.message);
+				else if (action.message && runtime) await runtime.sendFollowUp(action.message);
 			} catch (e) { reportError("Navigation failed", e); }
 			return;
 		}
@@ -227,7 +229,7 @@ export async function runPending(
 				if (r.cancelled) notify?.("Pivot cancelled", "warning");
 				else {
 					const msg = action.message ?? "Pivot complete. Continue from the target anchor.";
-					runtime.sendFollowUp(msg);
+					await runtime.sendFollowUp(msg);
 				}
 			} catch (e) { reportError("Pivot failed", e); }
 			finally { _activePivot = null; }
@@ -237,7 +239,7 @@ export async function runPending(
 		case "reload": {
 			try {
 				await _ops.reload();
-				if (action.message && runtime) runtime.sendFollowUp(action.message);
+				if (action.message && runtime) await runtime.sendFollowUp(action.message);
 			} catch (e) { reportError("Reload failed", e); }
 			return;
 		}
