@@ -1,6 +1,6 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.4",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "high",
   "followUpMode": "all",
   "steeringMode": "all",
@@ -50,7 +50,7 @@
     {
       "source": "/Users/wangtianshu/Developer/agentd",
       "skills": [
-        "skills/agentd/**"
+        "scaffold/skills/**"
       ]
     },
     "git:github.com/addyosmani/agent-skills"
