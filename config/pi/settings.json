@@ -48,12 +48,12 @@
     {
       "source": "/Users/wangtianshu/Developer/agentd",
       "skills": [
-        "skills/agentd/**"
+        "scaffold/skills/agentd/**"
       ]
     },
     "git:github.com/addyosmani/agent-skills"
   ],
-  "lastChangelogVersion": "0.70.5",
+  "lastChangelogVersion": "0.74.0",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"

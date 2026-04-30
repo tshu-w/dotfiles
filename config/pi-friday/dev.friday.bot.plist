@@ -7,8 +7,6 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/bin/zsh</string>
-      <string>-ilc</string>
       <string>/Users/wangtianshu/.config/pi-friday/startup.sh</string>
     </array>
 

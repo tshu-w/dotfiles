@@ -9,7 +9,7 @@
  * This is the userland polyfill for upstream pi.runWhenIdle() (#2023).
  */
 
-import { ExtensionRunner } from "@mariozechner/pi-coding-agent";
+import { ExtensionRunner } from "@earendil-works/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -227,10 +227,7 @@ export async function runPending(
 				_activePivot = action;
 				const r = await _ops.navigateTree(action.targetId, { summarize: true });
 				if (r.cancelled) notify?.("Pivot cancelled", "warning");
-				else {
-					const msg = action.message ?? "Pivot complete. Continue from the target anchor.";
-					await runtime.sendFollowUp(msg);
-				}
+				else if (action.message) await runtime.sendFollowUp(action.message);
 			} catch (e) { reportError("Pivot failed", e); }
 			finally { _activePivot = null; }
 			return;

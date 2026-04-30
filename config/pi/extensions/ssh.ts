@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   type BashOperations,
   createBashTool,
@@ -22,8 +22,8 @@ import {
   type EditOperations,
   type ReadOperations,
   type WriteOperations,
-} from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 const ENV_REMOTE = "PI_SSH_REMOTE";
 const ENV_REMOTE_ROOT_CWD = "PI_SSH_REMOTE_CWD";

@@ -17,7 +17,7 @@
  * Upstream equivalent: pi.runWhenIdle() (#2023).
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { patchBindCommandContext, runPending, clearPending, isArmed, hasPending, getActivePivot } from "./command-actions.js";
 import { isAnchorEntry, isAnchorToolResult } from "./context/anchors.js";
 import { registerContextRouter } from "./context/router.js";
@@ -86,13 +86,43 @@ export default function (pi: ExtensionAPI) {
 				parts.push(`context=${bucket}%`);
 			}
 
+			// Tool-output share — proxy for context noise density. High share (>40%)
+			// hints the agent to externalize tool results (note to disk) instead of
+			// keeping them inline. Char-count is good enough; we don't need real tokens.
+			let totalChars = 0;
+			let toolChars = 0;
+			for (const m of messages as any[]) {
+				let mc = 0;
+				if (typeof m.content === "string") mc = m.content.length;
+				else if (Array.isArray(m.content)) {
+					for (const part of m.content) {
+						if (typeof part?.text === "string") mc += part.text.length;
+						else if (typeof part?.content === "string") mc += part.content.length;
+					}
+				}
+				totalChars += mc;
+				if (m.role === "toolResult") toolChars += mc;
+			}
+			if (totalChars > 0) {
+				const toolPct = Math.round((toolChars / totalChars) * 100);
+				parts.push(`tool=${toolPct}%`);
+			}
+
 			// Anchor info — only consider anchors on the current branch so status
 			// reflects where the agent actually is, not orphaned anchors from abandoned branches.
 			const branchEntries = ctx.sessionManager?.getBranch?.() ?? [];
 			const anchors = branchEntries.filter(isAnchorEntry);
 			if (anchors.length > 0) {
-				const latest = (anchors[anchors.length - 1] as any)?.message?.details?.anchor?.name;
-				if (latest) parts.push(`anchor=${latest}`);
+				const latestAnchor = anchors[anchors.length - 1] as any;
+				const latestName = latestAnchor?.message?.details?.anchor?.name;
+				if (latestName) {
+					// Distance to the most recent anchor, measured in branch entries.
+					// Long distance (e.g. -15) reminds the agent to checkpoint progress
+					// rather than risk a long un-anchored chain that's hard to pivot back to.
+					const latestIdx = branchEntries.indexOf(latestAnchor);
+					const distance = latestIdx >= 0 ? branchEntries.length - 1 - latestIdx : 0;
+					parts.push(`anchor=${latestName} (-${distance})`);
+				}
 			}
 
 			// Anchor reminder — only once per session

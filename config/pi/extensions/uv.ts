@@ -7,7 +7,7 @@
  * https://github.com/mitsuhiko/agent-stuff/tree/main/intercepted-commands
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 type RuleMatch = {
   title: string;

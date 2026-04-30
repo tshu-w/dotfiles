@@ -25,7 +25,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
 // jj availability + per-cwd repo detection (small caches)
