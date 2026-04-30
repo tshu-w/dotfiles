@@ -13,7 +13,8 @@
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
     "extensions/ssh.ts",
-    "extensions/secret-guard.ts"
+    "extensions/secret-guard.ts",
+    "extensions/jj.ts"
   ],
   "packages": [
     {
@@ -55,7 +56,7 @@
     },
     "git:github.com/addyosmani/agent-skills"
   ],
-  "lastChangelogVersion": "0.70.2",
+  "lastChangelogVersion": "0.70.5",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"
