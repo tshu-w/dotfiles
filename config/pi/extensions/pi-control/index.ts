@@ -80,10 +80,10 @@ export default function (pi: ExtensionAPI) {
 			const usage = ctx.getContextUsage?.();
 			const parts: string[] = [`model=${currentModel.provider}/${currentModel.id}`];
 			if (usage && typeof usage.percent === "number") {
-				// Bucketize to 10% steps so the value is stable across small context growth
-				// and serves as a clear threshold signal rather than noisy exact percentages.
-				const bucket = Math.min(100, Math.round(usage.percent / 10) * 10);
-				parts.push(`context=${bucket}%`);
+				// 1% precision; pi-status sits after the last user message and other
+				// fields change each turn, so rounding gains nothing.
+				const pct = Math.min(100, Math.round(usage.percent));
+				parts.push(`context=${pct}%`);
 			}
 
 			// Tool-output share — proxy for context noise density. High share (>40%)
