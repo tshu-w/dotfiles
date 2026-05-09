@@ -34,7 +34,7 @@ export function registerContextRouter(pi: ExtensionAPI) {
 			summary: Type.Optional(Type.String({ description: "Retrospective state: what's done, key decisions, what was confirmed. For anchor." })),
 			target: Type.Optional(Type.String({ description: 'Target: anchor name, entry ID, "root", or "head". For pivot.' })),
 			carryover: Type.Optional(Type.String({ description: "Required summary of current progress to carry into the new branch. For pivot." })),
-			message: Type.Optional(Type.String({ description: "Optional followUp message after pivot completes. Defaults to 'Pivot complete. Continue from the target anchor.' For pivot." })),
+			message: Type.Optional(Type.String({ description: "Optional followUp message after pivot completes. No default; omit to leave the new branch idle until the next user message. For pivot." })),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			switch (params.action) {

@@ -48,7 +48,7 @@ export function registerTreeRouter(pi: ExtensionAPI) {
 			label: Type.Optional(Type.String({ description: "Label to set. Omit to clear. For set_label." })),
 			summarize: Type.Optional(Type.Boolean({ description: "Summarize abandoned branch. Default: false. For navigate. (context(pivot) always summarizes regardless.)" })),
 			customInstructions: Type.Optional(Type.String({ description: "Custom instructions for context summarization. For navigate/compact." })),
-			message: Type.Optional(Type.String({ description: "Optional message to deliver after the action completes. For navigate: followUp in current session. For fork: injected into the new forked session via withSession. For compact: followUp in current session after compaction completes (overrides default 'Compaction complete. Continue.')." })),
+			message: Type.Optional(Type.String({ description: "Optional message to deliver after the action completes. For navigate: followUp in current session. For fork: injected into the new forked session via withSession. For compact: followUp in current session after compaction completes (no default; omit to leave the agent idle)." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			switch (params.action) {
@@ -346,11 +346,12 @@ export function registerTreeRouter(pi: ExtensionAPI) {
 
 				// ── compact ─────────────────────────────────────────
 				case "compact": {
-					const followUpMsg = params.message ?? "Compaction complete. Continue.";
 					ctx.compact({
 						customInstructions: params.customInstructions,
 						onComplete: () => {
-							pi.sendUserMessage(followUpMsg, { deliverAs: "followUp" });
+							if (params.message) {
+								pi.sendUserMessage(params.message, { deliverAs: "followUp" });
+							}
 						},
 						onError: (err) => {
 							pi.sendUserMessage(`Compaction failed: ${err}`, { deliverAs: "followUp" });
