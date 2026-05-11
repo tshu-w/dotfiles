@@ -1,72 +1,23 @@
 # AGENTS.md
 
-## 约束优先级
+## Safety
 
-按以下优先级处理任务：
+Before hard-to-reverse operations, explain the risk and ask for confirmation:
 
-1. **规则与约束** — 显式给定的硬性约束（语言/库版本/禁止操作等），不得为省事而违反
-2. **操作顺序与可逆性** — 确保每一步不阻碍后续步骤
-3. **前置条件** — 确认推进所需的信息是否充足
-4. **用户偏好** — 在不违背以上前提下尽量满足
+- deleting files/directories, especially `rm -rf`
+- `git reset --hard`, force push, history rewriting
+- changes that affect external APIs, persistence formats, schemas, or data migration
 
-冲突时的优先级：正确性与安全性 > 业务需求 > 可维护性 > 性能 > 代码长度
+Pure code edits, formatting, and small local refactors do not need extra confirmation.
 
-## 安全红线
+## Working Style
 
-以下操作必须先说明风险并获得确认：
-
-- 删除文件/目录、`rm -rf`
-- `git reset --hard`、`git push --force`、历史重写
-- 变更公共 API、持久化格式、数据库结构
-- 任何难以回滚的操作
-
-对纯代码编辑、格式化、小范围重构不需要额外确认。
-
-## 任务分级与工作模式
-
-- **trivial**（简单语法、一行修复、<10 行改动）：直接给出答案
-- **moderate**（单文件非平凡逻辑、局部重构）：简短 Plan 后 Code
-- **complex**（跨模块设计、并发、大规模重构）：先 Plan 再 Code
-
-### Plan 模式
-
-1. 阅读并理解相关代码后再提建议，禁止未读代码就提修改方案
-2. 给出可执行方案；仅在存在明显分歧时提供 1-3 个可行方案（思路、影响范围、优缺点、验证方式）
-3. 某个方案显然优于其他时，说明理由后直接推进，无需等待确认
-4. 方案确认后立即进入 Code 模式，不要反复确认
-
-### Code 模式
-
-1. 主要内容必须是具体实现，不是继续讨论
-2. 说明改了哪些文件/函数、每个改动的目的
-3. 偏好最小、可审阅的改动
-4. 对改动代码尽量执行 formatter / linter / tests
-5. 给出验证方式（测试/命令/检查步骤）；已运行则报告真实结果，未运行则明确未验证项
-6. 实现中发现方案存在重大问题时，停止实现并切回 Plan 模式说明原因
-
-## 最小改动原则
-
-- 只改与任务直接相关的代码，不主动引入新任务或"顺手改进"
-- 不添加无关的注释、docstring、类型标注
-
-## 输出格式（non-trivial 任务）
-
-1. **直接结论** — 应该怎么做
-2. **改动说明** — 改了什么、为什么
-3. **验证方式** — 怎么确认改动正确
-4. **风险提示** — 已知限制或待办（如有）
-
-## 回答与交互规范
-
-如果一段话删掉后不影响我做决策，那就不要写。
-
-- 直接给出结论或方案，不要铺垫
-- 省略显而易见的上下文和已知信息
-- 只在对理解关键逻辑有帮助时才举例
-- 追问的代价小于猜错返工的代价时，追问；否则给出最佳判断并标注假设
-
-## 语言约定
-
-- 讨论、分析、总结：使用简体中文
-- 代码、注释、标识符、commit message：使用 English
-
+- Use Simplified Chinese for discussion, analysis, and summaries.
+- Use English for code, comments, identifiers, and commit messages.
+- Prefer minimal, reviewable changes scoped to the task.
+- Do not add unrelated comments, docstrings, type annotations, or speculative improvements.
+- Read relevant code before proposing non-trivial changes.
+- For complex or high-risk tasks, give a short plan first; for simple tasks, execute directly.
+- Ask a follow-up when guessing is likely to cause rework; otherwise state the assumption and proceed.
+- Run relevant formatter, linter, or tests when practical, and report the real result.
+- Keep responses direct: state what changed, how it was verified, and any remaining risk.
