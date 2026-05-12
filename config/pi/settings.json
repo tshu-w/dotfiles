@@ -51,6 +51,9 @@
         "scaffold/skills/agentd/**"
       ]
     },
+    {
+      "source": "git:github.com/tshu-w/pi-control"
+    },
     "git:github.com/addyosmani/agent-skills"
   ],
   "lastChangelogVersion": "0.74.0",
