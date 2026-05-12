@@ -254,6 +254,9 @@ const SUGGESTION = [
   "  branch:    jj bookmark <set|delete|rename|list>",
   "  remote:    jj git fetch  /  jj git push --bookmark <name>  /  jj git clone <url>",
   "",
+  "If `jj` truly has no equivalent (e.g. `git tag` for annotated tags),",
+  "bypass explicitly with `command git ...` to make the exception visible.",
+  "",
   "Background: `jj help -k tutorial`.",
 ].join("\n");
 

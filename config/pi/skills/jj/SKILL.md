@@ -1,6 +1,6 @@
 ---
 name: jj
-description: "Use Jujutsu (`jj`) for all VCS operations whenever `jj` is installed. The `jj.ts` extension blocks every direct `git` command. Working copy is auto-tracked; never use git for any VCS work. Run `jj <cmd> --help` or `jj help -k <topic>` for exact syntax — this skill stays at the concept/workflow layer on purpose."
+description: "Use Jujutsu (`jj`) for all VCS operations whenever `jj` is installed. The `jj.ts` extension blocks direct `git` commands by default; use `command git ...` to bypass when jj has no equivalent. Working copy is auto-tracked. Run `jj <cmd> --help` or `jj help -k <topic>` for exact syntax — this skill stays at the concept/workflow layer on purpose."
 ---
 
 ## Policy
@@ -119,3 +119,40 @@ are the source of truth.
 - Generated/ignored files are NOT auto-tracked even though everything else is.
 - In a fresh checkout, the first thing you do is *not* `git status`; it's
   `jj st` (or just `jj`).
+
+### Working-copy snapshot trap (read this twice)
+
+Every jj command auto-snapshots `@` first. That means **all current disk
+state — including unrelated edits you forgot about — becomes part of `@`
+before the command runs.** Combined with rewriting commands this bites hard:
+
+- `jj squash --from @ ...` pulls the *entire* current `@` (i.e. everything
+  on disk that isn't ignored) into the target, not just the files you
+  edited in this session.
+- `jj op restore <op>` rewinds metadata but the working tree on disk
+  doesn't move; the next snapshot lifts those disk files into whatever
+  change is now `@`.
+- Auto-generated files (e.g. jj's own per-repo metadata under
+  `~/.config/jj/repos/<id>/`) silently get tracked the first time they
+  appear under a tracked path. `.gitignore` only suppresses *new untracked*
+  files; an already-tracked path keeps following the working tree.
+
+Mandatory checks **before** any rewrite (`squash` / `split` / `move` /
+`op restore` / `abandon` of an ancestor):
+
+1. `jj st` and read every line. If any path is unexpected, stop.
+2. If `@` is mixed (intended changes + drive-by edits), **first split `@`
+   along filesets** so each remaining change is intentional, then rewrite.
+   `jj split <fileset>` or `jj squash --from @ --into <target> -- <fileset>`
+   are your scalpels; use them with explicit path arguments.
+3. For files that should never be tracked (auto-generated metadata,
+   editor caches), don't just edit `.gitignore` — also `jj file untrack
+   <path>` to remove them from the current change. `.gitignore` alone
+   does nothing for already-tracked paths.
+4. When recovering with `jj op restore`, expect the next snapshot to
+   reintroduce dirty disk files. Run `jj st` immediately after, not after
+   five more commands.
+
+Warning sign: a `--stat` shows a commit touching far more files than you
+typed today. That's almost always working-copy contamination, not a real
+intent. Abandon the contaminated change and redo with explicit path args.
