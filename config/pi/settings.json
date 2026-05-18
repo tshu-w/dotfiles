@@ -12,6 +12,7 @@
     "extensions/official/permission-gate.ts",
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
+    "extensions/openai-fast.ts",
     "extensions/custom-footer.ts"
   ],
   "packages": [
@@ -60,10 +61,16 @@
       "skills": []
     },
     "npm:pi-web-access",
-    "npm:@marckrenn/pi-sub-bar",
-    "npm:pi-openai-fast"
+    {
+      "source": "npm:@marckrenn/pi-sub-bar",
+      "extensions": [
+        "index.ts",
+        "-../pi-sub-core/index.ts",
+        "-node_modules/@marckrenn/pi-sub-core/index.ts"
+      ]
+    }
   ],
-  "lastChangelogVersion": "0.75.4",
+  "lastChangelogVersion": "0.75.5",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"
