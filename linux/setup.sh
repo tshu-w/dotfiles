@@ -7,23 +7,41 @@ set -euxo pipefail # -e=-o errexit, -u=-o nounset
 : ${XDG_STATE_HOME:=~/.local/state}
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
+can_run_as_root() {
+    [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null
+}
+
+run_as_root() {
+    if [ "$EUID" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 configure_timezone() {
     local timezone=Asia/Shanghai
 
-    ln -snf "/usr/share/zoneinfo/$timezone" /etc/localtime
-    echo "$timezone" > /etc/timezone
+    if can_run_as_root; then
+        run_as_root ln -snf "/usr/share/zoneinfo/$timezone" /etc/localtime
+        echo "$timezone" | run_as_root tee /etc/timezone >/dev/null
+    fi
 }
 
 configure_default_shell() {
     local user=$1
     local shell_path
 
+    if ! command -v zsh >/dev/null 2>&1 || ! can_run_as_root; then
+        return 0
+    fi
+
     shell_path=$(command -v zsh)
     if ! grep -qxF "$shell_path" /etc/shells; then
-        echo "$shell_path" >> /etc/shells
+        echo "$shell_path" | run_as_root tee -a /etc/shells >/dev/null
     fi
     if [ "$(getent passwd "$user" | cut -d: -f7)" != "$shell_path" ]; then
-        chsh -s "$shell_path" "$user"
+        run_as_root chsh -s "$shell_path" "$user"
     fi
 }
 
@@ -54,8 +72,6 @@ setup_root() {
         zoxide \
         zsh
 
-    configure_timezone
-
     if ! command -v starship >/dev/null 2>&1; then
         curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir /usr/local/bin
     fi
@@ -63,8 +79,6 @@ setup_root() {
     if ! command -v uv >/dev/null 2>&1; then
         curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
     fi
-
-    configure_default_shell root
 }
 
 setup_homebrew() {
@@ -92,3 +106,6 @@ if [ "$EUID" -eq 0 ]; then
 else
     setup_homebrew
 fi
+
+configure_timezone
+configure_default_shell "$USER"
