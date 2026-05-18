@@ -109,3 +109,24 @@ ec () {
 ef () { emacsclient -cn "$@" && emacsclient -eu "(select-frame-set-input-focus (selected-frame))" }
 es () { emacsclient -e "(save-buffers-kill-emacs)" &> /dev/null && echo "Emacs server is down" || echo "Emacs server not running" }
 et () { emacsclient -a "" -t "$@" }
+
+### Secrets from authinfo cache (cache refreshed by interactive .zshrc)
+export _AUTHINFO_CACHE="${XDG_RUNTIME_DIR:-$XDG_CACHE_HOME/authinfo}/authinfo.env"
+_authinfo_export() {
+    [[ -f "$_AUTHINFO_CACHE" ]] || return
+    local var pat
+    local -A entries=(
+        GH_TOKEN             '^machine github[.]com.*login tshu-w password '
+        OPENROUTER_API_KEY   '^machine openrouter[.]ai'
+        DEEPSEEK_API_KEY     '^machine api[.]deepseek[.]com'
+        KIMI_API_KEY         '^machine api[.]moonshot[.]cn'
+        ZAI_API_KEY          '^machine open[.]bigmodel[.]cn'
+        AICODING_API_KEY     '^machine aicoding[.]2233[.]ai'
+        GOOGLE_CLOUD_PROJECT '^machine cloud[.]google[.]com.*login wangtianshu'
+        ONEAPI_API_KEY       '^machine one-api[.]ponte[.]top.*login envkey'
+    )
+    for var pat in ${(kv)entries}; do
+        export $var=$(awk -v pat="$pat" '$0 ~ pat {print $NF; exit}' "$_AUTHINFO_CACHE")
+    done
+}
+_authinfo_export

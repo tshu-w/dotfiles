@@ -26,31 +26,17 @@ source $ZNAP_HOME/znap.zsh
 zstyle ':znap:*:*' git-maintenance off
 unset ZNAP_HOME
 
-### Secrets - Decrypt once, read from cache
+### Secrets - refresh authinfo cache; re-export via .zshenv helper
 if [[ -f ~/.authinfo.gpg ]]; then
-    # Prefer XDG_RUNTIME_DIR (tmpfs, more secure), fallback to XDG_CACHE_HOME
     _AUTHINFO_DIR="${XDG_RUNTIME_DIR:-$XDG_CACHE_HOME/authinfo}"
-    _AUTHINFO_CACHE="$_AUTHINFO_DIR/authinfo.env"
-
-    # Refresh cache if missing or older than 1 day
     if [[ ! -f "$_AUTHINFO_CACHE" || -n $(find "$_AUTHINFO_CACHE" -mtime +1 2>/dev/null) ]]; then
         mkdir -p -m 700 "$_AUTHINFO_DIR"
         gpg -qd ~/.authinfo.gpg > "$_AUTHINFO_CACHE.$$" 2>/dev/null && \
             chmod 600 "$_AUTHINFO_CACHE.$$" && \
-            mv "$_AUTHINFO_CACHE.$$" "$_AUTHINFO_CACHE"
+            mv "$_AUTHINFO_CACHE.$$" "$_AUTHINFO_CACHE" && \
+            _authinfo_export
     fi
-
-    if [[ -f "$_AUTHINFO_CACHE" ]]; then
-        export GH_TOKEN=$(awk '/^machine github\.com.*login tshu-w password / {print $NF; exit}' "$_AUTHINFO_CACHE")
-        export OPENROUTER_API_KEY=$(awk '/^machine openrouter\.ai/ {print $NF}' "$_AUTHINFO_CACHE")
-        export DEEPSEEK_API_KEY=$(awk '/^machine api\.deepseek\.com/ {print $NF}' "$_AUTHINFO_CACHE")
-        export KIMI_API_KEY=$(awk '/^machine api\.moonshot\.cn/ {print $NF}' "$_AUTHINFO_CACHE")
-        export ZAI_API_KEY=$(awk '/^machine open\.bigmodel\.cn/ {print $NF}' "$_AUTHINFO_CACHE")
-        export AICODING_API_KEY=$(awk '/^machine aicoding\.2233\.ai/ {print $NF}' "$_AUTHINFO_CACHE")
-        export GOOGLE_CLOUD_PROJECT=$(awk '/^machine cloud\.google\.com.*login wangtianshu/ {print $NF}' "$_AUTHINFO_CACHE")
-        export ONEAPI_API_KEY=$(awk '/^machine one-api\.ponte\.top.*login envkey/ {print $NF}' "$_AUTHINFO_CACHE")
-    fi
-    unset _AUTHINFO_CACHE _AUTHINFO_DIR
+    unset _AUTHINFO_DIR
 fi
 
 ### Plugins
