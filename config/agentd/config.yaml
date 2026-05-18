@@ -1,0 +1,9 @@
+default_backend: pi
+
+limits:
+  max_depth: 3
+  max_children_per_parent: 8
+  max_total_workers: 64
+
+channels:
+  telegram: {}

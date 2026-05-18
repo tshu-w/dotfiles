@@ -28,8 +28,9 @@ __pycache__/
 **/pi/auth.json
 **/pi/cache/**
 **/pi/sessions/**
-**/pi-friday/auth.json
-**/pi-friday/friday.env
+
+### Env ###
+.env
 
 ### Jujutsu ###
 **/jj/repos/**

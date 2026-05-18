@@ -47,7 +47,7 @@
       "themes": []
     },
     {
-      "source": "/Users/wangtianshu/Developer/agentd",
+      "source": "git:github.com/tshu-w/agentd",
       "skills": [
         "scaffold/skills/agentd/**"
       ]
