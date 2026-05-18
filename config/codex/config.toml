@@ -4,7 +4,6 @@ web_search = "live"
 # full-auto mode
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
-notify = ["codex-sync", "hook", "agent-turn-complete"]
 
 [sandbox_workspace_write]
 network_access = true
@@ -22,6 +21,7 @@ env_key = "AICODING_API_KEY"
 wire_api = "responses"
 
 [features]
+apps = false
 shell_snapshot = true
 skills = true
 streamable_shell = true
@@ -32,3 +32,15 @@ prevent_idle_sleep = true
 
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-remaining", "five-hour-limit"]
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+
+[projects."/Users/wangtianshu"]
+trust_level = "trusted"
+
+[projects."/private/tmp"]
+trust_level = "trusted"
+
+[plugins."github@openai-curated"]
+enabled = true
