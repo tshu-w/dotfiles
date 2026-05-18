@@ -1,0 +1,119 @@
+{
+  "version": 2,
+  "display": {
+    "alignment": "left",
+    "barStyle": "percentage",
+    "barType": "horizontal-single",
+    "barWidth": 8,
+    "barCharacter": "heavy",
+    "containBar": false,
+    "brailleFillEmpty": false,
+    "brailleFullBlocks": false,
+    "colorScheme": "base-warning-error",
+    "usageColorTargets": {
+      "title": true,
+      "timer": true,
+      "bar": true,
+      "usageLabel": true,
+      "status": false
+    },
+    "resetTimePosition": "back",
+    "resetTimeFormat": "relative",
+    "resetTimeContainment": "()",
+    "statusIndicatorMode": "icon",
+    "statusIconPack": "minimal",
+    "statusIconCustom": "✓⚠×?",
+    "statusProviderDivider": false,
+    "statusDismissOk": true,
+    "showProviderName": false,
+    "providerLabel": "none",
+    "providerLabelColon": false,
+    "providerLabelBold": false,
+    "baseTextColor": "dim",
+    "backgroundColor": "none",
+    "showWindowTitle": true,
+    "boldWindowTitle": false,
+    "showUsageLabels": false,
+    "dividerCharacter": "|",
+    "dividerColor": "dim",
+    "dividerBlanks": 1,
+    "showProviderDivider": false,
+    "statusLeadingDivider": false,
+    "statusTrailingDivider": false,
+    "dividerFooterJoin": false,
+    "showTopDivider": false,
+    "showBottomDivider": false,
+    "paddingLeft": 0,
+    "paddingRight": 0,
+    "widgetPlacement": "status",
+    "showContextBar": false,
+    "errorThreshold": 25,
+    "warningThreshold": 50,
+    "overflow": "truncate",
+    "successThreshold": 75
+  },
+  "providers": {
+    "anthropic": {
+      "showStatus": true,
+      "windows": {
+        "show5h": true,
+        "show7d": true,
+        "showExtra": false
+      }
+    },
+    "copilot": {
+      "showStatus": true,
+      "showMultiplier": true,
+      "showRequestsLeft": true,
+      "quotaDisplay": "percentage",
+      "windows": {
+        "showMonth": true
+      }
+    },
+    "gemini": {
+      "showStatus": true,
+      "windows": {
+        "showPro": true,
+        "showFlash": true
+      }
+    },
+    "antigravity": {
+      "showStatus": true,
+      "showCurrentModel": true,
+      "showScopedModels": true,
+      "windows": {
+        "showModels": true
+      },
+      "modelVisibility": {},
+      "modelOrder": []
+    },
+    "codex": {
+      "showStatus": false,
+      "invertUsage": true,
+      "windows": {
+        "showPrimary": true,
+        "showSecondary": true
+      }
+    },
+    "kiro": {
+      "showStatus": false,
+      "windows": {
+        "showCredits": true
+      }
+    },
+    "zai": {
+      "showStatus": false,
+      "windows": {
+        "showTokens": true,
+        "showMonthly": true
+      }
+    }
+  },
+  "displayThemes": [],
+  "displayUserTheme": null,
+  "pinnedProvider": null,
+  "keybindings": {
+    "cycleProvider": "ctrl+alt+p",
+    "toggleResetFormat": "ctrl+alt+r"
+  }
+}

@@ -40,3 +40,5 @@ __pycache__/
 ### Unison ###
 **/unison/*
 !**/unison/*.prf
+
+**/pi/cache/sub-core/cache.json

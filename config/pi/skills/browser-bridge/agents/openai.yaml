@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Browser Bridge'
+  short_description: 'Token-efficient Chrome tab inspection, interaction, and patching via local bridge'
+  default_prompt: 'Use the browser-bridge skill for Chrome tab inspection, interaction, and patching. Start with `bbx status` to confirm connectivity; if the daemon is offline, run `bbx restart`. If ACCESS_DENIED, ask the user to click Enable in the extension popup/side panel, then retry. Default routing follows the active tab; use `--tab` only for a different tab. Prefer structured reads (`dom.query`, `styles.get_computed`) over screenshots. Batch independent reads with `bbx batch`. Use `bbx skill` for runtime presets.'
