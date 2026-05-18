@@ -54,7 +54,10 @@
     {
       "source": "git:github.com/tshu-w/pi-control"
     },
-    "git:github.com/addyosmani/agent-skills"
+    {
+      "source": "git:github.com/addyosmani/agent-skills",
+      "skills": []
+    }
   ],
   "lastChangelogVersion": "0.74.0",
   "theme": "light",
