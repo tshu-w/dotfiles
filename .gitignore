@@ -42,3 +42,6 @@ __pycache__/
 !**/unison/*.prf
 
 **/pi/cache/sub-core/cache.json
+**/pi/cache/**
+**/dot-ssh/known_hosts*
+**/dot-ssh/config.local
