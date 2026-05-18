@@ -411,7 +411,22 @@ export default function (pi: ExtensionAPI) {
 
   const restoreState = (ctx: SessionRestoreContext) => {
     const persisted = findPersistedState(ctx);
-    activeSsh = persisted.found ? persisted.state : loadStateFromEnv();
+    if (persisted.found) {
+      activeSsh = persisted.state;
+    } else {
+      const envState = loadStateFromEnv();
+      if (envState) {
+        // Promote env-inherited SSH state to a persisted session entry, so a
+        // later pi process (resume) can recover it even when PI_SSH_* env is
+        // no longer set. Without this the tool silently falls back to local
+        // execution across process restarts.
+        activeSsh = envState;
+        pi.appendEntry(ENTRY_TYPE, serializeState(envState));
+      }
+      // No persisted entry and no env: keep activeSsh as-is. restoreState()
+      // also fires on session_tree; clobbering with null on a later refresh
+      // would silently drop SSH mode established earlier in this process.
+    }
     writeStateToEnv(activeSsh);
     updateStatus(ctx);
   };
@@ -501,7 +516,10 @@ export default function (pi: ExtensionAPI) {
 
     if (typeof flag === "string" && flag.trim()) {
       try {
-        await applyState(await resolveSshTarget(flag, ctx.cwd), ctx, { notify: shouldNotify });
+        await applyState(await resolveSshTarget(flag, ctx.cwd), ctx, {
+          notify: shouldNotify,
+          persist: true,
+        });
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
