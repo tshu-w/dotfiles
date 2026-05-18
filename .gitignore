@@ -29,8 +29,8 @@ __pycache__/
 **/pi-friday/auth.json
 **/pi-friday/friday.env
 
-### JJ per-repo metadata (auto-generated, must not be tracked) ###
-**/jj/repos/
+### Jujutsu ###
+**/jj/repos/**
 
 ### Jupyter ###
 **/jupyter/lab
