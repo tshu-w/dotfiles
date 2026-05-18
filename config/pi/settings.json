@@ -60,7 +60,8 @@
       "skills": []
     },
     "npm:pi-web-access",
-    "npm:@marckrenn/pi-sub-bar"
+    "npm:@marckrenn/pi-sub-bar",
+    "npm:pi-openai-fast"
   ],
   "lastChangelogVersion": "0.75.4",
   "theme": "light",
