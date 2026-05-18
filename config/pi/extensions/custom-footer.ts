@@ -21,7 +21,7 @@ function formatCwd(cwd: string, branch: string | null, sessionName?: string): st
   return text;
 }
 
-export default function subBarFooter(pi: ExtensionAPI) {
+export default function customFooter(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
@@ -38,15 +38,23 @@ export default function subBarFooter(pi: ExtensionAPI) {
             const pwd = formatCwd(ctx.cwd, branch, sessionName);
             const extensionStatuses = footerData.getExtensionStatuses();
             const subBarStatus = sanitizeStatusText(extensionStatuses.get("sub-bar") ?? "");
-            const otherStatuses = Array.from(extensionStatuses.entries())
-              .filter(([key]) => key !== "sub-bar")
+            const fastStatus = sanitizeStatusText(extensionStatuses.get("pi-openai-fast") ?? "");
+            const otherStatusEntries = Array.from(extensionStatuses.entries())
+              .filter(([key]) => key !== "sub-bar" && key !== "pi-openai-fast")
               .sort(([a], [b]) => a.localeCompare(b))
-              .map(([, text]) => sanitizeStatusText(text))
-              .filter(Boolean);
-            const leftStatus = otherStatuses.join(" | ");
+              .map(([key, text]) => [key, sanitizeStatusText(text)] as const)
+              .filter(([, text]) => Boolean(text));
+            const locationStatuses = otherStatusEntries
+              .filter(([key]) => key === "ssh")
+              .map(([, text]) => text);
+            const inlineStatuses = otherStatusEntries
+              .filter(([key]) => key !== "ssh")
+              .map(([, text]) => text);
 
             const dimPwd = theme.fg("dim", pwd);
-            const leftBase = leftStatus || dimPwd;
+            const leftParts = locationStatuses.length > 0 ? locationStatuses : [dimPwd];
+            leftParts.push(...inlineStatuses);
+            const leftBase = leftParts.join(" | ");
             let pwdLine: string;
             if (subBarStatus) {
               const gap = 2;
@@ -110,10 +118,11 @@ export default function subBarFooter(pi: ExtensionAPI) {
             }
             const statsLeftWidth = visibleWidth(statsLeft);
 
-            let rightSide = model?.id ?? "no-model";
+            const modelLabel = fastStatus ? `${model?.id ?? "no-model"} ${fastStatus}` : model?.id ?? "no-model";
+            let rightSide = modelLabel;
             if (model?.reasoning) {
               const level = pi.getThinkingLevel?.() ?? "off";
-              rightSide = level === "off" ? `${rightSide} • thinking off` : `${rightSide} • ${level}`;
+              rightSide = level === "off" ? `${modelLabel} • thinking off` : `${modelLabel} • ${level}`;
             }
             if (footerData.getAvailableProviderCount() > 1 && model) {
               const withProvider = `(${model.provider}) ${rightSide}`;
@@ -139,8 +148,8 @@ export default function subBarFooter(pi: ExtensionAPI) {
 
     installFooter();
     // Session creation/reload may briefly reset extension UI while other extensions
-    // finish binding. Reinstall after startup so this aggregator keeps ownership of
-    // the footer while still reading sub-bar via extensionStatuses.
+    // finish binding. Reinstall after startup so this custom footer keeps ownership
+    // while still reading status data from extensionStatuses.
     setTimeout(installFooter, 0);
     setTimeout(installFooter, 100);
   });
