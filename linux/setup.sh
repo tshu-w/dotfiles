@@ -7,9 +7,28 @@ set -euxo pipefail # -e=-o errexit, -u=-o nounset
 : ${XDG_STATE_HOME:=~/.local/state}
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
+configure_timezone() {
+    local timezone=Asia/Shanghai
+
+    ln -snf "/usr/share/zoneinfo/$timezone" /etc/localtime
+    echo "$timezone" > /etc/timezone
+}
+
+configure_default_shell() {
+    local user=$1
+    local shell_path
+
+    shell_path=$(command -v zsh)
+    if ! grep -qxF "$shell_path" /etc/shells; then
+        echo "$shell_path" >> /etc/shells
+    fi
+    if [ "$(getent passwd "$user" | cut -d: -f7)" != "$shell_path" ]; then
+        chsh -s "$shell_path" "$user"
+    fi
+}
+
 setup_root() {
     export DEBIAN_FRONTEND=noninteractive
-    export TZ=Asia/Shanghai
 
     apt-get update
     apt-get install -y --no-install-recommends \
@@ -35,8 +54,7 @@ setup_root() {
         zoxide \
         zsh
 
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
-    echo $TZ > /etc/timezone
+    configure_timezone
 
     if ! command -v starship >/dev/null 2>&1; then
         curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir /usr/local/bin
@@ -46,13 +64,7 @@ setup_root() {
         curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
     fi
 
-    zsh_path=$(command -v zsh)
-    if ! grep -qxF "$zsh_path" /etc/shells; then
-        echo "$zsh_path" >> /etc/shells
-    fi
-    if [ "$(getent passwd root | cut -d: -f7)" != "$zsh_path" ]; then
-        chsh -s "$zsh_path" root
-    fi
+    configure_default_shell root
 }
 
 setup_homebrew() {
