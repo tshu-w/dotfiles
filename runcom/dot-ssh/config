@@ -10,17 +10,12 @@ Host github.com
   Port 443
 Match exec "echo %h | grep 'git' && ! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
-Host det
-  Hostname 02661d2b-ce00-4249-a4ec-f04c964b9fb9
-  User tianshu2020
-  ProxyCommand ${HOME}/.local/share/uv/tools/determined/bin/python -m determined.cli.tunnel http://det.cipsup.cn %h
-  StrictHostKeyChecking no
-  IdentityFile ${HOME}/Library/Caches/determined/shell/%h/key
-  IdentitiesOnly yes
-  LocalCommand  { gpg-forward %n; emacs-forward %n } &
-  RemoteForward 2048 localhost:22
-  RemoteForward 6152 localhost:6152
-  RemoteForward 6153 localhost:6153
+Host cft ssh-mbp.ponte.top
+  HostName ssh-mbp.ponte.top
+  User wangtianshu
+  ProxyCommand cloudflared access ssh --hostname %h
+Host macbook-pro
+  Hostname macbook-pro.sgponte
 Host backup
   User wangtianshu
   Hostname 192.168.14.74
