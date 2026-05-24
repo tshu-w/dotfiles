@@ -5,6 +5,38 @@ function sanitizeStatusText(text: string): string {
   return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
+type StatusTheme = {
+  fg(color: "dim" | "warning" | "error", text: string): string;
+};
+
+function remainingColor(remainingPercent: number): "dim" | "warning" | "error" {
+  if (remainingPercent <= 25) return "error";
+  if (remainingPercent <= 50) return "warning";
+  return "dim";
+}
+
+function formatRemainingSubscriptionStatus(text: string, theme: StatusTheme): string {
+  const normalized = sanitizeStatusText(text);
+  if (!normalized) return "";
+
+  let output = "";
+  let lastIndex = 0;
+  const percentPattern = /(\d+(?:\.\d+)?)%/g;
+
+  for (const match of normalized.matchAll(percentPattern)) {
+    const index = match.index ?? 0;
+    const usedPercent = Number(match[1]);
+    const remainingPercent = Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
+
+    output += theme.fg("dim", normalized.slice(lastIndex, index));
+    output += theme.fg(remainingColor(remainingPercent), `${remainingPercent}%`);
+    lastIndex = index + match[0].length;
+  }
+
+  output += theme.fg("dim", normalized.slice(lastIndex));
+  return output;
+}
+
 function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
@@ -37,10 +69,11 @@ export default function customFooter(pi: ExtensionAPI) {
             const sessionName = ctx.sessionManager.getSessionName();
             const pwd = formatCwd(ctx.cwd, branch, sessionName);
             const extensionStatuses = footerData.getExtensionStatuses();
-            const subscriptionStatusText = sanitizeStatusText(
-              extensionStatuses.get("sub-status:usage") ?? extensionStatuses.get("sub-bar") ?? ""
-            );
-            const subscriptionStatus = subscriptionStatusText ? theme.fg("dim", subscriptionStatusText) : "";
+            const subStatusUsage = extensionStatuses.get("sub-status:usage") ?? "";
+            const subBarStatus = sanitizeStatusText(extensionStatuses.get("sub-bar") ?? "");
+            const subscriptionStatus = subStatusUsage
+              ? formatRemainingSubscriptionStatus(subStatusUsage, theme)
+              : subBarStatus;
             const fastStatus = sanitizeStatusText(extensionStatuses.get("pi-openai-fast") ?? "");
             const otherStatusEntries = Array.from(extensionStatuses.entries())
               .filter(([key]) =>
