@@ -62,7 +62,7 @@
     },
     "npm:pi-web-access",
     {
-      "source": "npm:@marckrenn/pi-sub-bar",
+      "source": "npm:@marckrenn/pi-sub-status",
       "extensions": [
         "index.ts",
         "-../pi-sub-core/index.ts",

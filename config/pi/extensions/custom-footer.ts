@@ -37,10 +37,18 @@ export default function customFooter(pi: ExtensionAPI) {
             const sessionName = ctx.sessionManager.getSessionName();
             const pwd = formatCwd(ctx.cwd, branch, sessionName);
             const extensionStatuses = footerData.getExtensionStatuses();
-            const subBarStatus = sanitizeStatusText(extensionStatuses.get("sub-bar") ?? "");
+            const subscriptionStatusText = sanitizeStatusText(
+              extensionStatuses.get("sub-status:usage") ?? extensionStatuses.get("sub-bar") ?? ""
+            );
+            const subscriptionStatus = subscriptionStatusText ? theme.fg("dim", subscriptionStatusText) : "";
             const fastStatus = sanitizeStatusText(extensionStatuses.get("pi-openai-fast") ?? "");
             const otherStatusEntries = Array.from(extensionStatuses.entries())
-              .filter(([key]) => key !== "sub-bar" && key !== "pi-openai-fast")
+              .filter(([key]) =>
+                key !== "sub-status:usage" &&
+                key !== "sub-bar" &&
+                key !== "pi-openai-fast" &&
+                !key.startsWith("@marckrenn/pi-sub")
+              )
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([key, text]) => [key, sanitizeStatusText(text)] as const)
               .filter(([, text]) => Boolean(text));
@@ -56,16 +64,16 @@ export default function customFooter(pi: ExtensionAPI) {
             leftParts.push(...inlineStatuses);
             const leftBase = leftParts.join(" | ");
             let pwdLine: string;
-            if (subBarStatus) {
+            if (subscriptionStatus) {
               const gap = 2;
-              const rightWidth = visibleWidth(subBarStatus);
+              const rightWidth = visibleWidth(subscriptionStatus);
               const leftWidth = Math.max(0, width - rightWidth - gap);
               if (leftWidth >= 8) {
                 const left = truncateToWidth(leftBase, leftWidth, theme.fg("dim", "..."));
                 const pad = " ".repeat(Math.max(gap, width - visibleWidth(left) - rightWidth));
-                pwdLine = left + pad + subBarStatus;
+                pwdLine = left + pad + subscriptionStatus;
               } else {
-                pwdLine = truncateToWidth(subBarStatus, width, theme.fg("dim", "..."));
+                pwdLine = truncateToWidth(subscriptionStatus, width, theme.fg("dim", "..."));
               }
             } else {
               pwdLine = truncateToWidth(leftBase, width, theme.fg("dim", "..."));
