@@ -241,7 +241,7 @@ function invokesGit(command: string): boolean {
 }
 
 const SUGGESTION = [
-  "This machine has `jj` installed; use it for all VCS operations.",
+  "This machine has `jj` installed — prefer it for VCS operations.",
   "",
   "Common equivalents (run `jj <cmd> --help` for exact flags):",
   "  inspect:   jj st  /  jj log  /  jj diff  /  jj show",
@@ -253,11 +253,6 @@ const SUGGESTION = [
   "  discard:   jj restore <paths>     (WC edits)   /   jj abandon <change>",
   "  branch:    jj bookmark <set|delete|rename|list>",
   "  remote:    jj git fetch  /  jj git push --bookmark <name>  /  jj git clone <url>",
-  "",
-  "If `jj` truly has no equivalent (e.g. `git tag` for annotated tags),",
-  "bypass explicitly with `command git ...` to make the exception visible.",
-  "",
-  "Background: `jj help -k tutorial`.",
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -275,15 +270,10 @@ export default function (pi: ExtensionAPI) {
     if (!invokesGit(command)) return;
 
     const prelude = colocatePrelude(process.cwd());
-    const message = `\`git\` is blocked — use \`jj\` instead.\n\n${prelude}${SUGGESTION}`;
+    const message = `Prefer \`jj\` over \`git\` when possible.\n\n${prelude}${SUGGESTION}`;
 
     if (ctx.hasUI) {
       ctx.ui.notify(message, "warning");
     }
-
-    return {
-      block: true,
-      reason: message,
-    };
   });
 }
