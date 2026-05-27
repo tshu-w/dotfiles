@@ -68,6 +68,9 @@
         "-../pi-sub-core/index.ts",
         "-node_modules/@marckrenn/pi-sub-core/index.ts"
       ]
+    },
+    {
+      "source": "git:github.com/tshu-w/pi-tape"
     }
   ],
   "lastChangelogVersion": "0.75.5",
