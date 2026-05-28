@@ -1,3 +1,6 @@
+# Raise the soft open-file limit before loading plugins.
+ulimit -S -n 8192 2>/dev/null
+
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 
 ### Zsh
