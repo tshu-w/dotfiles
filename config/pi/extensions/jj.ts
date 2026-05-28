@@ -240,20 +240,7 @@ function invokesGit(command: string): boolean {
   return false;
 }
 
-const SUGGESTION = [
-  "This machine has `jj` installed — prefer it for VCS operations.",
-  "",
-  "Common equivalents (run `jj <cmd> --help` for exact flags):",
-  "  inspect:   jj st  /  jj log  /  jj diff  /  jj show",
-  "  commit:    jj describe + jj new   (or `jj commit`)",
-  "  stash:     jj new @-              (old WC stays as sibling)",
-  "  switch:    jj new <ref>  /  jj edit <change>",
-  "  rewrite:   jj edit / jj squash / jj split / jj absorb / jj rebase / jj arrange",
-  "  undo:      jj undo                (or `jj op log` + `jj op restore <id>`)",
-  "  discard:   jj restore <paths>     (WC edits)   /   jj abandon <change>",
-  "  branch:    jj bookmark <set|delete|rename|list>",
-  "  remote:    jj git fetch  /  jj git push --bookmark <name>  /  jj git clone <url>",
-].join("\n");
+const SUGGESTION = "`jj` is installed — use it instead of `git`. Run `jj --help` for available commands.";
 
 // ---------------------------------------------------------------------------
 // Tool-call hook
