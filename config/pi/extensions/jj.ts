@@ -262,6 +262,8 @@ const SUGGESTION = [
 export default function (pi: ExtensionAPI) {
   if (!isJjInstalled()) return;
 
+  let warned = false;
+
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName !== "bash") return;
 
@@ -272,7 +274,8 @@ export default function (pi: ExtensionAPI) {
     const prelude = colocatePrelude(process.cwd());
     const message = `Prefer \`jj\` over \`git\` when possible.\n\n${prelude}${SUGGESTION}`;
 
-    if (ctx.hasUI) {
+    if (ctx.hasUI && !warned) {
+      warned = true;
       ctx.ui.notify(message, "warning");
     }
   });
