@@ -1,24 +1,11 @@
 model = "gpt-5.5"
 model_reasoning_effort = "medium"
 web_search = "live"
-# full-auto mode
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
 [sandbox_workspace_write]
 network_access = true
-
-[model_providers.oneapi]
-name = "oneapi"
-base_url = "https://one-api.ponte.top/v1"
-env_key = "ONEAPI_API_KEY"
-wire_api = "responses"
-
-[model_providers.aicoding]
-name = "aicoding"
-base_url = "https://aicoding.2233.ai"
-env_key = "AICODING_API_KEY"
-wire_api = "responses"
 
 [features]
 apps = false
@@ -35,12 +22,6 @@ status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-rem
 
 [tui.model_availability_nux]
 "gpt-5.5" = 4
-
-[projects."/Users/wangtianshu"]
-trust_level = "trusted"
-
-[projects."/private/tmp"]
-trust_level = "trusted"
 
 [plugins."github@openai-curated"]
 enabled = true
