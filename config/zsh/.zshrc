@@ -210,7 +210,7 @@ sysup () {
   local C_RESET="\033[0m"
 
   echo "${C_BLUE}==> 🍺 Updating Homebrew packages and formulae...${C_RESET}"
-  brew update && brew upgrade --greedy-auto-updates --force
+  brew update && brew upgrade --greedy-auto-updates --force --yes
   echo
 
   echo "${C_BLUE}==> ⚡️ Pulling Zsh plugin updates (znap)...${C_RESET}"
@@ -221,6 +221,10 @@ sysup () {
   npm update -g
   echo
 
+
+  echo "${C_BLUE}==> 🧩 Updating pi...${C_RESET}"
+  pi update
+  echo
   if [ -d "$HOME/Library/Rime" ]; then
     echo "${C_BLUE}==> ⌨️ Updating Rime packages...${C_RESET}"
     (cd $HOME/Library/Rime/plum/ && bash rime-install ../plum-package.conf)
