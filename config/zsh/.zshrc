@@ -68,7 +68,6 @@ bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 
 znap source le0me55i/zsh-extract
 znap source marlonrichert/zsh-edit
-znap source conda-incubator/conda-zsh-completion
 
 # direnv
 (( $+commands[direnv] )) && znap eval direnv 'direnv hook zsh'
@@ -344,25 +343,6 @@ openrouter () { aswitch openrouter "$@"; }
 deepseek () { aswitch deepseek "$@"; }
 glm () { aswitch glm "$@"; }
 kimi () { aswitch kimi "$@"; }
-
-# lazy load mamba
-mamba () {
-    unfunction mamba
-
-    # >>> mamba initialize >>>
-    # !! Contents within this block are managed by 'mamba shell init' !!
-    export MAMBA_EXE="$HOMEBREW_PREFIX/bin/mamba";
-    __mamba_setup="$("$MAMBA_EXE" shell hook --shell zsh --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
-    if [ $? -eq 0 ]; then
-        eval "$__mamba_setup"
-    else
-        alias mamba="$MAMBA_EXE"  # Fallback on help from mamba activate
-    fi
-    unset __mamba_setup
-    # <<< mamba initialize <<<
-
-    mamba "$@"
-}
 
 colortest () {
     printf "          "
