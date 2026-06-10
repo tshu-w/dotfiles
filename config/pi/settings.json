@@ -13,7 +13,8 @@
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
     "extensions/openai-fast.ts",
-    "extensions/custom-footer.ts"
+    "extensions/custom-footer.ts",
+    "extensions/pi-web/index.ts"
   ],
   "packages": [
     {
@@ -60,7 +61,6 @@
       "source": "git:github.com/addyosmani/agent-skills",
       "skills": []
     },
-    "npm:pi-web-access",
     {
       "source": "npm:@marckrenn/pi-sub-status",
       "extensions": [
@@ -73,7 +73,7 @@
       "source": "git:github.com/tshu-w/pi-tape"
     }
   ],
-  "lastChangelogVersion": "0.75.5",
+  "lastChangelogVersion": "0.79.3",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"
