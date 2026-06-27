@@ -17,9 +17,12 @@ hide.
 
 ## Key differences from git
 
-- **Working copy IS a change** (`@`) — no staging area; edits mutate `@` automatically.
-- **Two IDs**: stable **change ID** (survives rewrites, prefer this) vs **commit ID** (git-compatible hash, churns on rewrite).
-- **Conflicts are data, not control flow** — recorded in files, no command aborts, no `--continue` ceremony.
+- **Working copy IS a change** (`@`) — no staging area; edits mutate `@`
+  automatically.
+- **Two IDs**: stable **change ID** (survives rewrites, prefer this) vs
+  **commit ID** (git-compatible hash, churns on rewrite).
+- **Conflicts are data, not control flow** — recorded in files, no command
+  aborts, no `--continue` ceremony.
 
 For deeper coverage: `jj help -k tutorial`.
 
@@ -36,29 +39,40 @@ exact flags against the installed version:
 - Git→jj translation: `jj help -k git-compatibility` and
   <https://docs.jj-vcs.dev/latest/git-command-table/>
 
-## Agent-specific patterns
+## Common workflows
 
-### Describe as plan
-A multi-line `jj describe` message can carry the per-step plan and acceptance
-criteria. `jj show` reads it back later. Write each change's description
-first, then implement against it — this creates a self-driven loop without
-an external task tracker.
+### Describe intent
+A multi-line `jj describe` message can carry the change goal, plan, and
+acceptance criteria. `jj show` reads it back later. Prefer describing the
+change before or while implementing it, so the commit message and work stay
+aligned.
 
-### Pre-planning a multi-step task
+### Checkpoint work
+Use changes as explicit workspace checkpoints. Before risky edits, inspect
+`jj st` and ensure `@` contains only intended files. Commit or split unrelated
+work first, then continue from a clean, intentional change.
+
+### Pre-plan a multi-step task
 Chain empty described changes (a sequence of `jj commit`) as a spec skeleton,
 then `jj edit <first>` and fill them in one at a time. Descendants auto-rebase.
 
-### Parallel exploration / workspaces
-`jj workspace add <path>` — separate on-disk dir, shared store (cheap).
-Each workspace develops a different change; all visible in `jj log`.
-Done? `jj new a b` to merge, or pick one and `jj abandon` the other.
+### Explore alternatives
+Use `jj new` for a separate experimental change. Use `jj workspace add <path>`
+for separate on-disk worktrees sharing the same store. Done? `jj new a b` to
+merge approaches, or pick one and `jj abandon` the other.
+
+### Undo or recover
+Prefer explicit history operations: inspect `jj log`/`jj op log`, then use
+`jj restore`, `jj abandon`, `jj edit`, or `jj op restore` as appropriate. Be
+extra careful with operation restore; see the snapshot trap below.
 
 ## PR review loop
 
 This multi-step workflow isn't in any single help page:
 
 1. **Fix the description** — `jj describe -r <change>`.
-2. **Amend the diff** — `jj edit <change>` and edit, or `jj squash --into <change>`.
+2. **Amend the diff** — `jj edit <change>` and edit, or
+   `jj squash --into <change>`.
 3. **Move the bookmark forward** — `jj bookmark move <name> --to <change>`.
 4. **Re-push** — `jj git push`.
 
@@ -71,14 +85,17 @@ safe, and the operation is in `jj op log`, so accidental rewrites are undoable.
 - **Bookmarks don't auto-advance** — you must `jj bookmark set/move` explicitly.
 - Don't reach for `git` in a colocated repo; it bypasses `jj op log`.
 - `jj abandon` drops a change and rebases descendants past it; it's undoable.
+- `--ignore-working-copy` skips the auto-snapshot on read, but the result may
+  be stale; avoid it in write workflows.
 
 ### Working-copy snapshot trap
 
 Every jj command auto-snapshots `@` first — **all current disk state becomes
 part of `@` before the command runs.** This bites hard with rewrites:
 
-- `jj squash --from @` pulls the *entire* `@` into the target, not just
-  files you edited in this session.
+- Default `jj squash` (i.e. `--from @`) pulls the *entire* `@` into the
+  parent (or `--into <target>` for a non-parent destination), not just files
+  you edited this session.
 - `jj op restore` rewinds metadata but the working tree stays; the next
   snapshot lifts dirty files into whatever change is now `@`.
 
