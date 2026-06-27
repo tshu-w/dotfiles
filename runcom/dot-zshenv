@@ -116,6 +116,9 @@ _authinfo_export() {
     local -A entries=(
         GH_TOKEN             '^machine github[.]com.*login tshu-w password '
         OPENROUTER_API_KEY   '^machine openrouter[.]ai'
+        EXA_API_KEY          '^machine api[.]exa[.]ai'
+        TAVILY_API_KEY       '^machine api[.]tavily[.]com'
+        JINA_API_KEY         '^machine api[.]jina[.]ai'
         DEEPSEEK_API_KEY     '^machine api[.]deepseek[.]com'
         KIMI_API_KEY         '^machine api[.]moonshot[.]cn'
         ZAI_API_KEY          '^machine open[.]bigmodel[.]cn'
