@@ -1,84 +1,154 @@
-tap "ampcode/tap"
-tap "d12frosted/emacs-plus"
-tap "daviderestivo/emacs-head"
-tap "deb-sig/tap"
-tap "felixkratz/formulae"
-tap "koekeishiya/formulae"
-tap "specstoryai/tap"
-tap "sunnyyoung/repo"
-tap "tshu-w/malt"
-tap "zurawiki/brews"
+tap "ampcode/tap", trusted: true
+tap "d12frosted/emacs-plus", trusted: true
+tap "daviderestivo/emacs-head", trusted: true
+tap "deb-sig/tap", trusted: true
+tap "felixkratz/formulae", trusted: true
+tap "specstoryai/tap", trusted: true
+tap "tshu-w/malt", trusted: true
+tap "zurawiki/brews", trusted: true
+# Open-source, cross-platform JavaScript runtime environment
 brew "node"
-brew "antigravity-cli"
+# Secure and free password manager for all of your devices
 brew "bitwarden-cli"
+# Get/set bluetooth power and discoverable state
 brew "blueutil"
+# Cloudflare Tunnel client (formerly Argo Tunnel)
+brew "cloudflared"
+# GNU File, Shell, and Text utilities
 brew "coreutils"
+# Diff that understands syntax
 brew "difftastic"
+# Load/unload environment variables based on $PWD
 brew "direnv"
+# Spellchecker wrapping library
 brew "enchant"
+# Handle input method in command-line
 brew "fcitx-remote-for-osx"
+# Simple, fast and user-friendly alternative to find
 brew "fd"
+# Collection of GNU find, xargs, and locate
 brew "findutils"
+# Command-line tools for fly.io services
 brew "flyctl"
+# GNU awk utility
 brew "gawk"
+# GitHub command-line tool
 brew "gh"
+# Git extension for versioning large files
 brew "git-lfs"
+# GNU Privacy Guard (OpenPGP)
 brew "gnupg"
+# GNU implementation of the famous stream editor
 brew "gnu-sed"
+# GNU version of the tar archiving utility
 brew "gnu-tar"
+# GNU grep, egrep and fgrep
 brew "grep"
+# Easy plain text accounting with command-line, terminal and web UIs
 brew "hledger"
+# macOS Big Sur Adaptive Icon Generator
 brew "iconsur"
+# Synchronize a maildir with an IMAP server
 brew "isync"
+# Git-compatible distributed version control system
 brew "jj"
+# Command-line pager for JSON data
 brew "jless"
+# Lightweight and flexible command-line JSON processor
 brew "jq"
+# Rime Input Method Engine
 brew "librime"
+# Swiss Army Knife for macOS
 brew "m-cli"
+# Mac App Store command-line interface
 brew "mas"
-brew "micromamba"
+# Mac command-line tool that automatically downloads macOS Firmwares / Installers
 brew "mist-cli"
+# Collection of tools that nobody wrote when UNIX was young
 brew "moreutils"
+# Tool for searching e-mail messages stored in the maildir-format
 brew "mu"
+# Swiss-army knife of markup format conversion
 brew "pandoc"
+# Modern Python package and dependency manager supporting the latest PEP standards
 brew "pdm"
+# AI agent toolkit
 brew "pi-coding-agent"
+# Pinentry for GPG on Mac
 brew "pinentry-mac"
+# Fast Git hook manager written in Rust, drop-in alternative to pre-commit
 brew "prek"
+# Search tool like grep and The Silver Searcher
 brew "ripgrep"
+# Extremely fast Python linter, written in Rust
 brew "ruff"
+# Safe, concurrent, practical language
 brew "rust"
+# Terminal multiplexer with VT100/ANSI terminal emulation
 brew "screen"
+# Cross-shell prompt for astronauts
 brew "starship"
+# Organize software neatly under a single directory tree (e.g. /usr/local)
 brew "stow"
+# Change macOS audio source from the command-line
 brew "switchaudio-osx"
+# Open source continuous file synchronization application
 brew "syncthing", restart_service: :changed
+# Very fast implementation of tldr in Rust
 brew "tealdeer"
+# Send macOS User Notifications from the command-line
 brew "terminal-notifier"
+# Implementation of the Language Server Protocol for LaTeX
 brew "texlab"
+# Services for Typst
 brew "tinymist"
+# Display directories as trees (with optional color/HTML output)
 brew "tree"
+# Extremely fast Python type checker, written in Rust
 brew "ty"
+# Markup-based typesetting system
 brew "typst"
+# File synchronization tool
 brew "unison"
+# Extremely fast Python package installer and resolver, written in Rust
 brew "uv"
+# Vi 'workalike' with many additional features
 brew "vim"
+# Internet file retriever
 brew "wget"
+# Shell extension to navigate your filesystem faster
 brew "zoxide"
-brew "ampcode/tap/ampcode"
+# GNU Emacs text editor
 brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
+# Rule-based double-entry bookkeeping importer (from Alipay/WeChat/Huobi to Beancount).
 brew "deb-sig/tap/double-entry-generator"
+# Menu bar tool to limit maximum charging percentage
 cask "aldente"
+# Terminal interface for Antigravity agents
+cask "antigravity-cli"
+# Multi-cloud backup application
 cask "arq"
+# Menu bar icon organiser
 cask "bartender"
+# Display management tool
 cask "betterdisplay"
+# Terminal-based AI coding assistant
 cask "claude-code"
+# OpenAI's coding agent that runs in your terminal
 cask "codex"
+# Create and run Linux containers using lightweight virtual machines
 cask "container"
+# Brings the power of Copilot coding agent directly to your terminal
+cask "copilot-cli"
+# Voice and text chat software
 cask "discord"
+# Client for the Dropbox cloud storage service
 cask "dropbox"
+# Dictionary and translator app
 cask "easydict"
+# Virtual workspace manager
 cask "flashspace"
+# Website and application blocker
 cask "focus"
 cask "font-blex-mono-nerd-font"
 cask "font-comic-shanns-mono-nerd-font"
@@ -97,31 +167,57 @@ cask "font-sauce-code-pro-nerd-font"
 cask "font-sf-mono"
 cask "font-sf-pro"
 cask "font-source-code-pro"
+# Web browser
 cask "google-chrome"
+# Free and open-source media player
 cask "iina", args: { appdir: "/Applications" }
+# Tool for multi-language users
 cask "input-source-pro"
+# Terminal emulator as alternative to Apple's Terminal app
 cask "iterm2"
+# Open-source screen recorder built with web technology
 cask "kap", args: { appdir: "/Applications" }
+# Keyboard customiser
 cask "karabiner-elements"
+# Open-source keystroke visualiser
 cask "keycastr"
+# Productivity tool
 cask "launchbar", args: { appdir: "/Applications" }
+# Break time reminder app
 cask "lookaway"
+# Window manager
 cask "loop"
+# Full TeX Live distribution without GUI applications
 cask "mactex-no-gui"
+# Utility to open, create and modify archive files
 cask "maczip"
+# Provides updates to various Microsoft products
 cask "microsoft-auto-update"
+# Spreadsheet software
 cask "microsoft-excel"
+# Presentation software
 cask "microsoft-powerpoint"
+# Word processor
 cask "microsoft-word"
+# Mouse control with the keyboard
 cask "mouseless"
+# Cloud storage client
 cask "onedrive"
+# Replacement for Docker Desktop
 cask "orbstack"
+# PDF reader and note-taking application
 cask "skim"
+# Team communication and collaboration software
 cask "slack"
+# Rime input method engine
 cask "squirrel-app"
+# Messaging app with a focus on speed and security
 cask "telegram"
+# Cloud video conferencing
 cask "tencent-meeting"
+# Web browser focusing on security
 cask "tor-browser"
+# Messaging and calling application
 cask "wechatwork"
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
@@ -133,3 +229,6 @@ mas "QQ", id: 451108668
 mas "Surfingkeys", id: 1609752330
 mas "Userscripts", id: 1463298887
 mas "WeChat", id: 836500024
+uv "agentd[telegram]"
+npm "@browserbridge/bbx"
+npm "corepack"
