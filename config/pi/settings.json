@@ -73,7 +73,7 @@
       "source": "git:github.com/tshu-w/pi-tape"
     }
   ],
-  "lastChangelogVersion": "0.79.3",
+  "lastChangelogVersion": "0.80.2",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"
