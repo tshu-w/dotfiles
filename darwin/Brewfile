@@ -76,6 +76,8 @@ brew "pdm"
 brew "pi-coding-agent"
 # Pinentry for GPG on Mac
 brew "pinentry-mac"
+# CLI proxy to minimize LLM token consumption
+brew "rtk"
 # Fast Git hook manager written in Rust, drop-in alternative to pre-commit
 brew "prek"
 # Search tool like grep and The Silver Searcher
