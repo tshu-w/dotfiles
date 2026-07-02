@@ -70,9 +70,10 @@
     },
     {
       "source": "git:github.com/tshu-w/pi-tape"
-    }
+    },
+    "npm:pi-btw"
   ],
-  "lastChangelogVersion": "0.80.2",
+  "lastChangelogVersion": "0.80.3",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree"
