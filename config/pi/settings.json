@@ -71,7 +71,8 @@
     {
       "source": "git:github.com/tshu-w/pi-tape"
     },
-    "npm:pi-btw"
+    "npm:pi-btw",
+    "npm:pi-claude-bridge"
   ],
   "lastChangelogVersion": "0.80.3",
   "theme": "light",

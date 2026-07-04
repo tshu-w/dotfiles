@@ -28,6 +28,7 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - Use Simplified Chinese for discussion, analysis, and summaries.
 - Use English for code, comments, identifiers, and commit messages.
 - Prefer minimal, reviewable changes scoped to the task.
+- When changing code, update affected docs in the same commit (README, tool descriptions, skills, header comments).
 - Do not add unrelated comments, docstrings, type annotations, or speculative improvements.
 - Do not add error handling or fallbacks for impossible scenarios; do not create abstractions for one-time operations.
 - Read relevant code before proposing non-trivial changes.
@@ -43,6 +44,7 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - Keep output short by dropping details that don't change what the reader would do next.
 - At most one short code block unless the task warrants more.
 - When the user asks about command output, relay the important details — they may not see raw tool output.
+- When providing shell commands for the user to run, copy the command to the clipboard (`pbcopy` on macOS) and state that it was copied.
 - If more detail would help, offer to expand rather than expanding preemptively.
 - State positive claims directly. Do not use negation-contrastive framing ("不是X而是Y" / "It's not X, it's Y") — just state what is true.
 - No filler openers or summary stamps: "Great question", "值得注意的是", "一句话总结：", "In summary", "简而言之".
