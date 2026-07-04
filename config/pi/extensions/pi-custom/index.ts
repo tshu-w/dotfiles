@@ -4,11 +4,13 @@ import type {
   ExtensionContext,
   KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, DefaultPackageManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
@@ -101,6 +103,123 @@ function fitBorder(
 let activeTui: TUI | undefined;
 let sshLocation: string | undefined;
 let presetLabel: string | undefined;
+
+// ─── Package auto-update ──────────────────────────────────────────────────────
+
+const PACKAGE_UPDATE_STATUS_KEY = "pi-custom-package-update";
+const PACKAGE_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const PACKAGE_UPDATE_STALE_LOCK_MS = 2 * 60 * 60 * 1000;
+
+let packageUpdateBannerSuppressed = false;
+let packageUpdateStarted = false;
+
+interface PackageUpdateState {
+  lastAttempt?: number;
+  lastSuccess?: number;
+  lastExitCode?: number;
+  lastError?: string;
+}
+
+function suppressPackageUpdateBanner(): void {
+  if (packageUpdateBannerSuppressed) return;
+  packageUpdateBannerSuppressed = true;
+  const proto = DefaultPackageManager.prototype as {
+    checkForAvailableUpdates?: () => Promise<unknown[]>;
+  };
+  if (typeof proto.checkForAvailableUpdates === "function") {
+    proto.checkForAvailableUpdates = async () => [];
+  }
+}
+
+function getPackageUpdateCacheDir(): string {
+  return join(getAgentDir(), "cache", "pi-custom");
+}
+
+function readPackageUpdateState(path: string): PackageUpdateState {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as PackageUpdateState;
+  } catch {
+    return {};
+  }
+}
+
+function writePackageUpdateState(path: string, state: PackageUpdateState): void {
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function acquirePackageUpdateLock(path: string): boolean {
+  try {
+    writeFileSync(path, `${process.pid}\n`, { flag: "wx" });
+    return true;
+  } catch {
+    try {
+      if (Date.now() - statSync(path).mtimeMs <= PACKAGE_UPDATE_STALE_LOCK_MS) return false;
+      rmSync(path, { force: true });
+      writeFileSync(path, `${process.pid}\n`, { flag: "wx" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function truncateLog(text: string): string {
+  return text.length <= 4000 ? text : text.slice(-4000);
+}
+
+function registerPackageAutoUpdate(pi: ExtensionAPI): void {
+  suppressPackageUpdateBanner();
+
+  pi.on("session_start", (event, ctx) => {
+    if (event.reason !== "startup") return;
+    if (packageUpdateStarted || process.env.PI_OFFLINE) return;
+    packageUpdateStarted = true;
+
+    const cacheDir = getPackageUpdateCacheDir();
+    mkdirSync(cacheDir, { recursive: true });
+    const statePath = join(cacheDir, "package-update.json");
+    const lockPath = join(cacheDir, "package-update.lock");
+    const state = readPackageUpdateState(statePath);
+    const now = Date.now();
+    if (state.lastAttempt && now - state.lastAttempt < PACKAGE_UPDATE_INTERVAL_MS) return;
+    if (!acquirePackageUpdateLock(lockPath)) return;
+
+    writePackageUpdateState(statePath, { ...state, lastAttempt: now });
+    ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…");
+
+    const child = spawn("pi", ["update", "--extensions"], {
+      cwd: ctx.cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout?.on("data", (data) => { output = truncateLog(output + data.toString()); });
+    child.stderr?.on("data", (data) => { output = truncateLog(output + data.toString()); });
+
+    child.on("error", (error) => {
+      writePackageUpdateState(statePath, {
+        ...readPackageUpdateState(statePath),
+        lastExitCode: -1,
+        lastError: error.message,
+      });
+      rmSync(lockPath, { force: true });
+      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed");
+    });
+
+    child.on("close", (code) => {
+      writePackageUpdateState(statePath, {
+        ...readPackageUpdateState(statePath),
+        lastSuccess: code === 0 ? Date.now() : state.lastSuccess,
+        lastExitCode: code ?? -1,
+        lastError: code === 0 ? undefined : output.trim() || `exit ${code}`,
+      });
+      rmSync(lockPath, { force: true });
+      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, code === 0 ? "pkg updated" : "pkg update failed");
+      setTimeout(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined), 15_000).unref();
+    });
+  });
+}
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
@@ -308,6 +427,7 @@ function registerFast(pi: ExtensionAPI): void {
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export default function piCustom(pi: ExtensionAPI) {
+  registerPackageAutoUpdate(pi);
   registerEditor(pi);
   registerFooter(pi);
   registerFast(pi);
