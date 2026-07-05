@@ -11,8 +11,8 @@
     "extensions/official/notify.ts",
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",
-    "extensions/openai-fast.ts",
-    "extensions/custom-footer.ts",
+    "extensions/pi-custom/index.ts",
+    "extensions/rtk.ts",
     "extensions/pi-web/index.ts"
   ],
   "packages": [
@@ -75,7 +75,12 @@
     }
   ],
   "lastChangelogVersion": "0.80.3",
-  "theme": "light",
+  "theme": "dark",
   "treeFilterMode": "all",
-  "doubleEscapeAction": "tree"
+  "doubleEscapeAction": "tree",
+  "retry": {
+    "provider": {
+      "maxRetries": 5
+    }
+  }
 }
