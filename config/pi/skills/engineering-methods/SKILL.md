@@ -1,6 +1,6 @@
 ---
 name: engineering-methods
-description: Routing skill for engineering workflow methods (two upstream packs: addyosmani/agent-skills and mattpocock/skills). Covers intent grilling, specs/PRDs, task breakdown, implementation strategy, TDD, debugging, code review, API/interface design, codebase architecture, domain modeling, security, performance, CI/CD, migration, documentation, release readiness. Use for non-trivial software engineering process decisions — not for trivial edits, casual chat, or pure tool usage. When triggered, read this file's index, then open the most relevant referenced SKILL.md before acting.
+description: "Routing skill for engineering workflow methods (two upstream packs: addyosmani/agent-skills and mattpocock/skills). Covers intent grilling, specs/PRDs, task breakdown, implementation strategy, TDD, debugging, code review, API/interface design, codebase architecture, domain modeling, security, performance, CI/CD, migration, documentation, release readiness. Use for non-trivial software engineering process decisions — not for trivial edits, casual chat, or pure tool usage. When triggered, read this file's index, then open the most relevant referenced SKILL.md before acting."
 ---
 
 # Engineering Methods (Router)
