@@ -1,4 +1,8 @@
 SHELL=/bin/bash
+HOME=/Users/wangtianshu
+XDG_CONFIG_HOME=/Users/wangtianshu/.config
+XDG_CACHE_HOME=/Users/wangtianshu/.cache
+XDG_DATA_HOME=/Users/wangtianshu/.local/share
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
 00 11 * * * crontab -l > ~/.config/crontab
 00 10 * * * brew bundle dump --file ~/dotfiles/`uname -s | tr A-Z a-z`/Brewfile -f &>/dev/null

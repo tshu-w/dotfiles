@@ -25,3 +25,6 @@ status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-rem
 
 [plugins."github@openai-curated"]
 enabled = true
+
+[projects."/Users/wangtianshu"]
+trust_level = "trusted"
