@@ -28,10 +28,6 @@
       ],
       "skills": [
         "skills/commit/**",
-        "skills/github/**",
-        "skills/mermaid/**",
-        "skills/summarize/**",
-        "skills/update-changelog/**",
         "skills/uv/**"
       ],
       "prompts": [],
@@ -72,7 +68,11 @@
       "source": "git:github.com/tshu-w/pi-tape"
     },
     "npm:pi-btw",
-    "npm:pi-claude-bridge"
+    "npm:pi-claude-bridge",
+    {
+      "source": "git:github.com/mattpocock/skills",
+      "skills": []
+    }
   ],
   "lastChangelogVersion": "0.80.3",
   "theme": "light",
