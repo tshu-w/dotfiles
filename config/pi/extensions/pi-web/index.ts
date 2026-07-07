@@ -10,13 +10,16 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai/compat";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { Type } from "typebox";
 
-const CONFIG_PATH = `${homedir()}/.pi/web-search.json`;
+// Agent dir first; legacy ~/.pi path kept as fallback.
+const CONFIG_PATHS = [join(getAgentDir(), "web-search.json"), `${homedir()}/.pi/web-search.json`];
 const EXA_SEARCH_URL = "https://api.exa.ai/search";
 const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
 const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
@@ -59,14 +62,15 @@ let cachedConfig: WebConfig | null = null;
 
 function loadConfig(): WebConfig {
 	if (cachedConfig) return cachedConfig;
-	if (!existsSync(CONFIG_PATH)) { cachedConfig = {}; return cachedConfig; }
-	try {
-		cachedConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as WebConfig;
-		return cachedConfig;
-	} catch {
-		cachedConfig = {};
-		return cachedConfig;
+	for (const path of CONFIG_PATHS) {
+		if (!existsSync(path)) continue;
+		try {
+			cachedConfig = JSON.parse(readFileSync(path, "utf-8")) as WebConfig;
+			return cachedConfig;
+		} catch { /* try next */ }
 	}
+	cachedConfig = {};
+	return cachedConfig;
 }
 
 function getExaKey(): string | null {

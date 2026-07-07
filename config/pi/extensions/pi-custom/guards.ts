@@ -202,7 +202,7 @@ export function registerJjGuard(pi: ExtensionAPI): void {
     if (event.toolName !== "bash") return;
     const command = String((event.input as { command?: string })?.command ?? "");
     if (!command.trim() || !invokesGit(command)) return;
-    const prelude = colocatePrelude(process.cwd());
+    const prelude = colocatePrelude(ctx.cwd);
     const message = `Prefer \`jj\` over \`git\`.\n\n${prelude}\`jj\` is installed — use it instead of \`git\`. Run \`jj --help\` for available commands.`;
     if (ctx.hasUI && !warned) { warned = true; ctx.ui.notify(message, "warning"); }
   });
