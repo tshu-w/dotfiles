@@ -424,6 +424,36 @@ function registerFast(pi: ExtensionAPI): void {
   });
 }
 
+// ─── Restart ─────────────────────────────────────────────────────────────────
+
+// ctx.shutdown() runs the normal graceful-quit flow (deferred until idle,
+// terminal restored), then an "exit" hook replaces the dying process via
+// process.execve with `pi --session <current>`. Same pid, so the shell keeps
+// treating it as the foreground job and the new TUI takes over cleanly.
+//
+// Launch flags (--model, -e, ...) are not carried over; model and thinking
+// level are restored from the session itself. If execve throws, pi just
+// exits normally — resume manually with `pi -c`.
+function registerRestart(pi: ExtensionAPI): void {
+  pi.registerCommand("restart", {
+    description: "Restart pi process and resume the current session",
+    handler: async (_args, ctx) => {
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      const args = [process.execPath, process.argv[1]];
+      if (sessionFile) args.push("--session", sessionFile);
+      process.once("exit", () => {
+        try {
+          process.execve(process.execPath, args, process.env as Record<string, string>);
+        } catch {
+          // fall through to a normal exit
+        }
+      });
+      ctx.ui.notify(sessionFile ? "Restarting into current session..." : "Restarting...", "info");
+      ctx.shutdown();
+    },
+  });
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export default function piCustom(pi: ExtensionAPI) {
@@ -431,6 +461,7 @@ export default function piCustom(pi: ExtensionAPI) {
   registerEditor(pi);
   registerFooter(pi);
   registerFast(pi);
+  registerRestart(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
 }
