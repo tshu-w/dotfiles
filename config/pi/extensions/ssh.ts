@@ -405,7 +405,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (options?.notify !== false && ctx.hasUI) {
-      ctx.ui.notify(activeSsh ? `SSH mode: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)}` : "SSH mode disabled", "info");
+      ctx.ui.notify(activeSsh ? `SSH mode: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)} (disable: /ssh off)` : "SSH mode disabled", "info");
     }
   };
 
@@ -479,7 +479,7 @@ export default function (pi: ExtensionAPI) {
 
       if (!trimmed) {
         if (ctx.hasUI) {
-          const status = activeSsh ? `SSH: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)}` : SSH_OFF_TEXT;
+          const status = activeSsh ? `SSH: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)} (disable: /ssh off)` : SSH_OFF_TEXT;
           ctx.ui.notify(status, "info");
         }
         return;
@@ -500,7 +500,7 @@ export default function (pi: ExtensionAPI) {
         await applyState(nextState, ctx, { persist: true });
         pi.sendMessage({
           customType: "ssh-state-change",
-          content: `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.`,
+          content: `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.\nDisable with /ssh off.`,
           display: true,
         }, { triggerTurn: false });
       } catch (error) {
