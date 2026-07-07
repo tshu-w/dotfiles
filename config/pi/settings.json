@@ -19,12 +19,9 @@
     {
       "source": "git:github.com/mitsuhiko/agent-stuff",
       "extensions": [
-        "pi-extensions/context.ts",
-        "pi-extensions/files.ts",
-        "pi-extensions/go-to-bed.ts",
-        "pi-extensions/loop.ts",
-        "pi-extensions/review.ts",
-        "pi-extensions/session-breakdown.ts"
+        "extensions/goal.ts",
+        "extensions/review.ts",
+        "extensions/session-breakdown.ts"
       ],
       "skills": [
         "skills/commit/**",
@@ -67,7 +64,6 @@
     {
       "source": "git:github.com/tshu-w/pi-tape"
     },
-    "npm:pi-btw",
     "npm:pi-claude-bridge",
     {
       "source": "git:github.com/mattpocock/skills",
