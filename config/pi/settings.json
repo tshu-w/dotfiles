@@ -1,7 +1,7 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
+  "defaultModel": "gpt-5.6-sol",
+  "defaultThinkingLevel": "medium",
   "followUpMode": "all",
   "steeringMode": "all",
   "extensions": [
@@ -70,7 +70,7 @@
       "skills": []
     }
   ],
-  "lastChangelogVersion": "0.80.3",
+  "lastChangelogVersion": "0.80.6",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -78,5 +78,12 @@
     "provider": {
       "maxRetries": 5
     }
-  }
+  },
+  "hideThinkingBlock": true,
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "showCacheMissNotices": true,
+  "quietStartup": true,
+  "defaultProjectTrust": "always"
 }
