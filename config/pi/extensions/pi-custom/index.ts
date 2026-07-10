@@ -356,20 +356,13 @@ function registerFooter(pi: ExtensionAPI): void {
 // ─── Fast mode ────────────────────────────────────────────────────────────────
 
 const FAST_STATUS_KEY = "pi-openai-fast";
-const FAST_MODELS = new Set([
-  "openai/gpt-5.4",
-  "openai/gpt-5.5",
-  "openai-codex/gpt-5.4",
-  "openai-codex/gpt-5.5",
-]);
 
 let fastDesired = false;
 let fastModel: { provider?: string; id?: string } | undefined;
 let fastUi: ExtensionContext["ui"] | undefined;
 
 function isFastActive(): boolean {
-  if (!fastModel?.provider || !fastModel.id) return false;
-  return fastDesired && FAST_MODELS.has(`${fastModel.provider}/${fastModel.id}`);
+  return fastDesired && fastModel?.provider === "openai-codex";
 }
 
 function syncFastStatus(ui = fastUi): void {
