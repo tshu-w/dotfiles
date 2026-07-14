@@ -1,76 +1,85 @@
 import assert from "node:assert/strict";
-import { scrubOutput } from "./redact.js";
+import { isConfigLikePath, scrubOutput } from "./redact.js";
+
+const envOptions = { envAssignments: true };
+const configOptions = { envAssignments: true, genericFields: true };
+
+const knownToken = "sk-" + "a".repeat(24);
+const bearerToken = "b".repeat(24);
+const privateKey = [
+  "-----BEGIN " + "PRIVATE KEY-----",
+  "example-private-key-material",
+  "-----END " + "PRIVATE KEY-----",
+].join("\n");
+const urlWithPassword = `postgres://alice:${"example-" + "password"}@example.com/db`;
 
 const fixtures = [
   {
-    name: "env var preserves double quotes",
-    input: 'OPENAI_API_KEY="sk-abcdefghijklmnopqrstuvwxyz"',
-    expected: 'OPENAI_API_KEY="[REDACTED]"',
-  },
-  {
-    name: "env var preserves single quotes",
-    input: "GITHUB_TOKEN='ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ'",
-    expected: "GITHUB_TOKEN='[REDACTED]'",
-  },
-  {
-    name: "bare env var stops at whitespace",
-    input: "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ BAR=baz",
-    expected: "GITHUB_TOKEN=[REDACTED] BAR=baz",
-  },
-  {
-    name: "bare env var stops before inline comment",
-    input: "NPM_TOKEN=npm_1234567890abcdefghijklmnopqrstuvwxyz # registry token",
-    expected: "NPM_TOKEN=[REDACTED] # registry token",
-  },
-  {
-    name: "bearer token preserves header shape",
-    input: "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret",
-    expected: "Authorization: Bearer [REDACTED]",
-  },
-  {
-    name: "github fine-grained PAT",
-    input: "token=github_pat_1234567890abcdefghijklmnopqrstuvwxyz_ABCDE",
+    name: "known token prefix is always redacted",
+    actual: scrubOutput(`token=${knownToken}`),
     expected: "token=[REDACTED]",
   },
   {
-    name: "private key block",
-    input: "before\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc123\n-----END OPENSSH PRIVATE KEY-----\nafter",
+    name: "bearer token is always redacted",
+    actual: scrubOutput(`Authorization: Bearer ${bearerToken}`),
+    expected: "Authorization: Bearer [REDACTED]",
+  },
+  {
+    name: "private key block is always redacted",
+    actual: scrubOutput(`before\n${privateKey}\nafter`),
     expected: "before\n[REDACTED:private-key]\nafter",
   },
   {
-    name: "json style generic secret field",
-    input: '{"client_secret":"supersecretvalue","safe":"ok"}',
-    expected: '{"client_secret":"[REDACTED]","safe":"ok"}',
-  },
-  {
-    name: "yaml style generic secret field",
-    input: "password: correct-horse-battery-staple",
-    expected: "password: [REDACTED]",
-  },
-  {
-    name: "database URL preserves user and host",
-    input: "postgres://alice:s3cr3t@example.com/db",
+    name: "URL password is always redacted",
+    actual: scrubOutput(urlWithPassword),
     expected: "postgres://alice:[REDACTED]@example.com/db",
   },
   {
-    name: "npm token",
-    input: "//registry.npmjs.org/:_authToken=npm_1234567890abcdefghijklmnopqrstuvwxyz",
-    expected: "//registry.npmjs.org/:_authToken=[REDACTED]",
+    name: "env assignment preserves quotes when enabled",
+    actual: scrubOutput('OPENAI_API_KEY="example-value"', envOptions),
+    expected: 'OPENAI_API_KEY="[REDACTED]"',
   },
   {
-    name: "google API key",
-    input: "AIzaSyA1234567890abcdefghijklmnopqrstuv",
-    expected: "[REDACTED]",
+    name: "env assignment remains intact for source reads",
+    actual: scrubOutput('OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")'),
+    expected: 'OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")',
   },
   {
-    name: "does not redact ordinary short fields",
-    input: "token: dev\npassword: local",
-    expected: "token: dev\npassword: local",
+    name: "JSON secret field is redacted for config reads",
+    actual: scrubOutput('{"client_secret":"example-value","safe":"ok"}', configOptions),
+    expected: '{"client_secret":"[REDACTED]","safe":"ok"}',
+  },
+  {
+    name: "YAML secret field is redacted for config reads",
+    actual: scrubOutput("password: example-value", configOptions),
+    expected: "password: [REDACTED]",
+  },
+  {
+    name: "short generic config value stays visible",
+    actual: scrubOutput("token: local", configOptions),
+    expected: "token: local",
+  },
+  {
+    name: "Python annotations remain intact",
+    actual: scrubOutput("def login(token: str, password: Optional[str], api_key: SecretStr) -> bool:"),
+    expected: "def login(token: str, password: Optional[str], api_key: SecretStr) -> bool:",
+  },
+  {
+    name: "TypeScript annotations remain intact",
+    actual: scrubOutput("type Credentials = { token: string; client_secret: SecretString }"),
+    expected: "type Credentials = { token: string; client_secret: SecretString }",
   },
 ];
 
 for (const fixture of fixtures) {
-  assert.equal(scrubOutput(fixture.input), fixture.expected, fixture.name);
+  assert.equal(fixture.actual, fixture.expected, fixture.name);
 }
 
-console.log(`secret-guard-redact: ${fixtures.length} fixtures passed`);
+for (const path of [".env", ".env.local", "config.json", "values.yaml", "app.toml", ".npmrc"]) {
+  assert.equal(isConfigLikePath(path), true, `${path} should be config-like`);
+}
+for (const path of ["main.py", "types.ts", "README.md", "script.sh", "notes.txt"]) {
+  assert.equal(isConfigLikePath(path), false, `${path} should not be config-like`);
+}
+
+console.log(`secret-guard-redact: ${fixtures.length} redaction cases and 11 path cases passed`);

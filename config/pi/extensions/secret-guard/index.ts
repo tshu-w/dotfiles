@@ -3,8 +3,8 @@
  *
  * Three layers, all via events (no registerTool, no conflict with SSH/Sandbox):
  *   1. tool_call: block read/write/edit/bash on credential files
- *   2. tool_result: scrub env var values matching suffix patterns
- *   3. tool_result: scrub known token prefixes from all text outputs
+ *   2. tool_result: always scrub high-confidence secret shapes
+ *   3. tool_result: scrub env assignments and generic secret fields only for config-like file reads
  *
  * Scope: LLM tool calls only. User `!` commands are not intercepted.
  * This is a practical guard, not a complete DLP solution.
@@ -12,9 +12,11 @@
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { scrubOutput } from "./redact.js";
+import { isConfigLikePath, scrubOutput } from "./redact.js";
 
 // Credential files — read/write/edit/bash all blocked
+const REDACTION_NOTICE = "[Secret Guard redacted sensitive values from this tool output. Do not copy [REDACTED] placeholders back into files.]";
+
 const BLOCKED_PATHS = [
   ".authinfo.gpg",
   ".authinfo",
@@ -57,18 +59,27 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Layer 2+3: scrub env values and known token prefixes from all text tool outputs
+  // Layer 2+3: keep source code intact while applying stronger field heuristics to config files.
   pi.on("tool_result", async (event) => {
     if (!event.content) return;
+
+    const path = event.toolName === "read" ? (event.input as { path?: string }).path : undefined;
+    const configLikeRead = isConfigLikePath(path);
+    const options = {
+      envAssignments: event.toolName !== "read" || configLikeRead,
+      genericFields: configLikeRead,
+    };
 
     let changed = false;
     const content = event.content.map((part) => {
       if (part.type !== "text") return part;
-      const scrubbed = scrubOutput(part.text);
+      const scrubbed = scrubOutput(part.text, options);
       if (scrubbed !== part.text) changed = true;
       return { ...part, text: scrubbed };
     });
 
-    if (changed) return { content };
+    if (changed) {
+      return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };
+    }
   });
 }
