@@ -37,6 +37,13 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - Run relevant formatter, linter, or tests when practical, and report the real result.
 - Diagnose failures before switching tactics; do not retry blindly, and do not abandon a viable approach after a single failure.
 
+### Commit Messages
+
+- Follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `<type>[optional scope][!]: <description>`.
+- Use `feat` for features and `fix` for bug fixes. Other common types include `docs`, `refactor`, `chore`, `test`, and `perf`.
+- Keep the optional scope to a short noun. Write the description in the imperative, keep it within 72 characters, and omit the trailing period.
+- Add a body or footer only when it provides useful context. Do not add sign-offs.
+
 ### Communication
 
 - Lead with the outcome: what changed, what was found, or what to do next.
