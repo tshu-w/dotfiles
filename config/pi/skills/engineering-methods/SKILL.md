@@ -40,7 +40,8 @@ If a repo doesn't print, install it: `pi install git:github.com/<owner>/<repo>`.
 - Sharpening an idea or plan by interview before building (grilling).
 - The project keeps a persistent domain vocabulary (`CONTEXT.md`) or ADRs.
 - The question is codebase *shape*: module depth, seams, interfaces, adapters, locality.
-- The flow is issue-driven: PRD → vertical-slice issues → implement per issue → two-axis review.
+- The flow is issue-driven: spec → tracer-bullet tickets → implement per ticket → two-axis review.
+- A large, unclear effort needs a multi-session map of decisions before it can become a spec.
 - Debugging a hard bug that needs a tight feedback loop before theorizing.
 
 **Prefer Addy (`addyosmani/agent-skills`) when:**
@@ -58,12 +59,13 @@ Paths are `skills/<entry>/SKILL.md` under the resolved package dir.
 - `engineering/ask-matt` — Matt's own router: how the skills chain into the idea→ship flow.
 - `engineering/setup-matt-pocock-skills` — One-time setup (issue tracker, docs layout) the flow skills assume.
 
-### Idea → spec → issues → implement
+### Idea → spec → tickets → implement
 - `engineering/grill-with-docs` — Relentless interview to sharpen a plan; maintains glossary + ADRs (needs a codebase).
 - `productivity/grill-me` — Same grilling, stateless, no codebase required.
-- `engineering/to-prd` — Turn the current conversation into a PRD (synthesis, no interview).
-- `engineering/to-issues` — Split a PRD/plan into independently-grabbable vertical-slice issues.
-- `engineering/implement` — Implement a PRD/issue: TDD at pre-agreed seams, typechecks, review, commit.
+- `engineering/wayfinder` — Map a large, unclear, multi-session effort as decision tickets; hand off to a spec when the route is clear.
+- `engineering/to-spec` — Synthesize the current conversation into a spec and publish it to the configured issue tracker.
+- `engineering/to-tickets` — Split a spec, plan, or conversation into tracer-bullet tickets with explicit blocking edges.
+- `engineering/implement` — Implement a spec or ticket: TDD at pre-agreed seams, typechecks, review, commit.
 - `engineering/prototype` — Throwaway prototype to answer one design question (state model, UI feel).
 - `engineering/research` — Background primary-source research captured as a cited Markdown file.
 
