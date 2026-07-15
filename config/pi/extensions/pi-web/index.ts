@@ -6,15 +6,16 @@
  *
  * Tools:
  *   web_search — search the web via Exa, return sources + snippets
- *   web_fetch  — fetch a URL as readable text/markdown, with optional pattern filtering
+ *   web_fetch  — fetch readable text/markdown; cap output at 50KB and save the full result when truncated
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, truncateHead } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai/compat";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 
@@ -31,6 +32,7 @@ const DEFAULT_MAX_CHARS = 30_000;
 const MAX_NUM_RESULTS = 10;
 const MAX_FETCH_CHARS = 80_000;
 const DIRECT_FETCH_MAX_BYTES = 2_000_000;
+const TRUNCATION_NOTICE_RESERVE_BYTES = 512;
 
 interface SearchResult {
 	title: string;
@@ -126,6 +128,30 @@ function recencyToStartDate(filter: string): string | null {
 function clampPositiveInt(value: unknown, fallback: number, max: number): number {
 	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
 	return Math.max(1, Math.min(Math.floor(value), max));
+}
+
+export async function boundToolOutput(value: string): Promise<{
+	text: string;
+	truncated: boolean;
+	bytes: number;
+	fullOutputPath?: string;
+}> {
+	const full = truncateHead(value, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
+	if (!full.truncated) return { text: value, truncated: false, bytes: Buffer.byteLength(value) };
+
+	const tempDir = await mkdtemp(join(tmpdir(), "pi-web-"));
+	const fullOutputPath = join(tempDir, "output.txt");
+	await writeFile(fullOutputPath, value, "utf8");
+
+	const preview = truncateHead(value, {
+		maxBytes: DEFAULT_MAX_BYTES - TRUNCATION_NOTICE_RESERVE_BYTES,
+		maxLines: DEFAULT_MAX_LINES - 2,
+	});
+	const note = `\n\n[Output truncated: showing ${preview.outputLines} of ${preview.totalLines} lines` +
+		` (${formatSize(preview.outputBytes)} of ${formatSize(preview.totalBytes)}).` +
+		` Full output saved to: ${fullOutputPath}]`;
+	const content = preview.content + note;
+	return { text: content, truncated: true, bytes: Buffer.byteLength(content), fullOutputPath };
 }
 
 async function exaSearchDirect(
@@ -600,7 +626,7 @@ export default function (pi: ExtensionAPI) {
 					return { content: [{ type: "text", text: "Search cancelled." }], details: { aborted: true } };
 				}
 				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: `Search error: ${msg}` }], details: { error: msg } };
+				throw new Error(`Web search failed: ${msg}`);
 			}
 		},
 
@@ -610,9 +636,13 @@ export default function (pi: ExtensionAPI) {
 			return new Text(theme.fg("toolTitle", theme.bold("search ")) + theme.fg("accent", `"${display}"`), 0, 0);
 		},
 
-		renderResult(result, { expanded, isPartial }, theme) {
+		renderResult(result, { expanded, isPartial }, theme, context) {
 			const details = result.details as { count?: number; error?: string; aborted?: boolean; phase?: string };
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "searching"), 0, 0);
+			if (context.isError) {
+				const text = result.content.find(c => c.type === "text")?.text ?? "Web search failed";
+				return new Text(theme.fg("error", text), 0, 0);
+			}
 			if (details?.aborted) return new Text(theme.fg("muted", "cancelled"), 0, 0);
 			if (details?.error) return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
 			const summary = theme.fg("success", `${details?.count ?? 0} sources`);
@@ -626,7 +656,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "web_fetch",
 		label: "Web Fetch",
-		description: "Fetch a URL and extract readable content. Optionally search within the page using pattern. Fallback chain: Exa contents → direct fetch → Jina Reader.",
+		description: "Fetch a URL and extract readable content, capped at 50KB/2000 lines. If truncated, the full output is saved to a temp file. Optionally search within the page using pattern. Fallback chain: Exa contents → direct fetch → Jina Reader.",
 		promptSnippet: "Use to read a specific URL. Supports pattern for in-page search.",
 		promptGuidelines: [
 			"Use web_fetch when the user provides a URL or after search finds a relevant page.",
@@ -634,7 +664,7 @@ export default function (pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			url: Type.String({ description: "URL to fetch" }),
-			maxChars: Type.Optional(Type.Number({ description: "Max characters to return (default: 30000, max: 80000)" })),
+			maxChars: Type.Optional(Type.Number({ description: "Max source characters to process (default: 30000, max: 80000); output is capped at 50KB/2000 lines" })),
 			pattern: Type.Optional(Type.String({ description: "Search for this text within the page (case-insensitive)" })),
 		}),
 
@@ -644,24 +674,31 @@ export default function (pi: ExtensionAPI) {
 
 			try {
 				const result = await fetchUrl(params.url, maxChars, signal);
-				if (result.error) {
-					return { content: [{ type: "text", text: `Error: ${result.error}` }], details: { url: params.url, error: result.error } };
-				}
+				if (result.error) throw new Error(result.error);
 
 				const output = params.pattern
 					? findInContent(result.content, params.pattern)
 					: `# ${result.title}\n\n${result.content}`;
+				const bounded = await boundToolOutput(output);
 
 				return {
-					content: [{ type: "text", text: output }],
-					details: { url: params.url, title: result.title, chars: result.content.length, pattern: params.pattern },
+					content: [{ type: "text", text: bounded.text }],
+					details: {
+						url: params.url,
+						title: result.title,
+						chars: result.content.length,
+						outputBytes: bounded.bytes,
+						truncated: bounded.truncated,
+						fullOutputPath: bounded.fullOutputPath,
+						pattern: params.pattern,
+					},
 				};
 			} catch (err) {
 				if (isAbortError(err) || signal?.aborted) {
 					return { content: [{ type: "text", text: "Fetch cancelled." }], details: { url: params.url, aborted: true } };
 				}
 				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: `Fetch error: ${msg}` }], details: { url: params.url, error: msg } };
+				throw new Error(`Web fetch failed for ${params.url}: ${msg}`);
 			}
 		},
 
@@ -673,13 +710,18 @@ export default function (pi: ExtensionAPI) {
 			return new Text(text, 0, 0);
 		},
 
-		renderResult(result, { expanded, isPartial }, theme) {
-			const details = result.details as { title?: string; chars?: number; error?: string; pattern?: string; aborted?: boolean; phase?: string };
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			const details = result.details as { title?: string; chars?: number; error?: string; pattern?: string; aborted?: boolean; phase?: string; truncated?: boolean; fullOutputPath?: string };
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "fetching"), 0, 0);
+			if (context.isError) {
+				const text = result.content.find(c => c.type === "text")?.text ?? "Web fetch failed";
+				return new Text(theme.fg("error", text), 0, 0);
+			}
 			if (details?.aborted) return new Text(theme.fg("muted", "cancelled"), 0, 0);
 			if (details?.error) return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
-			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars)`);
+			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars${details?.truncated ? ", truncated" : ""})`);
 			if (details?.pattern) summary += theme.fg("accent", ` [find: "${details.pattern}"]`);
+			if (expanded && details?.fullOutputPath) summary += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
 			if (!expanded) return new Text(summary, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
 			const preview = text.length > 400 ? text.slice(0, 400) + "..." : text;
