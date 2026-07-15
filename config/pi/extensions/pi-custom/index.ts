@@ -7,8 +7,9 @@ import type {
 import { CustomEditor, DefaultPackageManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
@@ -168,6 +169,80 @@ function truncateLog(text: string): string {
   return text.length <= 4000 ? text : text.slice(-4000);
 }
 
+const PACKAGE_UPDATE_COMMANDS = [
+  { command: "pi", args: ["update", "--extensions"] },
+  { command: "npm", args: ["update", "-g", "@browserbridge/bbx"] },
+] as const;
+
+// Skip `pi update --extensions` while any git package clone has local
+// changes, so the updater never clobbers uncommitted work.
+async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
+  const dirty: string[] = [];
+  let hosts: string[];
+  try {
+    hosts = await readdir(gitRoot);
+  } catch {
+    return dirty;
+  }
+  for (const host of hosts) {
+    const hostDir = join(gitRoot, host);
+    let owners: string[];
+    try {
+      owners = await readdir(hostDir);
+    } catch {
+      continue;
+    }
+    for (const owner of owners) {
+      const ownerDir = join(hostDir, owner);
+      let repos: string[];
+      try {
+        repos = await readdir(ownerDir);
+      } catch {
+        continue;
+      }
+      for (const repo of repos) {
+        const repoDir = join(ownerDir, repo);
+        if (!existsSync(join(repoDir, ".git"))) continue;
+        const status = await new Promise<string | undefined>((resolvePorcelain) => {
+          execFile("git", ["-C", repoDir, "status", "--porcelain"], { encoding: "utf8" }, (error, stdout) => {
+            resolvePorcelain(error ? undefined : stdout);
+          });
+        });
+        if (status === undefined) continue;
+        // Only tracked modifications count; ignore untracked files and the
+        // package-lock.json churn from pi's own dependency install.
+        const changes = status
+          .split("\n")
+          .filter((line) => line.trim() && !line.startsWith("??") && !line.endsWith("package-lock.json"));
+        if (changes.length > 0) dirty.push(`${owner}/${repo}`);
+      }
+    }
+  }
+  return dirty;
+}
+
+function runUpdateCommand(command: string, args: readonly string[], cwd: string): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, [...args], {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    let settled = false;
+    const finish = (code: number, extra = "") => {
+      if (settled) return;
+      settled = true;
+      resolve({ code, output: truncateLog(output + extra) });
+    };
+
+    child.stdout?.on("data", (data) => { output = truncateLog(output + data.toString()); });
+    child.stderr?.on("data", (data) => { output = truncateLog(output + data.toString()); });
+    child.on("error", (error) => finish(-1, `\n${error.message}`));
+    child.on("close", (code) => finish(code ?? -1));
+  });
+}
+
 function registerPackageAutoUpdate(pi: ExtensionAPI): void {
   suppressPackageUpdateBanner();
 
@@ -188,35 +263,47 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
     writePackageUpdateState(statePath, { ...state, lastAttempt: now });
     ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…");
 
-    const child = spawn("pi", ["update", "--extensions"], {
-      cwd: ctx.cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    child.stdout?.on("data", (data) => { output = truncateLog(output + data.toString()); });
-    child.stderr?.on("data", (data) => { output = truncateLog(output + data.toString()); });
+    void (async () => {
+      const dirty = await findDirtyGitPackages(join(getAgentDir(), "git"));
+      if (dirty.length > 0) {
+        ctx.ui.notify(`pkg update: skipped pi update --extensions (local changes: ${dirty.join(", ")})`, "warning");
+      }
+      const commands = dirty.length
+        ? PACKAGE_UPDATE_COMMANDS.filter((update) => update.command !== "pi")
+        : PACKAGE_UPDATE_COMMANDS;
+      let code = 0;
+      let output = dirty.length ? `skipped pi update --extensions (local changes: ${dirty.join(", ")})` : "";
+      let failedCommand: string | undefined;
 
-    child.on("error", (error) => {
+      for (const update of commands) {
+        const result = await runUpdateCommand(update.command, update.args, ctx.cwd);
+        output = truncateLog(`${output}\n$ ${update.command} ${update.args.join(" ")}\n${result.output}`);
+        code = result.code;
+        if (code !== 0) {
+          failedCommand = `${update.command} ${update.args.join(" ")}`;
+          break;
+        }
+      }
+
+      const latest = readPackageUpdateState(statePath);
+      writePackageUpdateState(statePath, {
+        ...latest,
+        lastSuccess: code === 0 ? Date.now() : latest.lastSuccess,
+        lastExitCode: code,
+        lastError: code === 0 ? undefined : `${failedCommand ?? "update"} failed: ${output.trim() || `exit ${code}`}`,
+      });
+      rmSync(lockPath, { force: true });
+      const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (ext skipped: dirty)" : "pkg updated";
+      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText);
+      setTimeout(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined), 15_000).unref();
+    })().catch((error: unknown) => {
       writePackageUpdateState(statePath, {
         ...readPackageUpdateState(statePath),
         lastExitCode: -1,
-        lastError: error.message,
+        lastError: error instanceof Error ? error.message : String(error),
       });
       rmSync(lockPath, { force: true });
       ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed");
-    });
-
-    child.on("close", (code) => {
-      writePackageUpdateState(statePath, {
-        ...readPackageUpdateState(statePath),
-        lastSuccess: code === 0 ? Date.now() : state.lastSuccess,
-        lastExitCode: code ?? -1,
-        lastError: code === 0 ? undefined : output.trim() || `exit ${code}`,
-      });
-      rmSync(lockPath, { force: true });
-      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, code === 0 ? "pkg updated" : "pkg update failed");
-      setTimeout(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined), 15_000).unref();
     });
   });
 }
