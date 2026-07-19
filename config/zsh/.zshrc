@@ -220,10 +220,6 @@ sysup () {
   npm update -g
   echo
 
-  echo "${C_BLUE}==> 🧩 Updating pi...${C_RESET}"
-  pi update
-  echo
-
   if [ -d "$HOME/Library/Rime" ]; then
     echo "${C_BLUE}==> ⌨️ Updating Rime packages...${C_RESET}"
     (cd $HOME/Library/Rime/plum/ && bash rime-install ../plum-package.conf)
