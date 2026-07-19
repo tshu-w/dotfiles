@@ -1,18 +1,21 @@
 import type {
   BeforeProviderRequestEvent,
   ExtensionAPI,
+  ExtensionCommandContext,
   ExtensionContext,
   KeybindingsManager,
+  Theme,
 } from "@earendil-works/pi-coding-agent";
 import { CustomEditor, DefaultPackageManager, getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Component, EditorTheme, Focusable, TUI } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
+import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
 
@@ -261,12 +264,14 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
     if (!acquirePackageUpdateLock(lockPath)) return;
 
     writePackageUpdateState(statePath, { ...state, lastAttempt: now });
-    ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…");
+    // ctx becomes stale after session replacement/reload; UI updates are best-effort.
+    const safeUi = (fn: () => void) => { try { fn(); } catch { /* stale ctx */ } };
+    safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…"));
 
     void (async () => {
       const dirty = await findDirtyGitPackages(join(getAgentDir(), "git"));
       if (dirty.length > 0) {
-        ctx.ui.notify(`pkg update: skipped pi update --extensions (local changes: ${dirty.join(", ")})`, "warning");
+        safeUi(() => ctx.ui.notify(`pkg update: skipped pi update --extensions (local changes: ${dirty.join(", ")})`, "warning"));
       }
       const commands = dirty.length
         ? PACKAGE_UPDATE_COMMANDS.filter((update) => update.command !== "pi")
@@ -294,8 +299,8 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
       });
       rmSync(lockPath, { force: true });
       const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (ext skipped: dirty)" : "pkg updated";
-      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText);
-      setTimeout(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined), 15_000).unref();
+      safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText));
+      setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     })().catch((error: unknown) => {
       writePackageUpdateState(statePath, {
         ...readPackageUpdateState(statePath),
@@ -303,7 +308,7 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         lastError: error instanceof Error ? error.message : String(error),
       });
       rmSync(lockPath, { force: true });
-      ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed");
+      safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
     });
   });
 }
@@ -423,12 +428,16 @@ function registerFooter(pi: ExtensionAPI): void {
         const styledCtx = pct > 90 ? theme.fg("error", ctxStr) : pct > 70 ? theme.fg("warning", ctxStr) : dim(ctxStr);
         const left = statParts.length > 0 ? dim(statParts.join(" ")) + " " + styledCtx : styledCtx;
 
-        // Right: fast indicator + subscription status
+        // Right: unconsumed extension statuses + subscription status
         const fg = (color: "dim" | "warning" | "error", s: string) => theme.fg(color, s);
         const subUsage = statuses.get("sub-status:usage");
         const subBar = sanitize(statuses.get("sub-bar") ?? "");
         const subStr = subUsage ? formatSubscriptionStatus(subUsage, fg) : subBar ? dim(subBar) : "";
-        const right = [isFastActive() ? dim("fast") : "", subStr].filter(Boolean).join(dim(" · "));
+        const consumedStatuses = new Set(["ssh", "preset", "sub-status:usage", "sub-bar"]);
+        const extensionStatuses = [...statuses.entries()]
+          .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
+          .map(([, value]) => dim(sanitize(value)));
+        const right = [...extensionStatuses, subStr].filter(Boolean).join(dim(" · "));
 
         const lw = visibleWidth(left);
         const rw = visibleWidth(right);
@@ -457,6 +466,11 @@ function syncFastStatus(ui = fastUi): void {
   activeTui?.requestRender();
 }
 
+function setFastDesired(value: boolean, ui = fastUi): void {
+  fastDesired = value;
+  syncFastStatus(ui);
+}
+
 function registerFast(pi: ExtensionAPI): void {
   pi.registerCommand("fast", {
     description: "Toggle OpenAI priority service tier",
@@ -464,17 +478,16 @@ function registerFast(pi: ExtensionAPI): void {
       fastUi = ctx.ui;
       fastModel = ctx.model;
       const action = args.trim().toLowerCase();
-      if (action === "on" || action === "enable") fastDesired = true;
-      else if (action === "off" || action === "disable") fastDesired = false;
+      if (action === "on" || action === "enable") setFastDesired(true, ctx.ui);
+      else if (action === "off" || action === "disable") setFastDesired(false, ctx.ui);
       else if (action === "status") {
         const state = isFastActive() ? "active" : fastDesired ? "requested (unsupported model)" : "off";
         ctx.ui.notify(`Fast Mode: ${state}`, "info");
         syncFastStatus(ctx.ui);
         return;
       } else {
-        fastDesired = !fastDesired;
+        setFastDesired(!fastDesired, ctx.ui);
       }
-      syncFastStatus(ctx.ui);
       const state = isFastActive() ? "on" : fastDesired ? "requested (unsupported model)" : "off";
       ctx.ui.notify(`Fast Mode: ${state}`, fastDesired && !isFastActive() ? "warning" : "info");
     },
@@ -501,6 +514,93 @@ function registerFast(pi: ExtensionAPI): void {
     if (!isFastActive()) return undefined;
     if (typeof event.payload !== "object" || event.payload === null || Array.isArray(event.payload)) return undefined;
     return { ...event.payload, service_tier: "priority" };
+  });
+}
+
+// ─── Custom settings ─────────────────────────────────────────────────────────
+
+type CustomSetting = "fast" | "transcriptOptimization";
+
+class CustomSettingsPanel implements Component, Focusable {
+  focused = false;
+  private selected = 0;
+  private readonly fields: CustomSetting[] = ["fast", "transcriptOptimization"];
+
+  constructor(
+    private readonly theme: Theme,
+    private readonly renderPerf: RenderPerfControl,
+    private readonly requestRender: () => void,
+    private readonly close: () => void,
+  ) {}
+
+  handleInput(data: string): void {
+    if (matchesKey(data, Key.up)) {
+      this.selected = (this.selected + this.fields.length - 1) % this.fields.length;
+    } else if (matchesKey(data, Key.down)) {
+      this.selected = (this.selected + 1) % this.fields.length;
+    } else if (data === " " || matchesKey(data, Key.enter)) {
+      const field = this.fields[this.selected];
+      if (field === "fast") setFastDesired(!fastDesired);
+      else this.renderPerf.setEnabled(!this.renderPerf.isEnabled());
+    } else if (matchesKey(data, Key.escape)) {
+      this.close();
+      return;
+    } else {
+      return;
+    }
+    this.requestRender();
+  }
+
+  render(width: number): string[] {
+    const fast = fastDesired
+      ? isFastActive() ? "On" : "On (Codex only)"
+      : "Off";
+    const rows = [
+      { label: "Fast Mode", value: fast },
+      { label: "Transcript Optimization", value: this.renderPerf.isEnabled() ? "On" : "Off" },
+    ];
+    const lines = [this.theme.bold("Custom"), ""];
+    for (const [index, row] of rows.entries()) {
+      const marker = index === this.selected ? this.theme.fg("accent", "›") : " ";
+      lines.push(`${marker} ${row.label.padEnd(25)} ${row.value}`);
+    }
+    lines.push("", this.theme.fg("dim", "Space toggle · Esc close"));
+    return lines.map((line) => truncateToWidth(line, width, "…"));
+  }
+
+  invalidate(): void {}
+}
+
+function registerCustomSettings(pi: ExtensionAPI, renderPerf: RenderPerfControl): void {
+  const summary = () => {
+    const fast = fastDesired ? isFastActive() ? "on" : "requested (Codex only)" : "off";
+    return `Fast Mode: ${fast}; Transcript Optimization: ${renderPerf.isEnabled() ? "on" : "off"}`;
+  };
+
+  const showPanel = async (ctx: ExtensionCommandContext): Promise<void> => {
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify(summary(), "info");
+      return;
+    }
+    await ctx.ui.custom<void>(
+      (tui, theme, _keybindings, done) => new CustomSettingsPanel(
+        theme,
+        renderPerf,
+        () => tui.requestRender(),
+        () => done(),
+      ),
+    );
+  };
+
+  pi.registerCommand("custom", {
+    description: "Configure custom runtime settings",
+    handler: async (args, ctx) => {
+      if (args.trim()) {
+        ctx.ui.notify("Usage: /custom", "error");
+        return;
+      }
+      await showPanel(ctx);
+    },
   });
 }
 
@@ -544,4 +644,5 @@ export default function piCustom(pi: ExtensionAPI) {
   registerRestart(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
+  registerCustomSettings(pi, registerRenderPerf(pi));
 }
