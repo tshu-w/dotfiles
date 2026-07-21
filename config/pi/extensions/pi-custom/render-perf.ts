@@ -65,6 +65,7 @@ export function registerRenderPerf(pi: ExtensionAPI): RenderPerfControl {
   let warmWidth = 0;
   let warmSet = new WeakSet<Component>();
   let childrenRef: readonly Component[] | undefined;
+  let observedChildCount = 0;
   let cold = false;
   let anchorIndex = 0;
   let warmCursor = -1;
@@ -82,6 +83,7 @@ export function registerRenderPerf(pi: ExtensionAPI): RenderPerfControl {
     for (const restore of restoreFns) restore();
     restoreFns = [];
     childrenRef = undefined;
+    observedChildCount = 0;
     cold = false;
     warmCursor = -1;
     activeTui = undefined;
@@ -185,7 +187,12 @@ export function registerRenderPerf(pi: ExtensionAPI): RenderPerfControl {
         // Container.clear() replaces the array; steady-state appends reuse it.
         childrenRef = children;
         rescan = true;
+      } else if (children.length - observedChildCount > COLD_COMPONENT_THRESHOLD) {
+        // An extension can trigger an empty render before initial messages are
+        // appended to the same array. Treat a later bulk append as a rebuild.
+        rescan = true;
       }
+      observedChildCount = children.length;
 
       if (rescan) {
         stopWarm();
