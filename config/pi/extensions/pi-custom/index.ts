@@ -609,19 +609,22 @@ function registerCustomSettings(pi: ExtensionAPI, renderPerf: RenderPerfControl)
 
 // ctx.shutdown() runs the normal graceful-quit flow (deferred until idle,
 // terminal restored), then an "exit" hook replaces the dying process via
-// process.execve with `pi --session <current>`. Same pid, so the shell keeps
-// treating it as the foreground job and the new TUI takes over cleanly.
+// process.execve with `pi --session <current> [message]`. Same pid, so the
+// shell keeps treating it as the foreground job and the new TUI takes over
+// cleanly. Optional command text becomes pi's initial message after startup.
 //
 // Launch flags (--model, -e, ...) are not carried over; model and thinking
 // level are restored from the session itself. If execve throws, pi just
 // exits normally — resume manually with `pi -c`.
 function registerRestart(pi: ExtensionAPI): void {
   pi.registerCommand("restart", {
-    description: "Restart pi process and resume the current session",
-    handler: async (_args, ctx) => {
+    description: "Restart pi process; optional text is submitted after restart",
+    handler: async (rawArgs, ctx) => {
+      const continuation = rawArgs.trim();
       const sessionFile = ctx.sessionManager.getSessionFile();
       const args = [process.execPath, process.argv[1]];
       if (sessionFile) args.push("--session", sessionFile);
+      if (continuation) args.push(continuation);
       process.once("exit", () => {
         try {
           process.execve(process.execPath, args, process.env as Record<string, string>);
@@ -629,7 +632,9 @@ function registerRestart(pi: ExtensionAPI): void {
           // fall through to a normal exit
         }
       });
-      ctx.ui.notify(sessionFile ? "Restarting into current session..." : "Restarting...", "info");
+      const destination = sessionFile ? " into current session" : "";
+      const nextStep = continuation ? " and continuing" : "";
+      ctx.ui.notify(`Restarting${destination}${nextStep}...`, "info");
       ctx.shutdown();
     },
   });
