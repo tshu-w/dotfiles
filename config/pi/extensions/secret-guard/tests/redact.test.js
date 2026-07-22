@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isConfigLikePath, scrubOutput } from "./redact.js";
+import { isConfigLikePath, scrubOutput } from "../redact.js";
 
 const envOptions = { envAssignments: true };
 const configOptions = { envAssignments: true, genericFields: true };

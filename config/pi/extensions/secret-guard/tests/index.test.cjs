@@ -12,7 +12,7 @@ async function main() {
     interopDefault: true,
     alias: { "@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js` },
   });
-  const extension = await jiti.import("./index.ts");
+  const extension = await jiti.import("../index.ts");
   const handlers = new Map();
   extension.default({ on(name, handler) { handlers.set(name, handler); } });
 
