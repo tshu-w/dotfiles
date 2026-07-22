@@ -577,6 +577,10 @@ function registerTranscriptView(pi: ExtensionAPI, initialView: TranscriptView): 
     );
   });
 
+  pi.on("session_compact", (event) => {
+    runtimeControl?.omitCompactionOnNextRebuild(event.compactionEntry.id);
+  });
+
   pi.on("session_shutdown", () => {
     runtimeControl?.restore();
     runtimeControl = undefined;
@@ -587,6 +591,9 @@ function registerTranscriptView(pi: ExtensionAPI, initialView: TranscriptView): 
     setView: (next) => {
       view = next;
       runtimeControl?.setView(next);
+    },
+    omitCompactionOnNextRebuild: (entryId) => {
+      runtimeControl?.omitCompactionOnNextRebuild(entryId);
     },
     restore: () => {
       runtimeControl?.restore();

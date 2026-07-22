@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { installTranscriptView } from "./full-transcript.ts";
 
+interface Entry {
+  id: string;
+  type: string;
+}
+
 interface FakeMode {
   sessionManager: {
-    buildContextEntries(): string[];
-    getBranch(): string[];
+    buildContextEntries(): Entry[];
+    getBranch(): Entry[];
   };
-  rendered?: string[];
+  rendered?: Entry[];
   rebuildChatFromMessages(): void;
 }
 
@@ -21,8 +26,12 @@ function createFixture() {
     },
   };
   const mode = Object.create(prototype) as FakeMode;
-  const compacted = ["summary", "kept", "new"];
-  const full = ["old", "summary", "kept", "new"];
+  const old = { id: "old", type: "message" };
+  const summary = { id: "summary", type: "compaction" };
+  const kept = { id: "kept", type: "message" };
+  const latest = { id: "new", type: "message" };
+  const compacted = [summary, kept, latest];
+  const full = [old, summary, kept, latest];
   mode.sessionManager = Object.create({
     buildContextEntries: () => compacted,
     getBranch: () => full,
@@ -42,6 +51,19 @@ test("renders the configured initial transcript view", () => {
   compactFixture.prototype.renderInitialMessages.call(compactFixture.mode);
   assert.deepEqual(compactFixture.mode.rendered, compactFixture.compacted);
   compactControl.restore();
+});
+
+test("omits a just-saved compaction from one full rebuild", () => {
+  const { prototype, mode, full } = createFixture();
+  const control = installTranscriptView(prototype, "full");
+
+  control.omitCompactionOnNextRebuild("summary");
+  prototype.rebuildChatFromMessages.call(mode);
+  assert.deepEqual(mode.rendered, full.filter((entry) => entry.id !== "summary"));
+
+  prototype.rebuildChatFromMessages.call(mode);
+  assert.deepEqual(mode.rendered, full);
+  control.restore();
 });
 
 test("switches views immediately without changing normal context building", () => {
