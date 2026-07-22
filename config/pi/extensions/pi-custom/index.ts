@@ -4,11 +4,17 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   KeybindingsManager,
-  Theme,
 } from "@earendil-works/pi-coding-agent";
-import { CustomEditor, DefaultPackageManager, getAgentDir, InteractiveMode } from "@earendil-works/pi-coding-agent";
-import type { Component, EditorTheme, Focusable, TUI } from "@earendil-works/pi-tui";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  CustomEditor,
+  DefaultPackageManager,
+  DynamicBorder,
+  getAgentDir,
+  getSettingsListTheme,
+  InteractiveMode,
+} from "@earendil-works/pi-coding-agent";
+import type { EditorTheme, SettingItem, TUI } from "@earendil-works/pi-tui";
+import { Container, SettingsList, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -487,15 +493,15 @@ function registerFast(pi: ExtensionAPI): void {
       if (action === "on" || action === "enable") setFastDesired(true, ctx.ui);
       else if (action === "off" || action === "disable") setFastDesired(false, ctx.ui);
       else if (action === "status") {
-        const state = isFastActive() ? "active" : fastDesired ? "requested (unsupported model)" : "off";
-        ctx.ui.notify(`Fast Mode: ${state}`, "info");
+        const state = isFastActive() ? "active" : fastDesired ? "requested (openai-codex only)" : "off";
+        ctx.ui.notify(`Fast mode: ${state}`, "info");
         syncFastStatus(ctx.ui);
         return;
       } else {
         setFastDesired(!fastDesired, ctx.ui);
       }
-      const state = isFastActive() ? "on" : fastDesired ? "requested (unsupported model)" : "off";
-      ctx.ui.notify(`Fast Mode: ${state}`, fastDesired && !isFastActive() ? "warning" : "info");
+      const state = isFastActive() ? "on" : fastDesired ? "requested (openai-codex only)" : "off";
+      ctx.ui.notify(`Fast mode: ${state}`, fastDesired && !isFastActive() ? "warning" : "info");
     },
   });
 
@@ -589,71 +595,6 @@ function registerTranscriptView(pi: ExtensionAPI, initialView: TranscriptView): 
   };
 }
 
-type CustomSetting = "fast" | "transcriptOptimization" | "transcriptView";
-
-class CustomSettingsPanel implements Component, Focusable {
-  focused = false;
-  private selected = 0;
-  private readonly fields: CustomSetting[] = ["fast", "transcriptOptimization", "transcriptView"];
-
-  constructor(
-    private readonly theme: Theme,
-    private readonly settings: PiCustomSettings,
-    private readonly renderPerf: RenderPerfControl,
-    private readonly transcriptView: TranscriptViewControl,
-    private readonly saveSettings: () => void,
-    private readonly requestRender: () => void,
-    private readonly close: () => void,
-  ) {}
-
-  handleInput(data: string): void {
-    if (matchesKey(data, Key.up)) {
-      this.selected = (this.selected + this.fields.length - 1) % this.fields.length;
-    } else if (matchesKey(data, Key.down)) {
-      this.selected = (this.selected + 1) % this.fields.length;
-    } else if (data === " " || matchesKey(data, Key.enter)) {
-      const field = this.fields[this.selected];
-      if (field === "fast") {
-        setFastDesired(!fastDesired);
-      } else if (field === "transcriptOptimization") {
-        this.settings.transcriptOptimization = !this.renderPerf.isEnabled();
-        this.renderPerf.setEnabled(this.settings.transcriptOptimization);
-        this.saveSettings();
-      } else {
-        this.settings.transcriptView = this.transcriptView.getView() === "full" ? "compact" : "full";
-        this.transcriptView.setView(this.settings.transcriptView);
-        this.saveSettings();
-      }
-    } else if (matchesKey(data, Key.escape)) {
-      this.close();
-      return;
-    } else {
-      return;
-    }
-    this.requestRender();
-  }
-
-  render(width: number): string[] {
-    const fast = fastDesired
-      ? isFastActive() ? "On" : "On (Codex only)"
-      : "Off";
-    const rows = [
-      { label: "Fast Mode", value: fast },
-      { label: "Transcript Optimization", value: this.renderPerf.isEnabled() ? "On" : "Off" },
-      { label: "Default Transcript View", value: this.transcriptView.getView() === "full" ? "Full" : "Compact" },
-    ];
-    const lines = [this.theme.bold("Custom"), ""];
-    for (const [index, row] of rows.entries()) {
-      const marker = index === this.selected ? this.theme.fg("accent", "›") : " ";
-      lines.push(`${marker} ${row.label.padEnd(25)} ${row.value}`);
-    }
-    lines.push("", this.theme.fg("dim", "Space toggle · Esc close"));
-    return lines.map((line) => truncateToWidth(line, width, "…"));
-  }
-
-  invalidate(): void {}
-}
-
 function registerCustomSettings(
   pi: ExtensionAPI,
   settings: PiCustomSettings,
@@ -661,11 +602,11 @@ function registerCustomSettings(
   transcriptView: TranscriptViewControl,
 ): void {
   const summary = () => {
-    const fast = fastDesired ? isFastActive() ? "on" : "requested (Codex only)" : "off";
+    const fast = fastDesired ? isFastActive() ? "on" : "requested (openai-codex only)" : "off";
     return [
-      `Fast Mode: ${fast}`,
-      `Transcript Optimization: ${renderPerf.isEnabled() ? "on" : "off"}`,
-      `Default Transcript View: ${transcriptView.getView()}`,
+      `Fast mode: ${fast}`,
+      `Transcript optimization: ${renderPerf.isEnabled() ? "on" : "off"}`,
+      `Transcript view: ${transcriptView.getView()}`,
     ].join("; ");
   };
 
@@ -674,17 +615,63 @@ function registerCustomSettings(
       ctx.ui.notify(summary(), "info");
       return;
     }
-    await ctx.ui.custom<void>(
-      (tui, theme, _keybindings, done) => new CustomSettingsPanel(
-        theme,
-        settings,
-        renderPerf,
-        transcriptView,
-        () => writePiCustomSettings(settings),
-        () => tui.requestRender(),
+    await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
+      const items: SettingItem[] = [
+        {
+          id: "fast",
+          label: "Fast mode",
+          description: "Enable OpenAI priority service tier for the openai-codex provider",
+          currentValue: fastDesired ? "on" : "off",
+          values: ["on", "off"],
+        },
+        {
+          id: "transcript-optimization",
+          label: "Transcript optimization",
+          description: "Optimize long transcript rendering with memoization and background warm-up",
+          currentValue: renderPerf.isEnabled() ? "on" : "off",
+          values: ["on", "off"],
+        },
+        {
+          id: "transcript-view",
+          label: "Transcript view",
+          description: "Show full active-branch history or compacted history without changing model context",
+          currentValue: transcriptView.getView(),
+          values: ["full", "compact"],
+        },
+      ];
+      const container = new Container();
+      container.addChild(new DynamicBorder());
+      const settingsList = new SettingsList(
+        items,
+        Math.min(items.length, 10),
+        getSettingsListTheme(),
+        (id, newValue) => {
+          if (id === "fast") {
+            setFastDesired(newValue === "on");
+          } else if (id === "transcript-optimization") {
+            settings.transcriptOptimization = newValue === "on";
+            renderPerf.setEnabled(settings.transcriptOptimization);
+            writePiCustomSettings(settings);
+          } else if (id === "transcript-view") {
+            settings.transcriptView = newValue === "full" ? "full" : "compact";
+            transcriptView.setView(settings.transcriptView);
+            writePiCustomSettings(settings);
+          }
+          tui.requestRender();
+        },
         () => done(),
-      ),
-    );
+      );
+      container.addChild(settingsList);
+      container.addChild(new DynamicBorder());
+      return {
+        render: (width: number) => container.render(width),
+        invalidate: () => container.invalidate(),
+        handleInput: (data: string) => {
+          settingsList.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    });
   };
 
   pi.registerCommand("custom", {
