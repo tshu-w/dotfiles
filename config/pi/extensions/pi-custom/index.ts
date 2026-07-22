@@ -114,11 +114,13 @@ function fitBorder(
   return `${border("─").repeat(2)}${l}${border("─").repeat(gap)}${r}${border("─").repeat(2)}`;
 }
 
-// ─── Shared state (editor ↔ footer) ──────────────────────────────────────────
+// ─── Session-local state (editor ↔ footer) ───────────────────────────────────
 
-let activeTui: TUI | undefined;
-let sshLocation: string | undefined;
-let presetLabel: string | undefined;
+interface CustomRuntimeState {
+  activeTui?: TUI;
+  sshLocation?: string;
+  presetLabel?: string;
+}
 
 // ─── Package auto-update ──────────────────────────────────────────────────────
 
@@ -330,18 +332,21 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
 class TopBorderEditor extends CustomEditor {
   private pi: ExtensionAPI;
   private ctx: ExtensionContext;
+  private runtime: CustomRuntimeState;
 
   constructor(
     pi: ExtensionAPI,
     ctx: ExtensionContext,
+    runtime: CustomRuntimeState,
     tui: TUI,
     theme: EditorTheme,
     kb: KeybindingsManager,
   ) {
     super(tui, theme, kb);
-    activeTui = tui;
+    runtime.activeTui = tui;
     this.pi = pi;
     this.ctx = ctx;
+    this.runtime = runtime;
   }
 
   render(width: number): string[] {
@@ -357,7 +362,7 @@ class TopBorderEditor extends CustomEditor {
     const accent = (s: string) => theme.fg("accent", s);
     const border = (s: string) => this.borderColor(s);
 
-    const location = sshLocation ?? formatCwd(this.ctx.cwd);
+    const location = this.runtime.sshLocation ?? formatCwd(this.ctx.cwd);
     const sessionName = this.ctx.sessionManager.getSessionName();
     const locationStr = sessionName ? `${location} — ${sessionName}` : location;
     const left = ` ${dim(locationStr)} `;
@@ -365,7 +370,7 @@ class TopBorderEditor extends CustomEditor {
     const model = this.ctx.model;
     const thinking = this.pi.getThinkingLevel?.() ?? "off";
     const parts: string[] = [];
-    if (presetLabel) parts.push(accent(presetLabel));
+    if (this.runtime.presetLabel) parts.push(accent(this.runtime.presetLabel));
     if (model) {
       const modelStr = thinking !== "off"
         ? `${model.provider}/${model.id}:${thinking}`
@@ -378,22 +383,22 @@ class TopBorderEditor extends CustomEditor {
   }
 }
 
-function registerEditor(pi: ExtensionAPI): void {
+function registerEditor(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   pi.on("session_start", (_event, ctx) => {
     if (!ctx.hasUI) return;
     ctx.ui.setEditorComponent(
-      (tui, theme, kb) => new TopBorderEditor(pi, ctx, tui, theme, kb),
+      (tui, theme, kb) => new TopBorderEditor(pi, ctx, runtime, tui, theme, kb),
     );
   });
 
   pi.on("session_shutdown", () => {
-    activeTui = undefined;
+    runtime.activeTui = undefined;
   });
 }
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
-function registerFooter(pi: ExtensionAPI): void {
+function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   pi.on("session_start", (_event, ctx) => {
     if (!ctx.hasUI) return;
 
@@ -405,11 +410,11 @@ function registerFooter(pi: ExtensionAPI): void {
         // Sync SSH location and preset label into shared state for the editor
         const rawSsh = statuses.get("ssh");
         const newSsh = rawSsh ? sanitize(stripAnsi(rawSsh)).replace(/^SSH:\s*/i, "ssh:") : undefined;
-        if (newSsh !== sshLocation) { sshLocation = newSsh; activeTui?.requestRender(); }
+        if (newSsh !== runtime.sshLocation) { runtime.sshLocation = newSsh; runtime.activeTui?.requestRender(); }
 
         const rawPreset = statuses.get("preset");
         const newPreset = rawPreset ? stripAnsi(sanitize(rawPreset)).replace(/^preset:/, "") : undefined;
-        if (newPreset !== presetLabel) { presetLabel = newPreset; activeTui?.requestRender(); }
+        if (newPreset !== runtime.presetLabel) { runtime.presetLabel = newPreset; runtime.activeTui?.requestRender(); }
 
         // Left: token stats + cost + context%
         const dim = (s: string) => theme.fg("dim", s);
@@ -465,68 +470,76 @@ function registerFooter(pi: ExtensionAPI): void {
 
 const FAST_STATUS_KEY = "pi-openai-fast";
 
-let fastDesired = false;
-let fastModel: { provider?: string; id?: string } | undefined;
-let fastUi: ExtensionContext["ui"] | undefined;
-
-function isFastActive(): boolean {
-  return fastDesired && fastModel?.provider === "openai-codex";
+interface FastControl {
+  isDesired(): boolean;
+  isActive(): boolean;
+  setDesired(value: boolean): void;
 }
 
-function syncFastStatus(ui = fastUi): void {
-  ui?.setStatus?.(FAST_STATUS_KEY, isFastActive() ? "fast" : undefined);
-  activeTui?.requestRender();
-}
+function registerFast(pi: ExtensionAPI, runtime: CustomRuntimeState): FastControl {
+  let desired = false;
+  let model: { provider?: string; id?: string } | undefined;
+  let ui: ExtensionContext["ui"] | undefined;
 
-function setFastDesired(value: boolean, ui = fastUi): void {
-  fastDesired = value;
-  syncFastStatus(ui);
-}
+  const isActive = () => desired && model?.provider === "openai-codex";
+  const syncStatus = (target = ui) => {
+    target?.setStatus?.(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
+    runtime.activeTui?.requestRender();
+  };
+  const setDesired = (value: boolean, target = ui) => {
+    desired = value;
+    syncStatus(target);
+  };
 
-function registerFast(pi: ExtensionAPI): void {
   pi.registerCommand("fast", {
     description: "Toggle OpenAI priority service tier",
     handler: async (args, ctx) => {
-      fastUi = ctx.ui;
-      fastModel = ctx.model;
+      ui = ctx.ui;
+      model = ctx.model;
       const action = args.trim().toLowerCase();
-      if (action === "on" || action === "enable") setFastDesired(true, ctx.ui);
-      else if (action === "off" || action === "disable") setFastDesired(false, ctx.ui);
+      if (action === "on" || action === "enable") setDesired(true, ctx.ui);
+      else if (action === "off" || action === "disable") setDesired(false, ctx.ui);
       else if (action === "status") {
-        const state = isFastActive() ? "active" : fastDesired ? "requested (openai-codex only)" : "off";
+        const state = isActive() ? "active" : desired ? "requested (openai-codex only)" : "off";
         ctx.ui.notify(`Fast mode: ${state}`, "info");
-        syncFastStatus(ctx.ui);
+        syncStatus(ctx.ui);
         return;
       } else {
-        setFastDesired(!fastDesired, ctx.ui);
+        setDesired(!desired, ctx.ui);
       }
-      const state = isFastActive() ? "on" : fastDesired ? "requested (openai-codex only)" : "off";
-      ctx.ui.notify(`Fast mode: ${state}`, fastDesired && !isFastActive() ? "warning" : "info");
+      const state = isActive() ? "on" : desired ? "requested (openai-codex only)" : "off";
+      ctx.ui.notify(`Fast mode: ${state}`, desired && !isActive() ? "warning" : "info");
     },
   });
 
   pi.on("session_start", (_event, ctx) => {
-    fastUi = ctx.ui;
-    fastModel = ctx.model;
-    syncFastStatus(ctx.ui);
+    ui = ctx.ui;
+    model = ctx.model;
+    syncStatus(ctx.ui);
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
     ctx.ui.setStatus?.(FAST_STATUS_KEY, undefined);
-    fastUi = undefined;
+    ui = undefined;
   });
 
   pi.on("model_select", (event, ctx) => {
-    fastUi = ctx.ui;
-    fastModel = event.model;
-    syncFastStatus(ctx.ui);
+    ui = ctx.ui;
+    model = event.model;
+    syncStatus(ctx.ui);
   });
 
   pi.on("before_provider_request", (event: BeforeProviderRequestEvent) => {
-    if (!isFastActive()) return undefined;
+    if (!isActive()) return undefined;
     if (typeof event.payload !== "object" || event.payload === null || Array.isArray(event.payload)) return undefined;
     return { ...event.payload, service_tier: "priority" };
   });
+
+  return {
+    isDesired: () => desired,
+    isActive,
+    setDesired,
+  };
 }
 
 // ─── Custom settings ─────────────────────────────────────────────────────────
@@ -607,9 +620,10 @@ function registerCustomSettings(
   settings: PiCustomSettings,
   renderPerf: RenderPerfControl,
   transcriptView: TranscriptViewControl,
+  fastControl: FastControl,
 ): void {
   const summary = () => {
-    const fast = fastDesired ? isFastActive() ? "on" : "requested (openai-codex only)" : "off";
+    const fast = fastControl.isDesired() ? fastControl.isActive() ? "on" : "requested (openai-codex only)" : "off";
     return [
       `Fast mode: ${fast}`,
       `Transcript optimization: ${renderPerf.isEnabled() ? "on" : "off"}`,
@@ -628,7 +642,7 @@ function registerCustomSettings(
           id: "fast",
           label: "Fast mode",
           description: "Enable OpenAI priority service tier for the openai-codex provider",
-          currentValue: fastDesired ? "on" : "off",
+          currentValue: fastControl.isDesired() ? "on" : "off",
           values: ["on", "off"],
         },
         {
@@ -654,7 +668,7 @@ function registerCustomSettings(
         getSettingsListTheme(),
         (id, newValue) => {
           if (id === "fast") {
-            setFastDesired(newValue === "on");
+            fastControl.setDesired(newValue === "on");
           } else if (id === "transcript-optimization") {
             settings.transcriptOptimization = newValue === "on";
             renderPerf.setEnabled(settings.transcriptOptimization);
@@ -732,16 +746,17 @@ function registerRestart(pi: ExtensionAPI): void {
 
 export default function piCustom(pi: ExtensionAPI) {
   const settings = readPiCustomSettings();
+  const runtime: CustomRuntimeState = {};
   const transcriptView = registerTranscriptView(pi, settings.transcriptView);
   const renderPerf = registerRenderPerf(pi, settings.transcriptOptimization);
 
   registerPackageAutoUpdate(pi);
-  registerEditor(pi);
-  registerFooter(pi);
-  registerFast(pi);
+  registerEditor(pi, runtime);
+  registerFooter(pi, runtime);
+  const fastControl = registerFast(pi, runtime);
   registerRestart(pi);
   registerSystemTheme(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
-  registerCustomSettings(pi, settings, renderPerf, transcriptView);
+  registerCustomSettings(pi, settings, renderPerf, transcriptView, fastControl);
 }

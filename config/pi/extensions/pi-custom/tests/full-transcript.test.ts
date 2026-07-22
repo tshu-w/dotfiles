@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installTranscriptView } from "./full-transcript.ts";
+import { installTranscriptView } from "../full-transcript.ts";
 
 interface Entry {
   id: string;
