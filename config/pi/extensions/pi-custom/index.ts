@@ -6,7 +6,7 @@ import type {
   KeybindingsManager,
   Theme,
 } from "@earendil-works/pi-coding-agent";
-import { CustomEditor, DefaultPackageManager, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, DefaultPackageManager, getAgentDir, InteractiveMode } from "@earendil-works/pi-coding-agent";
 import type { Component, EditorTheme, Focusable, TUI } from "@earendil-works/pi-tui";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
@@ -14,6 +14,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  installTranscriptView,
+  type TranscriptView,
+  type TranscriptViewControl,
+} from "./full-transcript.ts";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerSystemTheme } from "./system-theme.ts";
@@ -520,16 +525,83 @@ function registerFast(pi: ExtensionAPI): void {
 
 // ─── Custom settings ─────────────────────────────────────────────────────────
 
-type CustomSetting = "fast" | "transcriptOptimization";
+const CUSTOM_SETTINGS_PATH = join(getAgentDir(), "pi-custom.json");
+
+interface PiCustomSettings {
+  transcriptOptimization: boolean;
+  transcriptView: TranscriptView;
+}
+
+function readPiCustomSettings(): PiCustomSettings {
+  const defaults: PiCustomSettings = {
+    transcriptOptimization: true,
+    transcriptView: "full",
+  };
+  if (!existsSync(CUSTOM_SETTINGS_PATH)) return defaults;
+  try {
+    const value = JSON.parse(readFileSync(CUSTOM_SETTINGS_PATH, "utf8")) as Partial<PiCustomSettings>;
+    return {
+      transcriptOptimization: typeof value.transcriptOptimization === "boolean"
+        ? value.transcriptOptimization
+        : defaults.transcriptOptimization,
+      transcriptView: value.transcriptView === "full" || value.transcriptView === "compact"
+        ? value.transcriptView
+        : defaults.transcriptView,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function writePiCustomSettings(settings: PiCustomSettings): void {
+  writeFileSync(CUSTOM_SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+function registerTranscriptView(pi: ExtensionAPI, initialView: TranscriptView): TranscriptViewControl {
+  let view = initialView;
+  let runtimeControl: TranscriptViewControl | undefined;
+
+  pi.on("session_start", (_event, ctx) => {
+    runtimeControl?.restore();
+    runtimeControl = undefined;
+    if (ctx.mode !== "tui") return;
+    runtimeControl = installTranscriptView(
+      InteractiveMode.prototype as unknown as Parameters<typeof installTranscriptView>[0],
+      view,
+    );
+  });
+
+  pi.on("session_shutdown", () => {
+    runtimeControl?.restore();
+    runtimeControl = undefined;
+  });
+
+  return {
+    getView: () => view,
+    setView: (next) => {
+      view = next;
+      runtimeControl?.setView(next);
+    },
+    restore: () => {
+      runtimeControl?.restore();
+      runtimeControl = undefined;
+    },
+  };
+}
+
+type CustomSetting = "fast" | "transcriptOptimization" | "transcriptView";
 
 class CustomSettingsPanel implements Component, Focusable {
   focused = false;
   private selected = 0;
-  private readonly fields: CustomSetting[] = ["fast", "transcriptOptimization"];
+  private readonly fields: CustomSetting[] = ["fast", "transcriptOptimization", "transcriptView"];
 
   constructor(
     private readonly theme: Theme,
+    private readonly settings: PiCustomSettings,
     private readonly renderPerf: RenderPerfControl,
+    private readonly transcriptView: TranscriptViewControl,
+    private readonly saveSettings: () => void,
     private readonly requestRender: () => void,
     private readonly close: () => void,
   ) {}
@@ -541,8 +613,17 @@ class CustomSettingsPanel implements Component, Focusable {
       this.selected = (this.selected + 1) % this.fields.length;
     } else if (data === " " || matchesKey(data, Key.enter)) {
       const field = this.fields[this.selected];
-      if (field === "fast") setFastDesired(!fastDesired);
-      else this.renderPerf.setEnabled(!this.renderPerf.isEnabled());
+      if (field === "fast") {
+        setFastDesired(!fastDesired);
+      } else if (field === "transcriptOptimization") {
+        this.settings.transcriptOptimization = !this.renderPerf.isEnabled();
+        this.renderPerf.setEnabled(this.settings.transcriptOptimization);
+        this.saveSettings();
+      } else {
+        this.settings.transcriptView = this.transcriptView.getView() === "full" ? "compact" : "full";
+        this.transcriptView.setView(this.settings.transcriptView);
+        this.saveSettings();
+      }
     } else if (matchesKey(data, Key.escape)) {
       this.close();
       return;
@@ -559,6 +640,7 @@ class CustomSettingsPanel implements Component, Focusable {
     const rows = [
       { label: "Fast Mode", value: fast },
       { label: "Transcript Optimization", value: this.renderPerf.isEnabled() ? "On" : "Off" },
+      { label: "Default Transcript View", value: this.transcriptView.getView() === "full" ? "Full" : "Compact" },
     ];
     const lines = [this.theme.bold("Custom"), ""];
     for (const [index, row] of rows.entries()) {
@@ -572,10 +654,19 @@ class CustomSettingsPanel implements Component, Focusable {
   invalidate(): void {}
 }
 
-function registerCustomSettings(pi: ExtensionAPI, renderPerf: RenderPerfControl): void {
+function registerCustomSettings(
+  pi: ExtensionAPI,
+  settings: PiCustomSettings,
+  renderPerf: RenderPerfControl,
+  transcriptView: TranscriptViewControl,
+): void {
   const summary = () => {
     const fast = fastDesired ? isFastActive() ? "on" : "requested (Codex only)" : "off";
-    return `Fast Mode: ${fast}; Transcript Optimization: ${renderPerf.isEnabled() ? "on" : "off"}`;
+    return [
+      `Fast Mode: ${fast}`,
+      `Transcript Optimization: ${renderPerf.isEnabled() ? "on" : "off"}`,
+      `Default Transcript View: ${transcriptView.getView()}`,
+    ].join("; ");
   };
 
   const showPanel = async (ctx: ExtensionCommandContext): Promise<void> => {
@@ -586,7 +677,10 @@ function registerCustomSettings(pi: ExtensionAPI, renderPerf: RenderPerfControl)
     await ctx.ui.custom<void>(
       (tui, theme, _keybindings, done) => new CustomSettingsPanel(
         theme,
+        settings,
         renderPerf,
+        transcriptView,
+        () => writePiCustomSettings(settings),
         () => tui.requestRender(),
         () => done(),
       ),
@@ -594,7 +688,7 @@ function registerCustomSettings(pi: ExtensionAPI, renderPerf: RenderPerfControl)
   };
 
   pi.registerCommand("custom", {
-    description: "Configure custom runtime settings",
+    description: "Configure persistent custom runtime settings",
     handler: async (args, ctx) => {
       if (args.trim()) {
         ctx.ui.notify("Usage: /custom", "error");
@@ -643,6 +737,10 @@ function registerRestart(pi: ExtensionAPI): void {
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export default function piCustom(pi: ExtensionAPI) {
+  const settings = readPiCustomSettings();
+  const transcriptView = registerTranscriptView(pi, settings.transcriptView);
+  const renderPerf = registerRenderPerf(pi, settings.transcriptOptimization);
+
   registerPackageAutoUpdate(pi);
   registerEditor(pi);
   registerFooter(pi);
@@ -651,5 +749,5 @@ export default function piCustom(pi: ExtensionAPI) {
   registerSystemTheme(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
-  registerCustomSettings(pi, registerRenderPerf(pi));
+  registerCustomSettings(pi, settings, renderPerf, transcriptView);
 }

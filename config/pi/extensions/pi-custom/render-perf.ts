@@ -52,8 +52,8 @@ function findChatContainer(tui: TUI): Container | undefined {
   return candidate;
 }
 
-export function registerRenderPerf(pi: ExtensionAPI): RenderPerfControl {
-  let enabled = true;
+export function registerRenderPerf(pi: ExtensionAPI, initiallyEnabled = true): RenderPerfControl {
+  let enabled = initiallyEnabled;
   let restoreFns: Array<() => void> = [];
   let activeTui: TUI | undefined;
 
