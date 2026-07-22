@@ -7,7 +7,6 @@
   "extensions": [
     "extensions/official/handoff.ts",
     "extensions/official/interactive-shell.ts",
-    "extensions/official/mac-system-theme.ts",
     "extensions/official/notify.ts",
     "extensions/official/preset.ts",
     "extensions/official/questionnaire.ts",

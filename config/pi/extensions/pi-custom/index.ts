@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
+import { registerSystemTheme } from "./system-theme.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
 
@@ -642,6 +643,7 @@ export default function piCustom(pi: ExtensionAPI) {
   registerFooter(pi);
   registerFast(pi);
   registerRestart(pi);
+  registerSystemTheme(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
   registerCustomSettings(pi, registerRenderPerf(pi));
