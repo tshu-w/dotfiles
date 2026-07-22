@@ -5,7 +5,7 @@
  * Fetch: Exa contents → direct HTTP → Jina Reader.
  *
  * Tools:
- *   web_search — search the web via Exa, return sources + snippets
+ *   web_search — search the web via Exa and return bounded sources + snippets
  *   web_fetch  — fetch readable text/markdown; cap output at 50KB and save the full result when truncated
  */
 
@@ -592,8 +592,8 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: searchToolName,
 		label: "Web Search",
-		description: "Search the web via Exa, Tavily, Exa MCP, or Jina Search. Returns sources with snippets and uses whichever API keys are available.",
-		promptSnippet: "Use for web research. Returns sources and snippets.",
+		description: "Search the web via Exa, Tavily, Exa MCP, or Jina Search. Returns sources with snippets, capped at 50KB/2000 lines; truncated full output is saved to a temp file. Uses whichever API keys are available.",
+		promptSnippet: "Search the web and return sources with snippets",
 		promptGuidelines: [
 			`Use ${searchToolName} for questions about current events, recent releases, or anything beyond training data.`,
 			"Use web_fetch to read a specific URL in full after finding it via search.",
@@ -617,9 +617,17 @@ export default function (pi: ExtensionAPI) {
 					return { content: [{ type: "text", text: "No results found." }], details: { query: params.query, count: 0 } };
 				}
 
+				const bounded = await boundToolOutput(response.answer || formatSearchResults(response.results));
 				return {
-					content: [{ type: "text", text: response.answer || formatSearchResults(response.results) }],
-					details: { query: params.query, count: response.results.length, toolName: searchToolName },
+					content: [{ type: "text", text: bounded.text }],
+					details: {
+						query: params.query,
+						count: response.results.length,
+						toolName: searchToolName,
+						outputBytes: bounded.bytes,
+						truncated: bounded.truncated,
+						fullOutputPath: bounded.fullOutputPath,
+					},
 				};
 			} catch (err) {
 				if (isAbortError(err) || signal?.aborted) {
@@ -657,7 +665,7 @@ export default function (pi: ExtensionAPI) {
 		name: "web_fetch",
 		label: "Web Fetch",
 		description: "Fetch a URL and extract readable content, capped at 50KB/2000 lines. If truncated, the full output is saved to a temp file. Optionally search within the page using pattern. Fallback chain: Exa contents → direct fetch → Jina Reader.",
-		promptSnippet: "Use to read a specific URL. Supports pattern for in-page search.",
+		promptSnippet: "Fetch readable content from a URL with optional in-page search",
 		promptGuidelines: [
 			"Use web_fetch when the user provides a URL or after search finds a relevant page.",
 			"Use web_fetch with pattern to find specific information within a long page, similar to Ctrl+F.",

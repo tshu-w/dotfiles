@@ -19,7 +19,7 @@ async function main() {
 			typebox: `${PI_PACKAGE}/node_modules/typebox/build/index.mjs`,
 		},
 	});
-	const module = await jiti.import("./index.ts");
+	const module = await jiti.import("../index.ts");
 	const { boundToolOutput } = module;
 
 	const short = await boundToolOutput("hello");
@@ -42,6 +42,11 @@ async function main() {
 	assert.ok(search && fetchTool);
 
 	const originalFetch = global.fetch;
+	const originalKeys = {
+		exa: process.env.EXA_API_KEY,
+		jina: process.env.JINA_API_KEY,
+		tavily: process.env.TAVILY_API_KEY,
+	};
 	const longPage = "x".repeat(80_000);
 	global.fetch = async (url) => String(url) === "https://example.com/"
 		? new Response(longPage, { status: 200, headers: { "content-type": "text/plain" } })
@@ -53,6 +58,21 @@ async function main() {
 		assert.equal(readFileSync(longResult.details.fullOutputPath, "utf8"), `# example.com\n\n${longPage}`);
 		rmSync(dirname(longResult.details.fullOutputPath), { recursive: true });
 
+		delete process.env.EXA_API_KEY;
+		delete process.env.JINA_API_KEY;
+		process.env.TAVILY_API_KEY = "test-key";
+		const longAnswer = "y".repeat(80_000);
+		global.fetch = async () => new Response(JSON.stringify({
+			answer: longAnswer,
+			results: [{ title: "Example", url: "https://example.com", content: "snippet" }],
+		}), { status: 200, headers: { "content-type": "application/json" } });
+		const longSearchResult = await search.execute("test", { query: "test" }, undefined, undefined);
+		assert.equal(longSearchResult.details.truncated, true);
+		assert.ok(Buffer.byteLength(longSearchResult.content[0].text) <= MAX_BYTES);
+		assert.equal(readFileSync(longSearchResult.details.fullOutputPath, "utf8"), `${longAnswer}\n\n---\n\nSources:\nsnippet\nSource: Example (https://example.com)`);
+		rmSync(dirname(longSearchResult.details.fullOutputPath), { recursive: true });
+
+		delete process.env.TAVILY_API_KEY;
 		global.fetch = async () => new Response("provider unavailable", { status: 503 });
 		await assert.rejects(
 			search.execute("test", { query: "test" }, undefined, undefined),
@@ -64,9 +84,13 @@ async function main() {
 		);
 	} finally {
 		global.fetch = originalFetch;
+		for (const [name, value] of Object.entries({ EXA_API_KEY: originalKeys.exa, JINA_API_KEY: originalKeys.jina, TAVILY_API_KEY: originalKeys.tavily })) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
 	}
 
-	console.log("pi-web: 4 output-bound cases, 1 fetch integration case, and 2 error cases passed");
+	console.log("pi-web: 4 output-bound cases, 2 integration cases, and 2 error cases passed");
 }
 
 main().catch((error) => {
