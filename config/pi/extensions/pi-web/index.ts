@@ -668,11 +668,11 @@ export default function (pi: ExtensionAPI) {
 	registerTool({
 		name: searchToolName,
 		label: "Web Search",
-		description: "Search the web via Exa, Tavily, Exa MCP, or Jina Search. Returns sources with snippets and uses whichever API keys are available.",
+		description: "Search the web and return relevant sources with titles, URLs, and snippets.",
 		promptSnippet: "Search the web and return sources with snippets",
 		promptGuidelines: [
 			`Use ${searchToolName} for questions about current events, recent releases, or anything beyond training data.`,
-			"Use web_fetch to read a specific URL in full after finding it via search.",
+			"Use web_fetch to read a specific URL after finding it via search.",
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
@@ -734,7 +734,7 @@ export default function (pi: ExtensionAPI) {
 	registerTool({
 		name: "web_fetch",
 		label: "Web Fetch",
-		description: "Fetch a URL and extract readable content. Optionally search within the page using pattern. Fallback chain: Exa contents → direct fetch → Jina Reader.",
+		description: "Fetch a URL and extract readable content. Optionally search within the page using a case-insensitive pattern.",
 		promptSnippet: "Fetch readable content from a URL with optional in-page search",
 		promptGuidelines: [
 			"Use web_fetch when the user provides a URL or after search finds a relevant page.",
