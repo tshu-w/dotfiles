@@ -22,7 +22,7 @@ import {
 	type PreparedChild,
 	type SpawnRequest,
 } from "./canopy.js";
-import { renderToolCall } from "../tool-call-render.js";
+import { renderToolCall } from "./tool-call-render.js";
 
 const MAX_CONCURRENT = 3;
 const CHILD_STATE_TYPE = "pi-swarm-child";

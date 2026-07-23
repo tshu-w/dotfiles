@@ -18,7 +18,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
-import { renderToolCall } from "../tool-call-render.js";
+import { renderToolCall } from "./tool-call-render.js";
 
 // Agent dir first; legacy ~/.pi path kept as fallback.
 const CONFIG_PATHS = [join(getAgentDir(), "web-search.json"), `${homedir()}/.pi/web-search.json`];
