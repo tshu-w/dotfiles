@@ -18,6 +18,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
+import { renderToolCall } from "../tool-call-render.js";
 
 // Agent dir first; legacy ~/.pi path kept as fallback.
 const CONFIG_PATHS = [join(getAgentDir(), "web-search.json"), `${homedir()}/.pi/web-search.json`];
@@ -639,9 +640,7 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme) {
-			const { query } = args as { query?: string };
-			const display = !query ? "(no query)" : query.length > 60 ? query.slice(0, 57) + "..." : query;
-			return new Text(theme.fg("toolTitle", theme.bold("search ")) + theme.fg("accent", `"${display}"`), 0, 0);
+			return renderToolCall("web_search", args, theme);
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
@@ -711,11 +710,7 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme) {
-			const { url, pattern } = args as { url?: string; pattern?: string };
-			const display = !url ? "(no URL)" : url.length > 55 ? url.slice(0, 52) + "..." : url;
-			let text = theme.fg("toolTitle", theme.bold("fetch ")) + theme.fg("accent", display);
-			if (pattern) text += theme.fg("dim", ` [find: "${pattern}"]`);
-			return new Text(text, 0, 0);
+			return renderToolCall("web_fetch", args, theme);
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {

@@ -13,6 +13,7 @@ async function main() {
 		alias: {
 			"@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js`,
 			"@earendil-works/pi-ai/compat": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/compat.js`,
+			"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 			typebox: `${PI_PACKAGE}/node_modules/typebox/build/index.mjs`,
 		},
 	});
@@ -37,6 +38,20 @@ async function main() {
 
 	assert.deepEqual([...tools], [["agent", tools.get("agent")]]);
 	assert.ok(commands.has("agents"));
+	const callArgs = { action: "spawn", message: "inspect renderer", context: "fresh", cwd: "/tmp/project" };
+	const callStyles = [];
+	const callTheme = {
+		bold: (text) => `<b>${text}</b>`,
+		fg: (color, text) => { callStyles.push([color, text]); return text; },
+	};
+	const renderedCall = tools.get("agent").renderCall(callArgs, callTheme, { expanded: false });
+	assert.deepEqual(renderedCall.render(1000).map((line) => line.trimEnd()), [
+		'<b>agent</b>(action="spawn", message="inspect renderer", context="fresh", cwd="/tmp/project")',
+	]);
+	assert.equal(callStyles[0][0], "toolTitle");
+	assert.equal(callStyles.filter(([color]) => color === "text").length, Object.keys(callArgs).length);
+	assert.ok(callStyles.filter(([color]) => color === "muted").length > Object.keys(callArgs).length);
+	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 	const sessionManager = SessionManager.inMemory("/tmp/pi-swarm-index-test");
 	sessionManager.appendCustomEntry("pi-swarm-usage", {
 		version: 1,

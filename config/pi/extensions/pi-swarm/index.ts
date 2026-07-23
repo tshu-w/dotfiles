@@ -22,6 +22,7 @@ import {
 	type PreparedChild,
 	type SpawnRequest,
 } from "./canopy.js";
+import { renderToolCall } from "../tool-call-render.js";
 
 const MAX_CONCURRENT = 3;
 const CHILD_STATE_TYPE = "pi-swarm-child";
@@ -500,6 +501,9 @@ export default function piSwarm(pi: ExtensionAPI) {
 			"Use send for ordered follow-up work and stop for immediate interruption.",
 		],
 		parameters: AgentParams,
+		renderCall(args, theme) {
+			return renderToolCall("agent", args, theme);
+		},
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			if (!canopy || !host) throw new Error("Pi Swarm is not initialized");
 			host.setContext(ctx);
