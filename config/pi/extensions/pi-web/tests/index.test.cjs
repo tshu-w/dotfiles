@@ -40,9 +40,10 @@ async function main() {
 	const search = tools.get("web_search");
 	const fetchTool = tools.get("web_fetch");
 	assert.ok(search && fetchTool);
+	const callStyles = [];
 	const callTheme = {
 		bold: (text) => `<b>${text}</b>`,
-		fg: (_color, text) => text,
+		fg: (color, text) => { callStyles.push([color, text]); return text; },
 	};
 	const searchArgs = { query: "Qwen release", numResults: 5, domainFilter: ["github.com"], recencyFilter: "month" };
 	assert.deepEqual(search.renderCall(searchArgs, callTheme).render(1000).map((line) => line.trimEnd()), [
@@ -54,6 +55,9 @@ async function main() {
 		'<b>web_fetch</b>(url="https://example.com", maxChars=80000, pattern="release notes")',
 		"",
 	]);
+	assert.equal(callStyles.filter(([color]) => color === "toolTitle").length, 2);
+	assert.equal(callStyles.some(([color]) => color === "muted"), false);
+	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 
 	const originalFetch = global.fetch;
 	const originalKeys = {

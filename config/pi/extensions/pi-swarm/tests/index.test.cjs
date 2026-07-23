@@ -50,8 +50,8 @@ async function main() {
 		"",
 	]);
 	assert.equal(callStyles[0][0], "toolTitle");
-	assert.equal(callStyles.filter(([color]) => color === "text").length, Object.keys(callArgs).length);
-	assert.ok(callStyles.filter(([color]) => color === "muted").length > Object.keys(callArgs).length);
+	assert.ok(callStyles.filter(([color]) => color === "text").length > Object.keys(callArgs).length);
+	assert.equal(callStyles.some(([color]) => color === "muted"), false);
 	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 	const sessionManager = SessionManager.inMemory("/tmp/pi-swarm-index-test");
 	sessionManager.appendCustomEntry("pi-swarm-usage", {
