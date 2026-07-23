@@ -1,4 +1,4 @@
 {
-  "transcriptOptimization": true,
-  "transcriptView": "full"
+  "fast": false,
+  "transcriptOptimization": true
 }

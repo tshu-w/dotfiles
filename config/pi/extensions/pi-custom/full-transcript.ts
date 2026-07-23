@@ -1,9 +1,9 @@
-// TUI-only full transcript restoration for pi 0.80.6. InteractiveMode uses
-// compaction-aware entries for transcript rendering, so resumed and rebuilt
-// chats start at the latest compaction boundary. This scoped patch can render
-// the complete active branch without changing model context construction.
-// During live compaction, the saved boundary is omitted from the first rebuild
-// because core appends an equivalent synthetic summary immediately afterward.
+// TUI-only transcript history paging for pi 0.80.6. InteractiveMode renders
+// only compaction-aware entries by default. This scoped patch keeps that fast
+// recent view, while allowing older compaction intervals or the full active
+// branch to be loaded temporarily without changing model context construction.
+// During live compaction, the saved boundary is omitted from the first expanded
+// rebuild because core appends an equivalent synthetic summary immediately after.
 
 type RenderMethod = (this: TranscriptMode, ...args: unknown[]) => unknown;
 
@@ -27,20 +27,20 @@ interface TranscriptRendererPrototype {
   rebuildChatFromMessages: RenderMethod;
 }
 
-export type TranscriptView = "full" | "compact";
-
-export interface TranscriptViewControl {
-  getView(): TranscriptView;
-  setView(view: TranscriptView): void;
+export interface TranscriptHistoryControl {
+  getStatus(): string;
+  showOlder(): void;
+  showRecent(): void;
+  showFull(): void;
   omitCompactionOnNextRebuild(entryId: string): void;
   restore(): void;
 }
 
-function renderWithFullBranch(
+function renderWithEntries(
   mode: TranscriptMode,
   original: RenderMethod,
   args: unknown[],
-  omittedCompactionId?: string,
+  entries: TranscriptEntry[],
 ): unknown {
   const manager = mode.sessionManager;
   const ownDescriptor = Object.getOwnPropertyDescriptor(manager, "buildContextEntries");
@@ -48,9 +48,7 @@ function renderWithFullBranch(
   try {
     Object.defineProperty(manager, "buildContextEntries", {
       configurable: true,
-      value: () => manager.getBranch().filter((entry) =>
-        entry.type !== "compaction" || entry.id !== omittedCompactionId
-      ),
+      value: () => entries,
       writable: true,
     });
   } catch {
@@ -65,20 +63,42 @@ function renderWithFullBranch(
   }
 }
 
-export function installTranscriptView(
+function expandedEntries(
+  manager: TranscriptSessionManager,
+  olderSections: number,
+  full: boolean,
+  omittedCompactionId?: string,
+): TranscriptEntry[] | undefined {
+  if (!full && olderSections === 0) return undefined;
+  const branch = manager.getBranch().filter((entry) =>
+    entry.type !== "compaction" || entry.id !== omittedCompactionId
+  );
+  if (full) return branch;
+
+  const compactionIndices: number[] = [];
+  for (const [index, entry] of branch.entries()) {
+    if (entry.type === "compaction") compactionIndices.push(index);
+  }
+  const start = compactionIndices.at(-(olderSections + 1)) ?? 0;
+  return branch.slice(start);
+}
+
+export function installTranscriptHistory(
   prototype: TranscriptRendererPrototype,
-  initialView: TranscriptView,
-): TranscriptViewControl {
+): TranscriptHistoryControl {
   const originalInitial = prototype.renderInitialMessages;
   const originalRebuild = prototype.rebuildChatFromMessages;
-  let view = initialView;
+  let olderSections = 0;
+  let full = false;
   let activeMode: TranscriptMode | undefined;
   let compactionIdToOmit: string | undefined;
 
   if (typeof originalInitial !== "function" || typeof originalRebuild !== "function") {
     return {
-      getView: () => view,
-      setView: (next) => { view = next; },
+      getStatus: () => "Recent",
+      showOlder: () => {},
+      showRecent: () => {},
+      showFull: () => {},
       omitCompactionOnNextRebuild: () => {},
       restore: () => {},
     };
@@ -91,8 +111,14 @@ export function installTranscriptView(
     omittedCompactionId?: string,
   ) => {
     activeMode = mode;
-    return view === "full"
-      ? renderWithFullBranch(mode, original, args, omittedCompactionId)
+    const entries = expandedEntries(
+      mode.sessionManager,
+      olderSections,
+      full,
+      omittedCompactionId,
+    );
+    return entries
+      ? renderWithEntries(mode, original, args, entries)
       : original.apply(mode, args);
   };
   const renderInitialMessages: RenderMethod = function (...args) {
@@ -107,12 +133,29 @@ export function installTranscriptView(
   prototype.renderInitialMessages = renderInitialMessages;
   prototype.rebuildChatFromMessages = rebuildChatFromMessages;
 
+  const rebuild = () => activeMode?.rebuildChatFromMessages();
   return {
-    getView: () => view,
-    setView: (next) => {
-      if (view === next) return;
-      view = next;
-      activeMode?.rebuildChatFromMessages();
+    getStatus: () => full ? "Full" : olderSections > 0 ? `${olderSections} older` : "Recent",
+    showOlder: () => {
+      const maxSections = activeMode
+        ? activeMode.sessionManager.getBranch().filter((entry) => entry.type === "compaction").length
+        : olderSections + 1;
+      const next = Math.min(olderSections + 1, maxSections);
+      if (!full && next === olderSections) return;
+      full = false;
+      olderSections = next;
+      rebuild();
+    },
+    showRecent: () => {
+      if (!full && olderSections === 0) return;
+      full = false;
+      olderSections = 0;
+      rebuild();
+    },
+    showFull: () => {
+      if (full) return;
+      full = true;
+      rebuild();
     },
     omitCompactionOnNextRebuild: (entryId) => {
       compactionIdToOmit = entryId;

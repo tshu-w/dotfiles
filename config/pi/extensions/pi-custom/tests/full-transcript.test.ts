@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installTranscriptView } from "../full-transcript.ts";
+import { installTranscriptHistory } from "../full-transcript.ts";
 
 interface Entry {
   id: string;
@@ -26,12 +26,25 @@ function createFixture() {
     },
   };
   const mode = Object.create(prototype) as FakeMode;
-  const old = { id: "old", type: "message" };
-  const summary = { id: "summary", type: "compaction" };
+  const beforeFirst = { id: "before-first", type: "message" };
+  const first = { id: "first", type: "compaction" };
+  const betweenFirstAndSecond = { id: "between-1-2", type: "message" };
+  const second = { id: "second", type: "compaction" };
+  const betweenSecondAndLatest = { id: "between-2-3", type: "message" };
+  const latestSummary = { id: "latest-summary", type: "compaction" };
   const kept = { id: "kept", type: "message" };
   const latest = { id: "new", type: "message" };
-  const compacted = [summary, kept, latest];
-  const full = [old, summary, kept, latest];
+  const compacted = [latestSummary, kept, latest];
+  const full = [
+    beforeFirst,
+    first,
+    betweenFirstAndSecond,
+    second,
+    betweenSecondAndLatest,
+    latestSummary,
+    kept,
+    latest,
+  ];
   mode.sessionManager = Object.create({
     buildContextEntries: () => compacted,
     getBranch: () => full,
@@ -39,51 +52,65 @@ function createFixture() {
   return { prototype, mode, compacted, full };
 }
 
-test("renders the configured initial transcript view", () => {
-  const fullFixture = createFixture();
-  const fullControl = installTranscriptView(fullFixture.prototype, "full");
-  fullFixture.prototype.renderInitialMessages.call(fullFixture.mode);
-  assert.deepEqual(fullFixture.mode.rendered, fullFixture.full);
-  fullControl.restore();
+test("starts with the compact transcript", () => {
+  const { prototype, mode, compacted } = createFixture();
+  const control = installTranscriptHistory(prototype);
 
-  const compactFixture = createFixture();
-  const compactControl = installTranscriptView(compactFixture.prototype, "compact");
-  compactFixture.prototype.renderInitialMessages.call(compactFixture.mode);
-  assert.deepEqual(compactFixture.mode.rendered, compactFixture.compacted);
-  compactControl.restore();
-});
+  prototype.renderInitialMessages.call(mode);
 
-test("omits a just-saved compaction from one full rebuild", () => {
-  const { prototype, mode, full } = createFixture();
-  const control = installTranscriptView(prototype, "full");
-
-  control.omitCompactionOnNextRebuild("summary");
-  prototype.rebuildChatFromMessages.call(mode);
-  assert.deepEqual(mode.rendered, full.filter((entry) => entry.id !== "summary"));
-
-  prototype.rebuildChatFromMessages.call(mode);
-  assert.deepEqual(mode.rendered, full);
+  assert.deepEqual(mode.rendered, compacted);
+  assert.equal(control.getStatus(), "Recent");
   control.restore();
 });
 
-test("switches views immediately without changing normal context building", () => {
+test("loads one older compaction interval at a time", () => {
+  const { prototype, mode, full } = createFixture();
+  const control = installTranscriptHistory(prototype);
+  prototype.renderInitialMessages.call(mode);
+
+  control.showOlder();
+  assert.deepEqual(mode.rendered, full.slice(3));
+  assert.equal(control.getStatus(), "1 older");
+
+  control.showOlder();
+  assert.deepEqual(mode.rendered, full.slice(1));
+  assert.equal(control.getStatus(), "2 older");
+
+  control.showOlder();
+  assert.deepEqual(mode.rendered, full);
+  assert.equal(control.getStatus(), "3 older");
+  control.restore();
+});
+
+test("switches between full and recent without changing model context", () => {
   const { prototype, mode, full, compacted } = createFixture();
   const originalBuilder = mode.sessionManager.buildContextEntries;
-  const control = installTranscriptView(prototype, "compact");
-
+  const control = installTranscriptHistory(prototype);
   prototype.renderInitialMessages.call(mode);
-  assert.deepEqual(mode.rendered, compacted);
 
-  control.setView("full");
+  control.showFull();
   assert.deepEqual(mode.rendered, full);
+  assert.equal(control.getStatus(), "Full");
   assert.equal(mode.sessionManager.buildContextEntries, originalBuilder);
-  assert.deepEqual(mode.sessionManager.buildContextEntries(), compacted);
 
-  control.setView("compact");
+  control.showRecent();
   assert.deepEqual(mode.rendered, compacted);
+  assert.equal(control.getStatus(), "Recent");
   assert.equal(mode.sessionManager.buildContextEntries, originalBuilder);
-
   control.restore();
+});
+
+test("omits a just-saved compaction from one expanded rebuild", () => {
+  const { prototype, mode, full } = createFixture();
+  const control = installTranscriptHistory(prototype);
   prototype.renderInitialMessages.call(mode);
-  assert.deepEqual(mode.rendered, compacted);
+  control.showFull();
+
+  control.omitCompactionOnNextRebuild("latest-summary");
+  prototype.rebuildChatFromMessages.call(mode);
+  assert.deepEqual(mode.rendered, full.filter((entry) => entry.id !== "latest-summary"));
+
+  prototype.rebuildChatFromMessages.call(mode);
+  assert.deepEqual(mode.rendered, full);
+  control.restore();
 });
