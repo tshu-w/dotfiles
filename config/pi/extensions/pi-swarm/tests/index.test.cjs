@@ -47,6 +47,7 @@ async function main() {
 	const renderedCall = tools.get("agent").renderCall(callArgs, callTheme, { expanded: false });
 	assert.deepEqual(renderedCall.render(1000).map((line) => line.trimEnd()), [
 		'<b>agent</b>(action="spawn", message="inspect renderer", context="fresh", cwd="/tmp/project")',
+		"",
 	]);
 	assert.equal(callStyles[0][0], "toolTitle");
 	assert.equal(callStyles.filter(([color]) => color === "text").length, Object.keys(callArgs).length);

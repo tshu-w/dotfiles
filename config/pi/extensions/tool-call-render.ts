@@ -18,5 +18,5 @@ export function renderToolCall(name: string, args: unknown, theme: ToolCallTheme
 		if (index > 0) text += theme.fg("muted", ", ");
 		text += theme.fg("muted", `${key}=`) + theme.fg("text", renderValue(value));
 	}
-	return new Text(text + theme.fg("muted", ")"), 0, 0);
+	return new Text(text + theme.fg("muted", ")") + "\n", 0, 0);
 }
