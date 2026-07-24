@@ -639,8 +639,8 @@ export default function (pi: ExtensionAPI) {
 			}
 		},
 
-		renderCall(args, theme) {
-			return renderToolCall("web_search", args, theme);
+		renderCall(args, theme, context) {
+			return renderToolCall("web_search", args, theme, !context.isPartial);
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
@@ -709,8 +709,8 @@ export default function (pi: ExtensionAPI) {
 			}
 		},
 
-		renderCall(args, theme) {
-			return renderToolCall("web_fetch", args, theme);
+		renderCall(args, theme, context) {
+			return renderToolCall("web_fetch", args, theme, !context.isPartial);
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {

@@ -46,16 +46,14 @@ async function main() {
 		fg: (color, text) => { callStyles.push([color, text]); return text; },
 	};
 	const searchArgs = { query: "Qwen release", numResults: 5, domainFilter: ["github.com"], recencyFilter: "month" };
-	assert.deepEqual(search.renderCall(searchArgs, callTheme).render(1000).map((line) => line.trimEnd()), [
-		'<b>web_search</b>(query="Qwen release", numResults=5, domainFilter=["github.com"], recencyFilter="month")',
-		"",
-	]);
+	const expectedSearch = '<b>web_search</b>(query="Qwen release", numResults=5, domainFilter=["github.com"], recencyFilter="month")';
+	assert.deepEqual(search.renderCall(searchArgs, callTheme, { isPartial: true }).render(1000).map((line) => line.trimEnd()), [expectedSearch]);
+	assert.deepEqual(search.renderCall(searchArgs, callTheme, { isPartial: false }).render(1000).map((line) => line.trimEnd()), [expectedSearch, ""]);
 	const fetchArgs = { url: "https://example.com", maxChars: 80_000, pattern: "release notes" };
-	assert.deepEqual(fetchTool.renderCall(fetchArgs, callTheme).render(1000).map((line) => line.trimEnd()), [
-		'<b>web_fetch</b>(url="https://example.com", maxChars=80000, pattern="release notes")',
-		"",
-	]);
-	assert.equal(callStyles.filter(([color]) => color === "toolTitle").length, 2);
+	const expectedFetch = '<b>web_fetch</b>(url="https://example.com", maxChars=80000, pattern="release notes")';
+	assert.deepEqual(fetchTool.renderCall(fetchArgs, callTheme, { isPartial: true }).render(1000).map((line) => line.trimEnd()), [expectedFetch]);
+	assert.deepEqual(fetchTool.renderCall(fetchArgs, callTheme, { isPartial: false }).render(1000).map((line) => line.trimEnd()), [expectedFetch, ""]);
+	assert.equal(callStyles.filter(([color]) => color === "toolTitle").length, 4);
 	assert.equal(callStyles.some(([color]) => color === "muted"), false);
 	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 

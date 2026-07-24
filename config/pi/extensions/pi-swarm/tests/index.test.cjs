@@ -44,11 +44,11 @@ async function main() {
 		bold: (text) => `<b>${text}</b>`,
 		fg: (color, text) => { callStyles.push([color, text]); return text; },
 	};
-	const renderedCall = tools.get("agent").renderCall(callArgs, callTheme, { expanded: false });
-	assert.deepEqual(renderedCall.render(1000).map((line) => line.trimEnd()), [
-		'<b>agent</b>(action="spawn", message="inspect renderer", context="fresh", cwd="/tmp/project")',
-		"",
-	]);
+	const expectedCall = '<b>agent</b>(action="spawn", message="inspect renderer", context="fresh", cwd="/tmp/project")';
+	const pendingCall = tools.get("agent").renderCall(callArgs, callTheme, { expanded: false, isPartial: true });
+	assert.deepEqual(pendingCall.render(1000).map((line) => line.trimEnd()), [expectedCall]);
+	const completedCall = tools.get("agent").renderCall(callArgs, callTheme, { expanded: false, isPartial: false });
+	assert.deepEqual(completedCall.render(1000).map((line) => line.trimEnd()), [expectedCall, ""]);
 	assert.equal(callStyles[0][0], "toolTitle");
 	assert.ok(callStyles.filter(([color]) => color === "text").length > Object.keys(callArgs).length);
 	assert.equal(callStyles.some(([color]) => color === "muted"), false);

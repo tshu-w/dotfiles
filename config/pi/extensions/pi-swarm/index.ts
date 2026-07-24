@@ -501,8 +501,8 @@ export default function piSwarm(pi: ExtensionAPI) {
 			"Use send for ordered follow-up work and stop for immediate interruption.",
 		],
 		parameters: AgentParams,
-		renderCall(args, theme) {
-			return renderToolCall("agent", args, theme);
+		renderCall(args, theme, context) {
+			return renderToolCall("agent", args, theme, !context.isPartial);
 		},
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			if (!canopy || !host) throw new Error("Pi Swarm is not initialized");
