@@ -94,7 +94,7 @@ async function main() {
 	panel.handleInput(" ");
 	panel.handleInput("g");
 	panel.handleInput("\x1b[B");
-	assert.match(panel.render(80).join("\n"), /Optimize long transcript rendering/);
+	assert.match(panel.render(80).join("\n"), /Memoize transcript line rendering/);
 	panel.handleInput("\r");
 	panel.handleInput("r");
 	panel.handleInput("\x1b[B");

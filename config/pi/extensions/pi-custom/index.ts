@@ -610,7 +610,7 @@ export class PreferencesPanel implements Component {
       {
         id: "transcriptOptimization",
         label: "Transcript optimization",
-        description: "Optimize long transcript rendering with memoization and background warm-up.",
+        description: "Memoize transcript line rendering for long sessions.",
         currentValue: "",
       },
       {
