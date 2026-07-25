@@ -1,5 +1,4 @@
 import type {
-  BeforeProviderRequestEvent,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
@@ -14,8 +13,8 @@ import {
   getSettingsListTheme,
   InteractiveMode,
 } from "@earendil-works/pi-coding-agent";
-import type { Component, EditorTheme, SettingItem, TUI } from "@earendil-works/pi-tui";
-import { Container, Key, matchesKey, SettingsList, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -27,6 +26,7 @@ import {
   type CustomPreferences,
   type CustomSetting,
 } from "./custom-settings.ts";
+import { type CodexControl, registerCodex } from "./codex.ts";
 import {
   installTranscriptHistory,
   type TranscriptHistoryControl,
@@ -472,68 +472,9 @@ function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   });
 }
 
-// ─── Fast mode ────────────────────────────────────────────────────────────────
-
-const FAST_STATUS_KEY = "pi-openai-fast";
-
-interface FastControl {
-  isDesired(): boolean;
-  isActive(): boolean;
-  setDesired(value: boolean): void;
-}
-
-function registerFast(
-  pi: ExtensionAPI,
-  runtime: CustomRuntimeState,
-  initialDesired: boolean,
-): FastControl {
-  let desired = initialDesired;
-  let model: { provider?: string; id?: string } | undefined;
-  let ui: ExtensionContext["ui"] | undefined;
-
-  const isActive = () => desired && model?.provider === "openai-codex";
-  const syncStatus = (target = ui) => {
-    target?.setStatus?.(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
-    runtime.activeTui?.requestRender();
-  };
-  const setDesired = (value: boolean, target = ui) => {
-    desired = value;
-    syncStatus(target);
-  };
-
-  pi.on("session_start", (_event, ctx) => {
-    ui = ctx.ui;
-    model = ctx.model;
-    syncStatus(ctx.ui);
-  });
-
-  pi.on("session_shutdown", (_event, ctx) => {
-    ctx.ui.setStatus?.(FAST_STATUS_KEY, undefined);
-    ui = undefined;
-  });
-
-  pi.on("model_select", (event, ctx) => {
-    ui = ctx.ui;
-    model = event.model;
-    syncStatus(ctx.ui);
-  });
-
-  pi.on("before_provider_request", (event: BeforeProviderRequestEvent) => {
-    if (!isActive()) return undefined;
-    if (typeof event.payload !== "object" || event.payload === null || Array.isArray(event.payload)) return undefined;
-    return { ...event.payload, service_tier: "priority" };
-  });
-
-  return {
-    isDesired: () => desired,
-    isActive,
-    setDesired,
-  };
-}
-
 // ─── Custom settings ─────────────────────────────────────────────────────────
 
-const CUSTOM_SETTINGS_PATH = join(getAgentDir(), "pi-custom.json");
+const CUSTOM_SETTINGS_PATH = join(getAgentDir(), "settings.json");
 
 function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryControl {
   let runtimeControl: TranscriptHistoryControl | undefined;
@@ -572,6 +513,14 @@ function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryControl {
 }
 
 type PreferencePanelItem = CustomSetting | "transcriptHistory";
+type PreferencePanelGroup = "Codex" | "Transcript";
+
+interface PreferencePanelRow {
+  field: PreferencePanelItem;
+  group: PreferencePanelGroup;
+  label: string;
+  description: string;
+}
 
 interface PreferencesPanelActions {
   get(): ReturnType<CustomPreferences["get"]>;
@@ -586,58 +535,45 @@ interface PreferencesPanelActions {
 
 export class PreferencesPanel implements Component {
   private selected = 0;
-  private readonly fields: PreferencePanelItem[] = [
-    "fast",
-    "transcriptOptimization",
-    "transcriptHistory",
+  private readonly rows: PreferencePanelRow[] = [
+    {
+      field: "fast",
+      group: "Codex",
+      label: "Fast mode",
+      description: "Use OpenAI priority service tier with the openai-codex provider.",
+    },
+    {
+      field: "codexCompaction",
+      group: "Codex",
+      label: "Codex compaction",
+      description: "Codex-style remote compaction for the openai-codex provider.",
+    },
+    {
+      field: "transcriptOptimization",
+      group: "Transcript",
+      label: "Optimization",
+      description: "Memoize transcript line rendering for long sessions.",
+    },
+    {
+      field: "transcriptHistory",
+      group: "Transcript",
+      label: "History",
+      description: "Load older compaction intervals into the TUI without changing model context.",
+    },
   ];
-  private readonly settingsList: SettingsList;
-  private readonly container = new Container();
+  private readonly listTheme = getSettingsListTheme();
+  private readonly topBorder = new DynamicBorder();
+  private readonly bottomBorder = new DynamicBorder();
 
   constructor(
     private readonly theme: Theme,
     private readonly actions: PreferencesPanelActions,
     private readonly requestRender: () => void,
     private readonly close: () => void,
-  ) {
-    const items: SettingItem[] = [
-      {
-        id: "fast",
-        label: "Fast mode",
-        description: "Use OpenAI priority service tier with the openai-codex provider.",
-        currentValue: "",
-      },
-      {
-        id: "transcriptOptimization",
-        label: "Transcript optimization",
-        description: "Memoize transcript line rendering for long sessions.",
-        currentValue: "",
-      },
-      {
-        id: "transcriptHistory",
-        label: "Transcript history",
-        description: "Load older compaction intervals into the TUI without changing model context.",
-        currentValue: "",
-      },
-    ];
-    const baseTheme = getSettingsListTheme();
-    this.settingsList = new SettingsList(
-      items,
-      items.length,
-      {
-        ...baseTheme,
-        hint: () => baseTheme.hint(this.helpText()),
-      },
-      () => {},
-      this.close,
-    );
-    this.container.addChild(new DynamicBorder());
-    this.container.addChild(this.settingsList);
-    this.container.addChild(new DynamicBorder());
-  }
+  ) {}
 
   private helpText(): string {
-    return this.fields[this.selected] === "transcriptHistory"
+    return this.rows[this.selected]?.field === "transcriptHistory"
       ? "  Enter/Space load older · r recent · f full · Esc cancel"
       : "  Enter/Space toggle · g save global · r reset · Esc cancel";
   }
@@ -646,34 +582,56 @@ export class PreferencesPanel implements Component {
     return `${value.padEnd(8)}${this.theme.fg("dim", `[${scope}]`)}`;
   }
 
-  private syncValues(): void {
-    const settings = this.actions.get();
-    this.settingsList.updateValue(
-      "fast",
-      this.formatScopedValue(settings.fast.value ? "On" : "Off", settings.fast.scope),
-    );
-    this.settingsList.updateValue(
-      "transcriptOptimization",
-      this.formatScopedValue(
-        settings.transcriptOptimization.value ? "On" : "Off",
-        settings.transcriptOptimization.scope,
-      ),
-    );
-    this.settingsList.updateValue("transcriptHistory", this.actions.getHistoryStatus());
+  private currentValue(field: PreferencePanelItem): string {
+    if (field === "transcriptHistory") return this.actions.getHistoryStatus();
+    const setting = this.actions.get()[field];
+    return this.formatScopedValue(setting.value ? "On" : "Off", setting.scope);
+  }
+
+  private renderBody(width: number): string[] {
+    const lines: string[] = [];
+    const labelWidth = Math.max(...this.rows.map((row) => visibleWidth(row.label)));
+    let group: PreferencePanelGroup | undefined;
+
+    for (const [index, row] of this.rows.entries()) {
+      if (row.group !== group) {
+        if (group) lines.push("");
+        lines.push(`  ${this.theme.fg("accent", this.theme.bold(row.group))}`);
+        group = row.group;
+      }
+      const isSelected = index === this.selected;
+      const prefix = isSelected ? this.listTheme.cursor : "  ";
+      const label = row.label.padEnd(labelWidth);
+      const value = this.currentValue(row.field);
+      lines.push(
+        prefix
+          + this.listTheme.label(label, isSelected)
+          + "  "
+          + this.listTheme.value(value, isSelected),
+      );
+    }
+
+    const description = this.rows[this.selected]?.description;
+    if (description) {
+      lines.push("");
+      for (const line of wrapTextWithAnsi(description, Math.max(1, width - 4))) {
+        lines.push(this.listTheme.description(`  ${line}`));
+      }
+    }
+    lines.push("", this.listTheme.hint(this.helpText()));
+    return lines.map((line) => truncateToWidth(line, width, ""));
   }
 
   handleInput(data: string): void {
     if (matchesKey(data, Key.up)) {
-      this.selected = (this.selected + this.fields.length - 1) % this.fields.length;
-      this.settingsList.handleInput(data);
+      this.selected = (this.selected + this.rows.length - 1) % this.rows.length;
     } else if (matchesKey(data, Key.down)) {
-      this.selected = (this.selected + 1) % this.fields.length;
-      this.settingsList.handleInput(data);
+      this.selected = (this.selected + 1) % this.rows.length;
     } else if (matchesKey(data, Key.escape)) {
       this.close();
       return;
     } else {
-      const field = this.fields[this.selected]!;
+      const field = this.rows[this.selected]!.field;
       if (field === "transcriptHistory") {
         if (data === " " || matchesKey(data, Key.enter)) this.actions.showOlderHistory();
         else if (data === "r") this.actions.showRecentHistory();
@@ -689,42 +647,44 @@ export class PreferencesPanel implements Component {
         return;
       }
     }
-    this.syncValues();
     this.requestRender();
   }
 
   render(width: number): string[] {
-    this.syncValues();
-    return this.container.render(width);
+    return [
+      ...this.topBorder.render(width),
+      ...this.renderBody(width),
+      ...this.bottomBorder.render(width),
+    ];
   }
 
   invalidate(): void {
-    this.container.invalidate();
+    this.topBorder.invalidate();
+    this.bottomBorder.invalidate();
   }
 }
 
 function registerCustomSettings(
   pi: ExtensionAPI,
   preferences: CustomPreferences,
-  fastControl: FastControl,
+  codexControl: CodexControl,
   transcriptHistory: TranscriptHistoryControl,
 ): void {
   const summary = () => {
     const settings = preferences.get();
-    const fast = fastControl.isDesired()
-      ? fastControl.isActive() ? "on" : "requested (openai-codex only)"
+    const fast = codexControl.isDesired()
+      ? codexControl.isActive() ? "on" : "requested (openai-codex only)"
       : "off";
     return [
       `Fast mode: ${fast} (${settings.fast.scope})`,
+      `Codex compaction: ${settings.codexCompaction.value ? "on" : "off"} (${settings.codexCompaction.scope})`,
       `Transcript optimization: ${settings.transcriptOptimization.value ? "on" : "off"} (${settings.transcriptOptimization.scope})`,
       `Transcript history: ${transcriptHistory.getStatus()}`,
     ].join("; ");
   };
 
   const toggleSession = (field: CustomSetting): void => {
-    const settings = preferences.get();
-    if (field === "fast") preferences.setSession(field, !settings.fast.value);
-    else preferences.setSession(field, !settings.transcriptOptimization.value);
+    preferences.setSession(field, !preferences.get()[field].value);
   };
 
   const showPanel = async (ctx: ExtensionCommandContext): Promise<void> => {
@@ -800,7 +760,7 @@ function registerRestart(pi: ExtensionAPI): void {
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export default function piCustom(pi: ExtensionAPI) {
+export default async function piCustom(pi: ExtensionAPI) {
   const preferences = createCustomPreferences({
     path: CUSTOM_SETTINGS_PATH,
     appendSession: (settings) => pi.appendEntry(CUSTOM_SETTINGS_ENTRY_TYPE, settings),
@@ -819,10 +779,14 @@ export default function piCustom(pi: ExtensionAPI) {
   registerPackageAutoUpdate(pi);
   registerEditor(pi, runtime);
   registerFooter(pi, runtime);
-  const fastControl = registerFast(pi, runtime, initial.fast.value);
+  const codexControl = await registerCodex(pi, runtime, {
+    fast: initial.fast.value,
+    compaction: initial.codexCompaction.value,
+  });
   const applyPreferences = () => {
     const settings = preferences.get();
-    fastControl.setDesired(settings.fast.value);
+    codexControl.setDesired(settings.fast.value);
+    codexControl.setCompactionEnabled(settings.codexCompaction.value);
     renderPerf.setEnabled(settings.transcriptOptimization.value);
   };
   preferences.onChange(applyPreferences);
@@ -832,5 +796,5 @@ export default function piCustom(pi: ExtensionAPI) {
   registerSystemTheme(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
-  registerCustomSettings(pi, preferences, fastControl, transcriptHistory);
+  registerCustomSettings(pi, preferences, codexControl, transcriptHistory);
 }

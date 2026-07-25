@@ -8,13 +8,20 @@ import {
 import { dirname } from "node:path";
 
 export const CUSTOM_SETTINGS_ENTRY_TYPE = "pi-custom:settings";
+const SETTINGS_DOCUMENT_KEY = "pi-custom";
 
 export interface PiCustomSettings {
   fast: boolean;
+  codexCompaction: boolean;
   transcriptOptimization: boolean;
 }
 
 export type CustomSetting = keyof PiCustomSettings;
+const CUSTOM_SETTING_KEYS = [
+  "fast",
+  "codexCompaction",
+  "transcriptOptimization",
+] as const satisfies readonly CustomSetting[];
 export type CustomSettingScope = "global" | "session";
 export type SessionCustomSettings = Partial<PiCustomSettings>;
 export type ResolvedCustomSettings = {
@@ -26,6 +33,7 @@ export type ResolvedCustomSettings = {
 
 export const DEFAULT_CUSTOM_SETTINGS: PiCustomSettings = {
   fast: false,
+  codexCompaction: true,
   transcriptOptimization: true,
 };
 
@@ -36,35 +44,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseSessionSettings(value: unknown): SessionCustomSettings {
   if (!isRecord(value)) return {};
   const settings: SessionCustomSettings = {};
-  if (typeof value.fast === "boolean") settings.fast = value.fast;
-  if (typeof value.transcriptOptimization === "boolean") {
-    settings.transcriptOptimization = value.transcriptOptimization;
+  for (const key of CUSTOM_SETTING_KEYS) {
+    if (typeof value[key] === "boolean") settings[key] = value[key];
   }
   return settings;
 }
 
 export function parseGlobalSettings(value: unknown): PiCustomSettings {
-  const settings = parseSessionSettings(value);
-  return {
-    fast: settings.fast ?? DEFAULT_CUSTOM_SETTINGS.fast,
-    transcriptOptimization:
-      settings.transcriptOptimization ?? DEFAULT_CUSTOM_SETTINGS.transcriptOptimization,
-  };
+  return { ...DEFAULT_CUSTOM_SETTINGS, ...parseSessionSettings(value) };
 }
 
+function readSettingsDocument(path: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!isRecord(parsed)) throw new Error(`${path} must contain a JSON object`);
+  return parsed;
+}
+
+// Settings live under the "pi-custom" key of pi's global settings.json; pi
+// preserves unknown top-level keys when saving its own settings.
 export function readGlobalSettings(path: string): PiCustomSettings {
-  if (!existsSync(path)) return { ...DEFAULT_CUSTOM_SETTINGS };
   try {
-    return parseGlobalSettings(JSON.parse(readFileSync(path, "utf8")));
+    const document = readSettingsDocument(path);
+    if (isRecord(document[SETTINGS_DOCUMENT_KEY])) {
+      return parseGlobalSettings(document[SETTINGS_DOCUMENT_KEY]);
+    }
   } catch {
-    return { ...DEFAULT_CUSTOM_SETTINGS };
+    // Fall through to defaults.
   }
+  return { ...DEFAULT_CUSTOM_SETTINGS };
 }
 
 function writeGlobalSettings(path: string, settings: PiCustomSettings): void {
+  // Throws instead of clobbering settings.json when it cannot be parsed.
+  const document = existsSync(path) ? readSettingsDocument(path) : {};
+  document[SETTINGS_DOCUMENT_KEY] = settings;
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(settings, null, 2)}\n`);
+  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`);
   renameSync(temporary, path);
 }
 
@@ -86,9 +102,8 @@ function normalizeSessionSettings(
   session: SessionCustomSettings,
 ): SessionCustomSettings {
   const normalized = { ...session };
-  if (normalized.fast === global.fast) delete normalized.fast;
-  if (normalized.transcriptOptimization === global.transcriptOptimization) {
-    delete normalized.transcriptOptimization;
+  for (const key of CUSTOM_SETTING_KEYS) {
+    if (normalized[key] === global[key]) delete normalized[key];
   }
   return normalized;
 }
@@ -97,14 +112,13 @@ export function resolveCustomSettings(
   global: PiCustomSettings,
   session: SessionCustomSettings,
 ): ResolvedCustomSettings {
-  return {
-    fast: session.fast === undefined
-      ? { value: global.fast, scope: "global" }
-      : { value: session.fast, scope: "session" },
-    transcriptOptimization: session.transcriptOptimization === undefined
-      ? { value: global.transcriptOptimization, scope: "global" }
-      : { value: session.transcriptOptimization, scope: "session" },
-  };
+  const resolved = {} as ResolvedCustomSettings;
+  for (const key of CUSTOM_SETTING_KEYS) {
+    resolved[key] = session[key] === undefined
+      ? { value: global[key], scope: "global" }
+      : { value: session[key], scope: "session" };
+  }
+  return resolved;
 }
 
 interface CreateCustomPreferencesOptions {

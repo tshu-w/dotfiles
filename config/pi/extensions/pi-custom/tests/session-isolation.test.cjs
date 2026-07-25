@@ -56,11 +56,12 @@ async function emit(harness, event, payload, ctx) {
 }
 
 async function main() {
+	const PI_AI = `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai`;
 	const jiti = createJiti(__filename, {
 		interopDefault: true,
 		alias: {
 			"@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js`,
-			"@earendil-works/pi-ai/compat": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/compat.js`,
+			"@earendil-works/pi-ai/compat": `${PI_AI}/dist/compat.js`,
 			"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 		},
 	});
@@ -71,10 +72,14 @@ async function main() {
 	const calls = [];
 	let closed = false;
 	const panel = new extension.PreferencesPanel(
-		{ fg: (role, text) => role === "dim" ? `<dim>${text}</dim>` : text },
+		{
+			fg: (role, text) => role === "dim" ? `<dim>${text}</dim>` : text,
+			bold: (text) => `<b>${text}</b>`,
+		},
 		{
 			get: () => ({
 				fast: { value: false, scope: "global" },
+				codexCompaction: { value: true, scope: "global" },
 				transcriptOptimization: { value: true, scope: "global" },
 			}),
 			getHistoryStatus: () => "Recent",
@@ -88,11 +93,18 @@ async function main() {
 		() => {},
 		() => { closed = true; },
 	);
-	assert.match(panel.render(80).join("\n"), /Use OpenAI priority service tier/);
-	assert.match(panel.render(80).join("\n"), /g save global · r reset/);
+	const initialPanel = panel.render(80).join("\n");
+	assert.match(initialPanel, /<b>Codex<\/b>/);
+	assert.match(initialPanel, /<b>Transcript<\/b>/);
+	assert.match(initialPanel, /Use OpenAI priority service tier/);
+	assert.match(initialPanel, /g save global · r reset/);
 	assert.match(panel.render(80).join("\n"), /Off     <dim>\[global\]<\/dim>/);
 	panel.handleInput(" ");
 	panel.handleInput("g");
+	panel.handleInput("\x1b[B");
+	assert.match(panel.render(80).join("\n"), /Codex-style remote compaction/);
+	panel.handleInput("\r");
+	panel.handleInput("r");
 	panel.handleInput("\x1b[B");
 	assert.match(panel.render(80).join("\n"), /Memoize transcript line rendering/);
 	panel.handleInput("\r");
@@ -107,6 +119,8 @@ async function main() {
 	assert.deepEqual(calls, [
 		"toggle:fast",
 		"global:fast",
+		"toggle:codexCompaction",
+		"reset:codexCompaction",
 		"toggle:transcriptOptimization",
 		"reset:transcriptOptimization",
 		"history:older",
@@ -117,8 +131,8 @@ async function main() {
 
 	const first = extensionHarness();
 	const second = extensionHarness();
-	factory(first.pi);
-	factory(second.pi);
+	await factory(first.pi);
+	await factory(second.pi);
 
 	const firstCtx = context("openai-codex");
 	const secondCtx = context("anthropic");
