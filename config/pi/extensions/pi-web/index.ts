@@ -33,7 +33,6 @@ const DEFAULT_MAX_CHARS = 30_000;
 const MAX_NUM_RESULTS = 10;
 const MAX_FETCH_CHARS = 80_000;
 const DIRECT_FETCH_MAX_BYTES = 2_000_000;
-const TRUNCATION_NOTICE_RESERVE_BYTES = 512;
 
 interface SearchResult {
 	title: string;
@@ -76,25 +75,29 @@ function loadConfig(): WebConfig {
 	return cachedConfig;
 }
 
-function getExaKey(): string | null {
-	const envKey = process.env.EXA_API_KEY?.trim();
+function getKey(envVar: string, cfgField: "exaApiKey" | "jinaApiKey" | "tavilyApiKey"): string | null {
+	const envKey = process.env[envVar]?.trim();
 	if (envKey) return envKey;
-	const cfg = loadConfig();
-	return typeof cfg.exaApiKey === "string" && cfg.exaApiKey.trim() ? cfg.exaApiKey.trim() : null;
+	const value = loadConfig()[cfgField];
+	return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function getJinaKey(): string | null {
-	const envKey = process.env.JINA_API_KEY?.trim();
-	if (envKey) return envKey;
-	const cfg = loadConfig();
-	return typeof cfg.jinaApiKey === "string" && cfg.jinaApiKey.trim() ? cfg.jinaApiKey.trim() : null;
+const getExaKey = () => getKey("EXA_API_KEY", "exaApiKey");
+const getJinaKey = () => getKey("JINA_API_KEY", "jinaApiKey");
+const getTavilyKey = () => getKey("TAVILY_API_KEY", "tavilyApiKey");
+
+function splitDomainFilter(filter?: string[]): { include: string[]; exclude: string[] } {
+	return {
+		include: filter?.filter(d => !d.startsWith("-")).map(d => d.trim()).filter(Boolean) ?? [],
+		exclude: filter?.filter(d => d.startsWith("-")).map(d => d.slice(1).trim()).filter(Boolean) ?? [],
+	};
 }
 
-function getTavilyKey(): string | null {
-	const envKey = process.env.TAVILY_API_KEY?.trim();
-	if (envKey) return envKey;
-	const cfg = loadConfig();
-	return typeof cfg.tavilyApiKey === "string" && cfg.tavilyApiKey.trim() ? cfg.tavilyApiKey.trim() : null;
+function formatSources(results: SearchResult[]): string {
+	return results
+		.filter(r => r.snippet)
+		.map(r => `${r.snippet}\nSource: ${r.title} (${r.url})`)
+		.join("\n\n");
 }
 
 function requestSignal(signal?: AbortSignal): AbortSignal {
@@ -102,8 +105,22 @@ function requestSignal(signal?: AbortSignal): AbortSignal {
 	return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-function isAbortError(err: unknown): boolean {
-	return err instanceof Error && (err.name === "AbortError" || err.message.toLowerCase().includes("abort"));
+// Slice by characters without splitting an astral pair: a trailing lone
+// high surrogate is invalid JSON text for some provider APIs.
+function sliceChars(value: string, max: number): string {
+	if (value.length <= max) return value;
+	const cut = value.slice(0, max);
+	return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+}
+
+// Longest prefix of value that fits maxBytes as valid UTF-8 (never splits a
+// multi-byte sequence, so the decoded text has no lone surrogates).
+function utf8Prefix(value: string, maxBytes: number): string {
+	const buf = Buffer.from(value, "utf8");
+	if (buf.length <= maxBytes) return value;
+	let end = maxBytes;
+	while (end > 0 && (buf[end] & 0b1100_0000) === 0b1000_0000) end--;
+	return buf.subarray(0, end).toString("utf8");
 }
 
 function normalizeUrl(input: string): { url: string; titleFallback: string } {
@@ -140,18 +157,60 @@ export async function boundToolOutput(value: string): Promise<{
 	const full = truncateHead(value, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
 	if (!full.truncated) return { text: value, truncated: false, bytes: Buffer.byteLength(value) };
 
-	const tempDir = await mkdtemp(join(tmpdir(), "pi-web-"));
-	const fullOutputPath = join(tempDir, "output.txt");
-	await writeFile(fullOutputPath, value, "utf8");
+	// Preserving the full output is best-effort: a failed temp write must not
+	// discard content that was already fetched successfully.
+	let fullOutputPath: string | undefined;
+	try {
+		const tempDir = await mkdtemp(join(tmpdir(), "pi-web-"));
+		fullOutputPath = join(tempDir, "output.txt");
+		await writeFile(fullOutputPath, value, "utf8");
+	} catch {
+		fullOutputPath = undefined;
+	}
 
-	const preview = truncateHead(value, {
-		maxBytes: DEFAULT_MAX_BYTES - TRUNCATION_NOTICE_RESERVE_BYTES,
-		maxLines: DEFAULT_MAX_LINES - 2,
-	});
-	const note = `\n\n[Output truncated: showing ${preview.outputLines} of ${preview.totalLines} lines` +
-		` (${formatSize(preview.outputBytes)} of ${formatSize(preview.totalBytes)}).` +
-		` Full output saved to: ${fullOutputPath}]`;
-	const content = preview.content + note;
+	const makeNote = (previewBytes: number): string => {
+		const summary = `\n\n[Output truncated: showing ${formatSize(previewBytes)} of ${formatSize(full.totalBytes)}` +
+			` (${full.totalLines} lines total).`;
+		if (!fullOutputPath) return `${summary}]`;
+		const withPath = `${summary} Full output saved to: ${fullOutputPath}]`;
+		return Buffer.byteLength(withPath) <= DEFAULT_MAX_BYTES
+			? withPath
+			: `${summary} Full output path omitted; see tool details.]`;
+	};
+
+	const makePreview = (budget: number): string => {
+		if (budget <= 0) return "";
+		const preview = truncateHead(value, {
+			maxBytes: budget,
+			maxLines: DEFAULT_MAX_LINES - 2,
+		});
+		// truncateHead keeps whole lines only; web content is often one huge line
+		// (minified JSON, unwrapped markdown), so fill the remaining budget with
+		// a valid UTF-8 prefix of the next line.
+		let content = preview.content;
+		const remaining = budget - preview.outputBytes;
+		if (preview.truncatedBy === "bytes" && remaining > 256) {
+			const nextLine = value.split("\n")[preview.outputLines];
+			if (nextLine !== undefined) {
+				const separatorBytes = content ? 1 : 0;
+				const partial = utf8Prefix(nextLine, remaining - separatorBytes);
+				if (partial) content = content ? `${content}\n${partial}` : partial;
+			}
+		}
+		return content;
+	};
+
+	// The notice embeds the temp path and the preview size, so its length
+	// depends on the preview itself. Build the preview against a worst-case
+	// note, then trim until the aggregate fits the hard bound.
+	let previewContent = makePreview(Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(makeNote(DEFAULT_MAX_BYTES))));
+	let note = makeNote(Buffer.byteLength(previewContent));
+	while (Buffer.byteLength(previewContent) + Buffer.byteLength(note) > DEFAULT_MAX_BYTES) {
+		previewContent = utf8Prefix(previewContent, Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(note)));
+		note = makeNote(Buffer.byteLength(previewContent));
+	}
+
+	const content = previewContent + note;
 	return { text: content, truncated: true, bytes: Buffer.byteLength(content), fullOutputPath };
 }
 
@@ -162,8 +221,7 @@ async function exaSearchDirect(
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
 	const startDate = opts.recencyFilter ? recencyToStartDate(opts.recencyFilter) : null;
-	const includeDomains = opts.domainFilter?.filter(d => !d.startsWith("-")).map(d => d.trim()).filter(Boolean);
-	const excludeDomains = opts.domainFilter?.filter(d => d.startsWith("-")).map(d => d.slice(1).trim()).filter(Boolean);
+	const { include: includeDomains, exclude: excludeDomains } = splitDomainFilter(opts.domainFilter);
 
 	const body: Record<string, unknown> = {
 		query,
@@ -192,20 +250,17 @@ async function exaSearchDirect(
 	};
 
 	const results: SearchResult[] = [];
-	const answerParts: string[] = [];
 
 	for (const r of data.results ?? []) {
 		if (!r.url) continue;
 		const highlights = Array.isArray(r.highlights) ? r.highlights.filter(h => typeof h === "string") : [];
 		const snippet = highlights.length > 0
-			? highlights.join(" … ").slice(0, 500)
-			: (r.text ?? "").slice(0, 500);
-		const title = r.title || r.url;
-		results.push({ title, url: r.url, snippet, publishedDate: r.publishedDate });
-		if (snippet) answerParts.push(`${snippet}\nSource: ${title} (${r.url})`);
+			? sliceChars(highlights.join(" … "), 500)
+			: sliceChars(r.text ?? "", 500);
+		results.push({ title: r.title || r.url, url: r.url, snippet, publishedDate: r.publishedDate });
 	}
 
-	return { results, answer: answerParts.join("\n\n") };
+	return { results, answer: formatSources(results) };
 }
 
 async function exaSearchMcp(
@@ -243,8 +298,7 @@ async function exaSearchMcp(
 	if (!text) throw new Error("Exa MCP returned empty content");
 
 	const results = parseMcpResults(text);
-	const answer = results.map(r => `${r.snippet}\nSource: ${r.title} (${r.url})`).join("\n\n");
-	return { results, answer };
+	return { results, answer: formatSources(results) };
 }
 
 async function jinaSearch(
@@ -269,17 +323,14 @@ async function jinaSearch(
 	};
 
 	const results: SearchResult[] = [];
-	const answerParts: string[] = [];
 
 	for (const r of (data.data ?? []).slice(0, opts.numResults)) {
 		if (!r.url) continue;
-		const title = r.title || r.url;
-		const snippet = (r.description || r.content || "").slice(0, 500);
-		results.push({ title, url: r.url, snippet });
-		if (snippet) answerParts.push(`${snippet}\nSource: ${title} (${r.url})`);
+		const snippet = sliceChars(r.description || r.content || "", 500);
+		results.push({ title: r.title || r.url, url: r.url, snippet });
 	}
 
-	return { results, answer: answerParts.join("\n\n") };
+	return { results, answer: formatSources(results) };
 }
 
 async function tavilySearch(
@@ -288,8 +339,7 @@ async function tavilySearch(
 	opts: { numResults: number; domainFilter?: string[]; recencyFilter?: string },
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
-	const includeDomains = opts.domainFilter?.filter(d => !d.startsWith("-")).map(d => d.trim()).filter(Boolean);
-	const excludeDomains = opts.domainFilter?.filter(d => d.startsWith("-")).map(d => d.slice(1).trim()).filter(Boolean);
+	const { include: includeDomains, exclude: excludeDomains } = splitDomainFilter(opts.domainFilter);
 
 	const body: Record<string, unknown> = {
 		query,
@@ -322,17 +372,13 @@ async function tavilySearch(
 	};
 
 	const results: SearchResult[] = [];
-	const answerParts: string[] = [];
 
 	for (const r of data.results ?? []) {
 		if (!r.url) continue;
-		const title = r.title || r.url;
-		const snippet = (r.content || "").slice(0, 500);
-		results.push({ title, url: r.url, snippet });
-		if (snippet) answerParts.push(`${snippet}\nSource: ${title} (${r.url})`);
+		results.push({ title: r.title || r.url, url: r.url, snippet: sliceChars(r.content || "", 500) });
 	}
 
-	const sources = answerParts.join("\n\n");
+	const sources = formatSources(results);
 	const answer = data.answer && sources ? `${data.answer}\n\n---\n\nSources:\n${sources}` : (data.answer || sources);
 	return { results, answer };
 }
@@ -348,7 +394,7 @@ async function searchWithFallback(
 	const exaKey = getExaKey();
 	if (exaKey) {
 		try { return await exaSearchDirect(exaKey, query, opts, signal); } catch (err) {
-			if (isAbortError(err)) throw err;
+			if (signal?.aborted) throw err;
 			errors.push(`Exa: ${err instanceof Error ? err.message : err}`);
 		}
 	}
@@ -357,14 +403,14 @@ async function searchWithFallback(
 	const tavilyKey = getTavilyKey();
 	if (tavilyKey) {
 		try { return await tavilySearch(tavilyKey, query, opts, signal); } catch (err) {
-			if (isAbortError(err)) throw err;
+			if (signal?.aborted) throw err;
 			errors.push(`Tavily: ${err instanceof Error ? err.message : err}`);
 		}
 	}
 
 	// 3. Exa MCP (free, no key)
 	try { return await exaSearchMcp(query, opts, signal); } catch (err) {
-		if (isAbortError(err)) throw err;
+		if (signal?.aborted) throw err;
 		errors.push(`Exa MCP: ${err instanceof Error ? err.message : err}`);
 	}
 
@@ -372,7 +418,7 @@ async function searchWithFallback(
 	const jinaKey = getJinaKey();
 	if (jinaKey) {
 		try { return await jinaSearch(jinaKey, query, opts, signal); } catch (err) {
-			if (isAbortError(err)) throw err;
+			if (signal?.aborted) throw err;
 			errors.push(`Jina: ${err instanceof Error ? err.message : err}`);
 		}
 	}
@@ -409,7 +455,7 @@ function parseMcpResults(text: string): SearchResult[] {
 			if (hlMatch?.index != null) content = block.slice(hlMatch.index + hlMatch[0].length).trim();
 		}
 		content = content.replace(/\n---\s*$/, "").trim();
-		return { title: title || url, url, snippet: content.slice(0, 500) };
+		return { title: title || url, url, snippet: sliceChars(content, 500) };
 	}).filter(r => r.url);
 }
 
@@ -427,7 +473,7 @@ async function fetchUrl(inputUrl: string, maxChars: number, signal?: AbortSignal
 			const result = await exaGetContents(normalized.url, exaKey, maxChars, signal);
 			if (result) return result;
 		} catch (err) {
-			if (isAbortError(err)) throw err;
+			if (signal?.aborted) throw err;
 		}
 	}
 
@@ -435,7 +481,7 @@ async function fetchUrl(inputUrl: string, maxChars: number, signal?: AbortSignal
 		const result = await directFetch(normalized.url, normalized.titleFallback, maxChars, signal);
 		if (result) return result;
 	} catch (err) {
-		if (isAbortError(err)) throw err;
+		if (signal?.aborted) throw err;
 	}
 
 	return jinaFetch(normalized.url, normalized.titleFallback, maxChars, signal);
@@ -453,7 +499,7 @@ async function exaGetContents(url: string, exaKey: string, maxChars: number, sig
 	const data = await res.json() as { results?: Array<{ title?: string; text?: string }> };
 	const first = data.results?.[0];
 	if (!first?.text || first.text.length < 50) return null;
-	return { title: first.title || url, content: first.text.slice(0, maxChars), error: null };
+	return { title: first.title || url, content: sliceChars(first.text, maxChars), error: null };
 }
 
 async function directFetch(url: string, titleFallback: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult | null> {
@@ -471,7 +517,7 @@ async function directFetch(url: string, titleFallback: string, maxChars: number,
 	const text = await readBodyLimited(res, DIRECT_FETCH_MAX_BYTES);
 
 	if (contentType.includes("text/plain") || contentType.includes("application/json") || contentType.includes("text/markdown")) {
-		return { title: titleFallback, content: text.slice(0, maxChars), error: null };
+		return { title: titleFallback, content: sliceChars(text, maxChars), error: null };
 	}
 
 	if (!contentType.includes("text/html")) return null;
@@ -493,12 +539,17 @@ async function directFetch(url: string, titleFallback: string, maxChars: number,
 		.join("\n");
 
 	if (body.length < 100) return null;
-	return { title, content: body.slice(0, maxChars), error: null };
+	return { title, content: sliceChars(body, maxChars), error: null };
 }
 
 async function jinaFetch(url: string, titleFallback: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult> {
+	const jinaKey = getJinaKey();
 	const res = await fetch(JINA_READER_BASE + url, {
-		headers: { "Accept": "text/markdown", "X-No-Cache": "true" },
+		headers: {
+			"Accept": "text/markdown",
+			"X-No-Cache": "true",
+			...(jinaKey ? { "Authorization": `Bearer ${jinaKey}` } : {}),
+		},
 		signal: requestSignal(signal),
 	});
 
@@ -513,7 +564,7 @@ async function jinaFetch(url: string, titleFallback: string, maxChars: number, s
 	}
 
 	const title = markdown.match(/^#\s+(.+)/m)?.[1]?.trim() || titleFallback;
-	return { title, content: markdown.slice(0, maxChars), error: null };
+	return { title, content: sliceChars(markdown, maxChars), error: null };
 }
 
 async function readBodyLimited(res: Response, maxBytes: number): Promise<string> {
@@ -522,7 +573,7 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<string>
 
 	const decoder = new TextDecoder();
 	let result = "";
-	let truncated = false;
+	let bytes = 0;
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
@@ -530,10 +581,12 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<string>
 				result += decoder.decode();
 				break;
 			}
+			// Count source bytes, not UTF-16 code units; the limit is a memory
+			// bound, so overshooting by at most one chunk is fine and avoids
+			// slicing decoded text mid-surrogate.
+			bytes += value.byteLength;
 			result += decoder.decode(value, { stream: true });
-			if (result.length >= maxBytes) {
-				result = result.slice(0, maxBytes);
-				truncated = true;
+			if (bytes >= maxBytes) {
 				await reader.cancel("response body truncated");
 				break;
 			}
@@ -545,13 +598,14 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<string>
 }
 
 function decodeHtmlEntities(value: string): string {
+	// &amp; must decode last so "&amp;lt;" yields the literal "&lt;".
 	return value
 		.replace(/&nbsp;/g, " ")
-		.replace(/&amp;/g, "&")
 		.replace(/&lt;/g, "<")
 		.replace(/&gt;/g, ">")
 		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'");
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, "&");
 }
 
 function findInContent(content: string, pattern: string, contextChars = 200): string {
@@ -588,9 +642,17 @@ function formatSearchResults(results: SearchResult[]): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	// Publish tool definitions to the in-process shared registry so cooperating
+	// extensions can dispatch these tools directly. Definitions must stay
+	// session-stateless: execute receives the dispatching session's ctx.
+	const sharedTools = ((globalThis as Record<symbol, unknown>)[Symbol.for("pi-agent-calculus:tool-registry")] ??= new Map()) as Map<string, unknown>;
+	const registerTool: typeof pi.registerTool = (definition) => {
+		sharedTools.set(definition.name, definition);
+		pi.registerTool(definition);
+	};
 	const searchToolName = "web_search";
 
-	pi.registerTool({
+	registerTool({
 		name: searchToolName,
 		label: "Web Search",
 		description: "Search the web via Exa, Tavily, Exa MCP, or Jina Search. Returns sources with snippets, capped at 50KB/2000 lines; truncated full output is saved to a temp file. Uses whichever API keys are available.",
@@ -631,7 +693,7 @@ export default function (pi: ExtensionAPI) {
 					},
 				};
 			} catch (err) {
-				if (isAbortError(err) || signal?.aborted) {
+				if (signal?.aborted) {
 					return { content: [{ type: "text", text: "Search cancelled." }], details: { aborted: true } };
 				}
 				const msg = err instanceof Error ? err.message : String(err);
@@ -644,14 +706,13 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
-			const details = result.details as { count?: number; error?: string; aborted?: boolean; phase?: string };
+			const details = result.details as { count?: number; aborted?: boolean; phase?: string };
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "searching"), 0, 0);
 			if (context.isError) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web search failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
 			if (details?.aborted) return new Text(theme.fg("muted", "cancelled"), 0, 0);
-			if (details?.error) return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
 			const summary = theme.fg("success", `${details?.count ?? 0} sources`);
 			if (!expanded) return new Text(summary, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
@@ -660,7 +721,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerTool({
+	registerTool({
 		name: "web_fetch",
 		label: "Web Fetch",
 		description: "Fetch a URL and extract readable content, capped at 50KB/2000 lines. If truncated, the full output is saved to a temp file. Optionally search within the page using pattern. Fallback chain: Exa contents → direct fetch → Jina Reader.",
@@ -701,7 +762,7 @@ export default function (pi: ExtensionAPI) {
 					},
 				};
 			} catch (err) {
-				if (isAbortError(err) || signal?.aborted) {
+				if (signal?.aborted) {
 					return { content: [{ type: "text", text: "Fetch cancelled." }], details: { url: params.url, aborted: true } };
 				}
 				const msg = err instanceof Error ? err.message : String(err);
@@ -714,14 +775,13 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
-			const details = result.details as { title?: string; chars?: number; error?: string; pattern?: string; aborted?: boolean; phase?: string; truncated?: boolean; fullOutputPath?: string };
+			const details = result.details as { title?: string; chars?: number; pattern?: string; aborted?: boolean; phase?: string; truncated?: boolean; fullOutputPath?: string };
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "fetching"), 0, 0);
 			if (context.isError) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web fetch failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
 			if (details?.aborted) return new Text(theme.fg("muted", "cancelled"), 0, 0);
-			if (details?.error) return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
 			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars${details?.truncated ? ", truncated" : ""})`);
 			if (details?.pattern) summary += theme.fg("accent", ` [find: "${details.pattern}"]`);
 			if (expanded && details?.fullOutputPath) summary += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;

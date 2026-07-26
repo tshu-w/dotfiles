@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
-const { readFileSync, realpathSync, rmSync } = require("node:fs");
+const { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 
 const MAX_BYTES = 50 * 1024;
@@ -32,6 +33,32 @@ async function main() {
 		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES);
 		assert.ok(result.text.split("\n").length <= MAX_LINES);
 		assert.equal(readFileSync(result.fullOutputPath, "utf8"), input);
+		rmSync(dirname(result.fullOutputPath), { recursive: true });
+	}
+
+	const originalTmpdir = process.env.TMPDIR;
+	const longTmpRoot = mkdtempSync(join(tmpdir(), "pi-web-long-tmp-"));
+	const longTmpdir = join(longTmpRoot, ...Array.from({ length: 8 }, (_, i) => `${i}-${"t".repeat(90)}`));
+	mkdirSync(longTmpdir, { recursive: true });
+	try {
+		process.env.TMPDIR = longTmpdir;
+		const result = await boundToolOutput("x".repeat(MAX_BYTES + 1000));
+		assert.ok(Buffer.byteLength(result.fullOutputPath) > 512, "regression requires a long temp path");
+		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES, "long temp path stays within byte limit");
+		assert.ok(result.text.split("\n").length <= MAX_LINES, "long temp path stays within line limit");
+	} finally {
+		if (originalTmpdir === undefined) delete process.env.TMPDIR;
+		else process.env.TMPDIR = originalTmpdir;
+		rmSync(longTmpRoot, { recursive: true });
+	}
+
+	// Single huge lines must fill the byte budget with a partial line rather
+	// than truncating to (nearly) nothing, and never split a code point.
+	for (const input of ["x".repeat(MAX_BYTES + 1000), "中".repeat(MAX_BYTES), "😀".repeat(20000)]) {
+		const result = await boundToolOutput(input);
+		assert.ok(Buffer.byteLength(result.text) > MAX_BYTES - 2048, `single-line preview keeps the budget, got ${Buffer.byteLength(result.text)}`);
+		assert.ok(!result.text.includes("\uFFFD"), "no replacement characters");
+		assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(result.text), "no lone surrogates");
 		rmSync(dirname(result.fullOutputPath), { recursive: true });
 	}
 
@@ -106,7 +133,7 @@ async function main() {
 		}
 	}
 
-	console.log("pi-web: 4 output-bound cases, 2 integration cases, and 2 error cases passed");
+	console.log("pi-web: 8 output-bound cases, 2 integration cases, and 2 error cases passed");
 }
 
 main().catch((error) => {
