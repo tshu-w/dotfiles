@@ -44,7 +44,19 @@ async function main() {
   );
   assert.deepEqual(blocked, { block: true, reason: "Sensitive file (.netrc)" });
 
-  console.log("secret-guard integration: 4 cases passed");
+  for (const command of [
+    "base64 ~/.ssh/'id_rsa'",
+    String.raw`base64 ~/.ssh/id\_rsa`,
+    "base64 ~/.ssh/\\\nid_rsa",
+  ]) {
+    const shellBlocked = await toolCall(
+      { toolName: "bash", input: { command } },
+      { hasUI: false, ui: { notify() {} } },
+    );
+    assert.deepEqual(shellBlocked, { block: true, reason: "Sensitive path in command (.ssh/id_)" });
+  }
+
+  console.log("secret-guard integration: 7 cases passed");
 }
 
 main().catch((error) => {

@@ -2,8 +2,8 @@
  * Secret Guard — practical guard against LLM accessing sensitive files and leaking secrets.
  *
  * Three layers, all via events (no registerTool, no conflict with SSH/Sandbox):
- *   1. tool_call: block read/write/edit/bash on credential files
- *   2. tool_result: always scrub high-confidence secret shapes
+ *   1. tool_call: block read/write/edit and normalized shell references to credential files
+ *   2. tool_result: always scrub high-confidence secret shapes, including scoped OpenAI tokens
  *   3. tool_result: scrub env assignments and generic secret fields only for config-like file reads
  *
  * Scope: LLM tool calls only. User `!` commands are not intercepted.
@@ -32,8 +32,13 @@ const BLOCKED_PATHS = [
   ".git-credentials",
 ];
 
-function matchedPath(p: string) {
-  const norm = p.toLowerCase().replace(/\\/g, "/");
+function matchedPath(p: string, shellCommand = false) {
+  let norm = p.toLowerCase();
+  if (shellCommand) {
+    norm = norm.replace(/\\\r?\n/g, "").replace(/\\(.)/gs, "$1").replace(/\$?['"]/g, "");
+  } else {
+    norm = norm.replace(/\\/g, "/");
+  }
   return BLOCKED_PATHS.find((pat) => norm.includes(pat));
 }
 
@@ -51,7 +56,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (isToolCallEventType("bash", event)) {
-      const hit = matchedPath(event.input.command);
+      const hit = matchedPath(event.input.command, true);
       if (hit) {
         if (ctx.hasUI) ctx.ui.notify("Blocked bash: sensitive file reference", "warning");
         return { block: true, reason: `Sensitive path in command (${hit})` };

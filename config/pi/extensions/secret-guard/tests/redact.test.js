@@ -5,6 +5,8 @@ const envOptions = { envAssignments: true };
 const configOptions = { envAssignments: true, genericFields: true };
 
 const knownToken = "sk-" + "a".repeat(24);
+const projectToken = "sk-proj-" + "p_".repeat(16);
+const serviceAccountToken = "sk-svcacct-" + "s-".repeat(16);
 const bearerToken = "b".repeat(24);
 const privateKey = [
   "-----BEGIN " + "PRIVATE KEY-----",
@@ -17,6 +19,16 @@ const fixtures = [
   {
     name: "known token prefix is always redacted",
     actual: scrubOutput(`token=${knownToken}`),
+    expected: "token=[REDACTED]",
+  },
+  {
+    name: "project token is always redacted",
+    actual: scrubOutput(`OPENAI_API_KEY=${projectToken}`),
+    expected: "OPENAI_API_KEY=[REDACTED]",
+  },
+  {
+    name: "service account token is always redacted",
+    actual: scrubOutput(`token=${serviceAccountToken}`),
     expected: "token=[REDACTED]",
   },
   {

@@ -1,7 +1,7 @@
 import { basename, extname } from "node:path";
 
 const ENV_ASSIGNMENT_RE = /\b([A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_CREDENTIALS?)\s*=\s*)("[^"]*"|'[^']*'|[^\s\n#"']+)/g;
-const TOKEN_PREFIX_RE = /\b(sk-ant-api\d{2}-[\w-]{80,}|sk-ant-[\w-]{20,}|sk-[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9_]{22,}|ghp_[a-zA-Z0-9]{36,}|gho_[a-zA-Z0-9]{36,}|ghu_[a-zA-Z0-9]{36,}|ghs_[a-zA-Z0-9]{36,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|npm_[a-zA-Z0-9]{36,}|AIza[0-9A-Za-z_-]{35})\b/g;
+const TOKEN_PREFIX_RE = /\b(sk-ant-api\d{2}-[\w-]{80,}|sk-ant-[\w-]{20,}|sk-(?:proj|svcacct)-[a-zA-Z0-9_-]{20,}|sk-[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9_]{22,}|ghp_[a-zA-Z0-9]{36,}|gho_[a-zA-Z0-9]{36,}|ghu_[a-zA-Z0-9]{36,}|ghs_[a-zA-Z0-9]{36,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|npm_[a-zA-Z0-9]{36,}|AIza[0-9A-Za-z_-]{35})(?![\w-])/g;
 const BEARER_TOKEN_RE = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{20,})\b/gi;
 const PRIVATE_KEY_BLOCK_RE = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 const URL_CREDENTIALS_RE = /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]*):([^@\s/]+)@/gi;
