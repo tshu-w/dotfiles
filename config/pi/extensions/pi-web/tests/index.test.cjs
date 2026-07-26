@@ -4,8 +4,6 @@ const { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } = require("
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 
-const MAX_BYTES = 50 * 1024;
-const MAX_LINES = 2000;
 const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim())));
 const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-coding-agent");
 const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"));
@@ -20,6 +18,7 @@ async function main() {
 			typebox: `${PI_PACKAGE}/node_modules/typebox/build/index.mjs`,
 		},
 	});
+	const { DEFAULT_MAX_BYTES: MAX_BYTES, DEFAULT_MAX_LINES: MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
 	const module = await jiti.import("../index.ts");
 	const { boundToolOutput } = module;
 

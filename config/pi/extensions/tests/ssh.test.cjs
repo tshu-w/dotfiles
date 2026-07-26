@@ -51,6 +51,7 @@ setTimeout(() => process.exit(0), 5000);
 				"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 			},
 		});
+		const { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
 		const module = await jiti.import(join(EXTENSIONS_DIR, "ssh.ts"));
 		const tools = new Map();
 		const handlers = new Map();
@@ -76,8 +77,8 @@ setTimeout(() => process.exit(0), 5000);
 		await commands.get("ssh").handler(`fake-host:/${"x".repeat(60 * 1024)}`, ctx);
 		assert.ok(messages.length > 0);
 		const statusMessage = messages.at(-1).content;
-		assert.ok(Buffer.byteLength(statusMessage) <= 50 * 1024, "SSH status message stays within Pi's byte bound");
-		assert.ok(statusMessage.split("\n").length <= 2000, "SSH status message stays within Pi's line bound");
+		assert.ok(Buffer.byteLength(statusMessage) <= DEFAULT_MAX_BYTES, "SSH status message stays within Pi's byte bound");
+		assert.ok(statusMessage.split("\n").length <= DEFAULT_MAX_LINES, "SSH status message stays within Pi's line bound");
 		assert.match(statusMessage, /SSH status truncated/);
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
 
@@ -105,8 +106,8 @@ setTimeout(() => process.exit(0), 5000);
 			delete process.env.PI_SSH_SMOKE_MODE;
 			delete process.env.PI_SSH_SMOKE_LINES;
 			assert.ok(sshError instanceof Error);
-			assert.ok(Buffer.byteLength(sshError.message) <= 50 * 1024, "remote stderr error stays below Pi's byte bound");
-			assert.ok(sshError.message.split("\n").length <= 2000, "remote stderr error stays below Pi's line bound");
+			assert.ok(Buffer.byteLength(sshError.message) <= DEFAULT_MAX_BYTES, "remote stderr error stays below Pi's byte bound");
+			assert.ok(sshError.message.split("\n").length <= DEFAULT_MAX_LINES, "remote stderr error stays below Pi's line bound");
 			assert.match(sshError.message, /SSH error truncated: showing the last/);
 			if (!lineMode) assert.ok(sshError.message.includes("e".repeat(1000)), "single-line stderr keeps a useful tail preview");
 			const fullErrorPath = sshError.message.match(/Full error: (.+?\/output\.txt)\./)?.[1];
@@ -125,7 +126,7 @@ setTimeout(() => process.exit(0), 5000);
 		assert.ok(unsavedError instanceof Error);
 		assert.match(unsavedError.message, /Full error could not be saved to a temporary file/);
 		assert.match(unsavedError.message, /rerun the command only if safe/);
-		assert.ok(Buffer.byteLength(unsavedError.message) <= 50 * 1024);
+		assert.ok(Buffer.byteLength(unsavedError.message) <= DEFAULT_MAX_BYTES);
 
 		const bashOps = handlers.get("user_bash")().operations;
 		const timeoutStarted = Date.now();

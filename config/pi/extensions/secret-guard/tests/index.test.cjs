@@ -12,6 +12,7 @@ async function main() {
     interopDefault: true,
     alias: { "@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js` },
   });
+  const { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
   const extension = await jiti.import("../index.ts");
   const handlers = new Map();
   extension.default({ on(name, handler) { handlers.set(name, handler); } });
@@ -49,8 +50,8 @@ async function main() {
   ]) {
     const result = await toolResult({ toolName: "bash", input: { command: "test" }, content });
     const text = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-    assert.ok(Buffer.byteLength(text) <= 50 * 1024, "redacted result stays within Pi's byte bound");
-    assert.ok(text.split("\n").length <= 2000, "redacted result stays within Pi's line bound");
+    assert.ok(Buffer.byteLength(text) <= DEFAULT_MAX_BYTES, "redacted result stays within Pi's byte bound");
+    assert.ok(text.split("\n").length <= DEFAULT_MAX_LINES, "redacted result stays within Pi's line bound");
     assert.match(text, /Secret Guard redacted/);
     assert.doesNotMatch(text, /sk-proj-/);
   }
