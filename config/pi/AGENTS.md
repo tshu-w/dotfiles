@@ -16,6 +16,10 @@ Scope: `~/.config/pi` (`dotfiles/config/pi`).
 - Keep final model-visible tool results, errors, and `sendMessage` content within 50KB and 2000 lines, including truncation notices. Reuse Pi truncation utilities where suitable, preserve valid UTF-8, and best-effort save expensive or unsafe-to-retry full output. Native tool-result passthrough remains the source tool's responsibility and must not be truncated again.
 - Store only state, rendering, or follow-up metadata in tool-result `details`. Do not duplicate tool-call arguments, model-visible content, or payloads that can be read again by identifier.
 
+## Extension Isolation
+
+- Extensions are isolated from each other: never import local helper code across extensions. Reuse public package APIs, or keep a private copy of small helpers inside each extension.
+
 ## Safety
 
 Before hard-to-reverse operations, explain the risk and ask for confirmation:
