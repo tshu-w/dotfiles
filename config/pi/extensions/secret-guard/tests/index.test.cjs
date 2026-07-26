@@ -38,6 +38,23 @@ async function main() {
   });
   assert.equal(envResult.content[0].text, "OPENAI_API_KEY=[REDACTED]");
 
+  const token = "sk-" + "proj-" + "A".repeat(80);
+  for (const content of [
+    [{ type: "text", text: `${token}\n${"x".repeat(60 * 1024)}` }],
+    [{ type: "text", text: `${token}\n${Array.from({ length: 2100 }, (_, i) => `line ${i}`).join("\n")}` }],
+    [
+      { type: "text", text: `${token}\n${"a".repeat(30 * 1024)}` },
+      { type: "text", text: "b".repeat(30 * 1024) },
+    ],
+  ]) {
+    const result = await toolResult({ toolName: "bash", input: { command: "test" }, content });
+    const text = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+    assert.ok(Buffer.byteLength(text) <= 50 * 1024, "redacted result stays within Pi's byte bound");
+    assert.ok(text.split("\n").length <= 2000, "redacted result stays within Pi's line bound");
+    assert.match(text, /Secret Guard redacted/);
+    assert.doesNotMatch(text, /sk-proj-/);
+  }
+
   const blocked = await toolCall(
     { toolName: "read", input: { path: "/Users/example/.netrc" } },
     { hasUI: false, ui: { notify() {} } },
@@ -56,7 +73,7 @@ async function main() {
     assert.deepEqual(shellBlocked, { block: true, reason: "Sensitive path in command (.ssh/id_)" });
   }
 
-  console.log("secret-guard integration: 7 cases passed");
+  console.log("secret-guard integration: 10 cases passed");
 }
 
 main().catch((error) => {

@@ -10,7 +10,7 @@
  * This is a practical guard, not a complete DLP solution.
  */
 
-import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, isToolCallEventType, truncateHead } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isConfigLikePath, scrubOutput } from "./redact.js";
 
@@ -31,6 +31,25 @@ const BLOCKED_PATHS = [
   ".config/git/credentials",
   ".git-credentials",
 ];
+
+function utf8Prefix(value: string, maxBytes: number): string {
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) return value;
+  let end = maxBytes;
+  while (end > 0 && (buffer[end] & 0b1100_0000) === 0b1000_0000) end--;
+  return buffer.subarray(0, end).toString("utf8");
+}
+
+function boundRedactedText(value: string): string {
+  const notice = `\n${REDACTION_NOTICE}`;
+  const full = truncateHead(value + notice, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
+  if (!full.truncated) return value;
+
+  const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(notice);
+  const preview = truncateHead(value, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
+  const content = preview.content || utf8Prefix(value.split("\n")[0] ?? "", budget);
+  return content;
+}
 
 function matchedPath(p: string, shellCommand = false) {
   let norm = p.toLowerCase();
@@ -84,7 +103,21 @@ export default function (pi: ExtensionAPI) {
     });
 
     if (changed) {
-      return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };
+      const text = content
+        .map((part) => part.type === "text" ? part.text : "")
+        .filter(Boolean)
+        .join("\n");
+      const completeText = `${text}\n${REDACTION_NOTICE}`;
+      const complete = truncateHead(completeText, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
+      if (!complete.truncated) {
+        return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };
+      }
+
+      const bounded = boundRedactedText(text);
+      const result = content.filter((part) => part.type !== "text") as typeof content;
+      if (bounded) result.unshift({ type: "text" as const, text: bounded });
+      result.push({ type: "text" as const, text: REDACTION_NOTICE });
+      return { content: result };
     }
   });
 }
