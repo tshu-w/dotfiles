@@ -54,7 +54,9 @@ function splitShellSegments(input: string): string[] {
       continue;
     }
     if (ch === ";") { flush(); continue; }
-    if ((ch === "&" || ch === "|") && input[i + 1] === ch) { flush(); i++; continue; }
+    // Single | and & (pipe, background) separate commands too — a guarded
+    // command must not slip through inside a pipeline.
+    if (ch === "&" || ch === "|") { flush(); if (input[i + 1] === ch) i++; continue; }
     buf += ch;
   }
   flush();
@@ -82,13 +84,6 @@ function splitShellWords(segment: string): string[] {
 
 function isEnvAssignment(token: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
-}
-
-function getCommand(segment: string): string | undefined {
-  const words = splitShellWords(segment);
-  let i = 0;
-  while (i < words.length && isEnvAssignment(words[i])) i++;
-  return i < words.length ? words[i].toLowerCase() : undefined;
 }
 
 function getInvocation(segment: string): { cmd: string; args: string[] } | undefined {
@@ -168,8 +163,9 @@ const gitRepoCache = new Map<string, boolean>();
 
 function walkUpFor(cwd: string, marker: string, cache: Map<string, boolean>): boolean {
   const start = resolve(cwd);
-  const cached = cache.get(start);
-  if (cached !== undefined) return cached;
+  // Only positive results are cached: a repo can be initialized mid-session
+  // (e.g. `jj git init --colocate`), and existsSync walks are cheap.
+  if (cache.get(start)) return true;
   let dir = start;
   while (true) {
     if (existsSync(`${dir}/${marker}`)) { cache.set(start, true); return true; }
@@ -177,7 +173,6 @@ function walkUpFor(cwd: string, marker: string, cache: Map<string, boolean>): bo
     if (parent === dir) break;
     dir = parent;
   }
-  cache.set(start, false);
   return false;
 }
 
@@ -189,7 +184,7 @@ function colocatePrelude(cwd: string): string {
 }
 
 function invokesGit(command: string): boolean {
-  return splitShellSegments(command).some((seg) => getCommand(seg) === "git");
+  return splitShellSegments(command).some((seg) => getInvocation(seg)?.cmd === "git");
 }
 
 export function registerJjGuard(pi: ExtensionAPI): void {

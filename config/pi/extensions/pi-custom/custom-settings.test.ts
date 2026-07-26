@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  acquireSettingsLock,
   createCustomPreferences,
   DEFAULT_CUSTOM_SETTINGS,
   parseGlobalSettings,
@@ -119,6 +120,75 @@ test("saving one global field preserves other settings and foreign keys", async 
       extensions: ["a.ts"],
       "pi-custom": { fast: true, codexCompaction: true, transcriptOptimization: true },
     });
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("global saves honor Pi core's settings lock", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-custom-settings-lock-"));
+  const path = join(directory, "settings.json");
+  const original = JSON.stringify({ "pi-custom": DEFAULT_CUSTOM_SETTINGS });
+  try {
+    writeFileSync(path, original);
+    mkdirSync(`${path}.lock`);
+    const preferences = createCustomPreferences({
+      path,
+      appendSession: () => {},
+      session: { fast: true },
+    });
+
+    assert.throws(() => preferences.saveGlobal("fast"), /EEXIST|lock/i);
+    assert.equal(readFileSync(path, "utf8"), original);
+    assert.deepEqual(preferences.get().fast, { value: true, scope: "session" });
+  } finally {
+    try { rmdirSync(`${path}.lock`); } catch {}
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("a stale settings lock is atomically taken over", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-custom-settings-stale-"));
+  const path = join(directory, "settings.json");
+  try {
+    writeFileSync(path, JSON.stringify({ "pi-custom": DEFAULT_CUSTOM_SETTINGS }));
+    mkdirSync(`${path}.lock`);
+    const past = new Date(Date.now() - 60_000);
+    utimesSync(`${path}.lock`, past, past);
+
+    const preferences = createCustomPreferences({
+      path,
+      appendSession: () => {},
+      session: { fast: true },
+    });
+    preferences.saveGlobal("fast");
+
+    assert.equal(readGlobalSettings(path).fast, true);
+    assert.throws(() => rmdirSync(`${path}.lock`), /ENOENT/, "takeover releases its own lock");
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("release never removes a successor generation's lock", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-custom-settings-fence-"));
+  const path = join(directory, "settings.json");
+  const lockPath = `${path}.lock`;
+  try {
+    const release = acquireSettingsLock(path);
+    // Simulate a stale takeover while this owner is suspended: the original
+    // directory is renamed away and a successor creates a fresh lock.
+    renameSync(lockPath, `${lockPath}.taken`);
+    rmdirSync(`${lockPath}.taken`);
+    mkdirSync(lockPath);
+
+    release();
+    assert.ok(existsSync(lockPath), "successor lock must survive the old owner's release");
+
+    rmdirSync(lockPath);
+    const secondRelease = acquireSettingsLock(path);
+    secondRelease();
+    assert.ok(!existsSync(lockPath), "normal release removes its own lock");
   } finally {
     await rm(directory, { recursive: true });
   }

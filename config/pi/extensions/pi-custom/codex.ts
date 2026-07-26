@@ -137,6 +137,7 @@ function toResponseItems(
   tools: ToolInfo[],
 ): ResponseItem[] {
   const aiTools = tools as unknown as Tool[];
+  const options = toolConversionOptions(model);
   return internals.convertResponsesMessages(
     model,
     { messages: convertToLlm(messages), tools: aiTools },
@@ -145,9 +146,9 @@ function toResponseItems(
       includeSystemPrompt: false,
       grammarToolInputProperties: internals.createGrammarToolInputProperties(
         aiTools,
-        ((model.compat ?? {}) as CodexCompat).supportsOpenAIGrammarTools ?? false,
+        options.supportsOpenAIGrammarTools,
       ),
-      toolOptions: toolConversionOptions(model),
+      toolOptions: options,
     },
   ) as unknown as ResponseItem[];
 }
@@ -440,20 +441,20 @@ export async function registerCodex(
   let warnedReplayFailure = false;
 
   const isActive = () => desired && isCodexModel(model);
-  const syncStatus = (target = ui) => {
-    target?.setStatus?.(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
+  const syncStatus = () => {
+    ui?.setStatus?.(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
     runtime.activeTui?.requestRender();
   };
-  const setDesired = (value: boolean, target = ui) => {
+  const setDesired = (value: boolean) => {
     desired = value;
-    syncStatus(target);
+    syncStatus();
   };
 
   pi.on("session_start", (_event, ctx) => {
     ui = ctx.ui;
     model = ctx.model;
     warnedReplayFailure = false;
-    syncStatus(ctx.ui);
+    syncStatus();
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
@@ -464,7 +465,7 @@ export async function registerCodex(
   pi.on("model_select", (event, ctx) => {
     ui = ctx.ui;
     model = event.model;
-    syncStatus(ctx.ui);
+    syncStatus();
   });
 
   pi.on("before_provider_request", (event, ctx) => {
@@ -510,6 +511,23 @@ export async function registerCodex(
     const sessionId = ctx.sessionManager.getSessionId();
     const signal = AbortSignal.any([event.signal, AbortSignal.timeout(REMOTE_COMPACTION_TIMEOUT_MS)]);
 
+    // Built before starting any promise: a synchronous throw here (e.g. a
+    // non-JWT token in extractAccountId) must not orphan an already-started
+    // compact() whose later rejection would be unhandled.
+    const remoteRequest = {
+      url: resolveCodexUrl(compactionModel.baseUrl),
+      headers: buildCompactionHeaders(compactionModel, auth.apiKey, auth.headers, sessionId),
+      body: buildCompactionBody(internals, {
+        model: compactionModel,
+        input,
+        instructions: ctx.getSystemPrompt(),
+        tools,
+        thinkingLevel: pi.getThinkingLevel(),
+        sessionId,
+      }),
+      signal,
+    };
+
     const [local, remote] = await Promise.allSettled([
       compact(
         event.preparation,
@@ -522,19 +540,7 @@ export async function registerCodex(
         undefined,
         auth.env,
       ),
-      requestRemoteCompaction({
-        url: resolveCodexUrl(compactionModel.baseUrl),
-        headers: buildCompactionHeaders(compactionModel, auth.apiKey, auth.headers, sessionId),
-        body: buildCompactionBody(internals, {
-          model: compactionModel,
-          input,
-          instructions: ctx.getSystemPrompt(),
-          tools,
-          thinkingLevel: pi.getThinkingLevel(),
-          sessionId,
-        }),
-        signal,
-      }),
+      requestRemoteCompaction(remoteRequest),
     ]);
 
     if (remote.status !== "fulfilled") {

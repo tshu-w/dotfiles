@@ -16,7 +16,7 @@ import {
 import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -172,20 +172,33 @@ function writePackageUpdateState(path: string, state: PackageUpdateState): void 
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
 }
 
-function acquirePackageUpdateLock(path: string): boolean {
+function acquirePackageUpdateLock(path: string): string | undefined {
+  const token = `${process.pid}:${Date.now()}:${Math.random()}`;
   try {
-    writeFileSync(path, `${process.pid}\n`, { flag: "wx" });
-    return true;
+    writeFileSync(path, `${token}\n`, { flag: "wx" });
+    return token;
   } catch {
     try {
-      if (Date.now() - statSync(path).mtimeMs <= PACKAGE_UPDATE_STALE_LOCK_MS) return false;
-      rmSync(path, { force: true });
-      writeFileSync(path, `${process.pid}\n`, { flag: "wx" });
-      return true;
+      if (Date.now() - statSync(path).mtimeMs <= PACKAGE_UPDATE_STALE_LOCK_MS) return undefined;
+      // Atomic takeover: only one process can rename the stale lock away, so
+      // a slower competitor cannot delete the winner's fresh lock.
+      const claimed = `${path}.${process.pid}.stale`;
+      renameSync(path, claimed);
+      rmSync(claimed, { force: true });
+      writeFileSync(path, `${token}\n`, { flag: "wx" });
+      return token;
     } catch {
-      return false;
+      return undefined;
     }
   }
+}
+
+function releasePackageUpdateLock(path: string, token: string): void {
+  try {
+    // A long-running updater may have lost a stale-lock takeover race. Never
+    // remove the successor generation's lock in its late completion path.
+    if (readFileSync(path, "utf8").trim() === token) rmSync(path, { force: true });
+  } catch { /* stale lock expires */ }
 }
 
 function truncateLog(text: string): string {
@@ -281,9 +294,15 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
     const state = readPackageUpdateState(statePath);
     const now = Date.now();
     if (state.lastAttempt && now - state.lastAttempt < PACKAGE_UPDATE_INTERVAL_MS) return;
-    if (!acquirePackageUpdateLock(lockPath)) return;
+    const lockToken = acquirePackageUpdateLock(lockPath);
+    if (!lockToken) return;
 
-    writePackageUpdateState(statePath, { ...state, lastAttempt: now });
+    try {
+      writePackageUpdateState(statePath, { ...state, lastAttempt: now });
+    } catch {
+      releasePackageUpdateLock(lockPath, lockToken);
+      return;
+    }
     // ctx becomes stale after session replacement/reload; UI updates are best-effort.
     const safeUi = (fn: () => void) => { try { fn(); } catch { /* stale ctx */ } };
     safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…"));
@@ -317,18 +336,23 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         lastExitCode: code,
         lastError: code === 0 ? undefined : `${failedCommand ?? "update"} failed: ${output.trim() || `exit ${code}`}`,
       });
-      rmSync(lockPath, { force: true });
+      releasePackageUpdateLock(lockPath, lockToken);
       const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (ext skipped: dirty)" : "pkg updated";
       safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText));
       setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     })().catch((error: unknown) => {
-      writePackageUpdateState(statePath, {
-        ...readPackageUpdateState(statePath),
-        lastExitCode: -1,
-        lastError: error instanceof Error ? error.message : String(error),
-      });
-      rmSync(lockPath, { force: true });
+      // Best-effort bookkeeping: a throw here would itself become an
+      // unhandled rejection.
+      try {
+        writePackageUpdateState(statePath, {
+          ...readPackageUpdateState(statePath),
+          lastExitCode: -1,
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      } catch { /* state file is advisory */ }
+      releasePackageUpdateLock(lockPath, lockToken);
       safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
+      setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     });
   });
 }
@@ -476,7 +500,9 @@ function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
 
 const CUSTOM_SETTINGS_PATH = join(getAgentDir(), "settings.json");
 
-function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryControl {
+type TranscriptHistoryPanelControl = Pick<TranscriptHistoryControl, "getStatus" | "showOlder" | "showRecent" | "showFull">;
+
+function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryPanelControl {
   let runtimeControl: TranscriptHistoryControl | undefined;
 
   pi.on("session_start", (_event, ctx) => {
@@ -502,13 +528,6 @@ function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryControl {
     showOlder: () => runtimeControl?.showOlder(),
     showRecent: () => runtimeControl?.showRecent(),
     showFull: () => runtimeControl?.showFull(),
-    omitCompactionOnNextRebuild: (entryId) => {
-      runtimeControl?.omitCompactionOnNextRebuild(entryId);
-    },
-    restore: () => {
-      runtimeControl?.restore();
-      runtimeControl = undefined;
-    },
   };
 }
 
@@ -668,7 +687,7 @@ function registerCustomSettings(
   pi: ExtensionAPI,
   preferences: CustomPreferences,
   codexControl: CodexControl,
-  transcriptHistory: TranscriptHistoryControl,
+  transcriptHistory: TranscriptHistoryPanelControl,
 ): void {
   const summary = () => {
     const settings = preferences.get();
@@ -743,9 +762,10 @@ function registerRestart(pi: ExtensionAPI): void {
       const args = [process.execPath, process.argv[1]];
       if (sessionFile) args.push("--session", sessionFile);
       if (continuation) args.push(continuation);
+      const execve = process.execve;
       process.once("exit", () => {
         try {
-          process.execve(process.execPath, args, process.env as Record<string, string>);
+          execve?.(process.execPath, args, process.env as Record<string, string>);
         } catch {
           // fall through to a normal exit
         }
