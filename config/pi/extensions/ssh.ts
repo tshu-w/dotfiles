@@ -5,6 +5,7 @@
  * - `--ssh user@host[:/remote/path]` startup flag
  * - `/ssh` slash command to view/switch/disable SSH mode
  * - argument completions from ~/.ssh/config
+ * - abort propagation and bounded SSH child termination
  * - subagent inheritance via environment variables
  */
 
@@ -12,7 +13,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type BashOperations,
   createBashTool,
@@ -33,6 +34,7 @@ const ENTRY_TYPE = "ssh-state";
 const SSH_OFF_TEXT = "SSH: off";
 const SSH_INACTIVE_ERROR = "SSH mode is not active";
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const TERMINATION_GRACE_MS = 250;
 
 type SshState = {
   remote: string;
@@ -51,18 +53,10 @@ type PersistedSshState =
       enabled: false;
     };
 
-type StatusUI = {
-  setStatus: (key: string, text: string | undefined) => void;
-  theme: { fg: (color: string, text: string) => string };
-};
+type StatusUI = Pick<ExtensionContext["ui"], "setStatus" | "theme">;
+type NotifyUI = StatusUI & Pick<ExtensionContext["ui"], "notify">;
 
-type NotifyUI = StatusUI & {
-  notify: (text: string, level?: "info" | "warning" | "error") => void;
-};
-
-type StatusContext = {
-  cwd: string;
-  hasUI: boolean;
+type StatusContext = Pick<ExtensionContext, "cwd" | "hasUI"> & {
   ui: StatusUI;
 };
 
@@ -82,22 +76,86 @@ type SessionRestoreContext = StatusContext & {
   };
 };
 
-function sshExec(remote: string, command: string): Promise<Buffer> {
+// Quote for the remote POSIX shell. JSON.stringify double-quoting is not
+// enough: $, backticks, and ! still expand inside double quotes.
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function runSshProcess(
+  remote: string,
+  command: string,
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    timeoutError?: Error;
+    onStdout?: (data: Buffer) => void;
+    onStderr?: (data: Buffer) => void;
+  },
+): Promise<number | null> {
+  if (options.signal?.aborted) return Promise.reject(new Error("aborted"));
+
   return new Promise((resolve, reject) => {
     const child = spawn("ssh", [remote, command], { stdio: ["ignore", "pipe", "pipe"] });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    let settled = false;
+    let stopError: Error | undefined;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
 
-    child.stdout.on("data", (data) => stdoutChunks.push(data));
-    child.stderr.on("data", (data) => stderrChunks.push(data));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`SSH failed (${code}): ${Buffer.concat(stderrChunks).toString()}`));
-        return;
-      }
-      resolve(Buffer.concat(stdoutChunks));
-    });
+    const cleanup = () => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
+      options.signal?.removeEventListener("abort", onAbort);
+    };
+    const settle = (error: Error | undefined, code?: number | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(code ?? null);
+    };
+    const stop = (error: Error) => {
+      if (settled || stopError) return;
+      stopError = error;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        // Do not depend on a close event after escalation: cancellation and
+        // timeout must settle within the grace period even for a stuck child.
+        settle(stopError);
+      }, TERMINATION_GRACE_MS);
+    };
+    const onAbort = () => stop(new Error("aborted"));
+
+    child.stdout.on("data", options.onStdout ?? (() => {}));
+    child.stderr.on("data", options.onStderr ?? (() => {}));
+    child.on("error", (error) => settle(stopError ?? error));
+    child.on("close", (code) => settle(stopError, code));
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+
+    if (options.timeoutMs && options.timeoutMs > 0) {
+      timeoutTimer = setTimeout(
+        () => stop(options.timeoutError ?? new Error(`SSH timed out after ${options.timeoutMs}ms`)),
+        options.timeoutMs,
+      );
+    }
+  });
+}
+
+function sshExec(remote: string, command: string, signal?: AbortSignal, timeoutMs?: number): Promise<Buffer> {
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  return runSshProcess(remote, command, {
+    signal,
+    timeoutMs,
+    onStdout: (data) => stdoutChunks.push(data),
+    onStderr: (data) => stderrChunks.push(data),
+  }).then((code) => {
+    if (code !== 0) {
+      throw new Error(`SSH failed (${code}): ${Buffer.concat(stderrChunks).toString()}`);
+    }
+    return Buffer.concat(stdoutChunks);
   });
 }
 
@@ -121,51 +179,53 @@ function requireSshState(getSsh: () => SshState | null): SshState {
   return ssh;
 }
 
-function createRemoteReadOps(getSsh: () => SshState | null): ReadOperations {
+function createRemoteReadOps(getSsh: () => SshState | null, signal?: AbortSignal): ReadOperations {
   return {
     readFile: async (filePath) => {
       const ssh = requireSshState(getSsh);
-      return sshExec(ssh.remote, `cat ${JSON.stringify(filePath)}`);
+      return sshExec(ssh.remote, `cat ${shellQuote(filePath)}`, signal);
     },
     access: async (filePath) => {
       const ssh = requireSshState(getSsh);
-      await sshExec(ssh.remote, `test -r ${JSON.stringify(filePath)}`);
+      await sshExec(ssh.remote, `test -r ${shellQuote(filePath)}`, signal);
     },
     detectImageMimeType: async (filePath) => {
       const ssh = getSsh();
       if (!ssh) return null;
 
       try {
-        const result = await sshExec(ssh.remote, `file --mime-type -b ${JSON.stringify(filePath)}`);
+        const result = await sshExec(ssh.remote, `file --mime-type -b ${shellQuote(filePath)}`, signal);
         const mimeType = result.toString().trim();
         return IMAGE_MIME_TYPES.includes(mimeType) ? mimeType : null;
-      } catch {
+      } catch (error) {
+        if (signal?.aborted) throw error;
         return null;
       }
     },
   };
 }
 
-function createRemoteWriteOps(getSsh: () => SshState | null): WriteOperations {
+function createRemoteWriteOps(getSsh: () => SshState | null, signal?: AbortSignal): WriteOperations {
   return {
     writeFile: async (filePath, content) => {
       const ssh = requireSshState(getSsh);
       const base64 = Buffer.from(content).toString("base64");
       await sshExec(
         ssh.remote,
-        `echo ${JSON.stringify(base64)} | base64 -d > ${JSON.stringify(filePath)}`,
+        `echo ${shellQuote(base64)} | base64 -d > ${shellQuote(filePath)}`,
+        signal,
       );
     },
     mkdir: async (dirPath) => {
       const ssh = requireSshState(getSsh);
-      await sshExec(ssh.remote, `mkdir -p ${JSON.stringify(dirPath)}`);
+      await sshExec(ssh.remote, `mkdir -p ${shellQuote(dirPath)}`, signal);
     },
   };
 }
 
-function createRemoteEditOps(getSsh: () => SshState | null): EditOperations {
-  const readOps = createRemoteReadOps(getSsh);
-  const writeOps = createRemoteWriteOps(getSsh);
+function createRemoteEditOps(getSsh: () => SshState | null, signal?: AbortSignal): EditOperations {
+  const readOps = createRemoteReadOps(getSsh, signal);
+  const writeOps = createRemoteWriteOps(getSsh, signal);
 
   return {
     readFile: readOps.readFile,
@@ -176,46 +236,19 @@ function createRemoteEditOps(getSsh: () => SshState | null): EditOperations {
 
 function createRemoteBashOps(getSsh: () => SshState | null, { mapLocalCwd = false } = {}): BashOperations {
   return {
-    exec: (command, cwd, { onData, signal, timeout }) =>
-      new Promise((resolve, reject) => {
-        let ssh: SshState;
-        try {
-          ssh = requireSshState(getSsh);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-
-        const remoteCwd = mapLocalCwd ? mapCwdToRemote(cwd, ssh) : cwd;
-        const remoteCommand = `cd ${JSON.stringify(remoteCwd)} && ${command}`;
-        const child = spawn("ssh", [ssh.remote, remoteCommand], { stdio: ["ignore", "pipe", "pipe"] });
-        let timedOut = false;
-        const timer = timeout
-          ? setTimeout(() => {
-              timedOut = true;
-              child.kill();
-            }, timeout * 1000)
-          : undefined;
-
-        child.stdout.on("data", onData);
-        child.stderr.on("data", onData);
-        child.on("error", (error) => {
-          if (timer) clearTimeout(timer);
-          reject(error);
-        });
-
-        const onAbort = () => child.kill();
-        signal?.addEventListener("abort", onAbort, { once: true });
-
-        child.on("close", (code) => {
-          if (timer) clearTimeout(timer);
-          signal?.removeEventListener("abort", onAbort);
-
-          if (signal?.aborted) reject(new Error("aborted"));
-          else if (timedOut) reject(new Error(`timeout:${timeout}`));
-          else resolve({ exitCode: code });
-        });
-      }),
+    exec: async (command, cwd, { onData, signal, timeout }) => {
+      const ssh = requireSshState(getSsh);
+      const remoteCwd = mapLocalCwd ? mapCwdToRemote(cwd, ssh) : cwd;
+      const remoteCommand = `cd ${shellQuote(remoteCwd)} && ${command}`;
+      const exitCode = await runSshProcess(ssh.remote, remoteCommand, {
+        signal,
+        timeoutMs: timeout ? timeout * 1000 : undefined,
+        timeoutError: new Error(`timeout:${timeout}`),
+        onStdout: onData,
+        onStderr: onData,
+      });
+      return { exitCode };
+    },
   };
 }
 
@@ -236,7 +269,8 @@ function parseSshTarget(target: string): { remote: string; remotePath?: string }
 
 async function resolveSshTarget(target: string, localRootCwd: string): Promise<SshState> {
   const { remote, remotePath } = parseSshTarget(target);
-  const remoteRootCwd = remotePath ? remotePath : (await sshExec(remote, "pwd")).toString().trim();
+  // Bounded probe: an unreachable host must not hang /ssh or session_start.
+  const remoteRootCwd = remotePath ? remotePath : (await sshExec(remote, "pwd", undefined, 15_000)).toString().trim();
 
   return {
     remote,
@@ -437,7 +471,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh) }).execute(id, params, signal, onUpdate);
+      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
     },
   });
 
@@ -447,7 +481,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh) }).execute(id, params, signal, onUpdate);
+      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
     },
   });
 
@@ -457,7 +491,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh) }).execute(id, params, signal, onUpdate);
+      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
     },
   });
 
