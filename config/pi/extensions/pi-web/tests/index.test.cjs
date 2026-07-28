@@ -8,6 +8,10 @@ const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { e
 const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-coding-agent");
 const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"));
 
+function spillPathOf(text) {
+	return text.match(/Full output saved to: (.+?\/output\.txt)\]/)?.[1];
+}
+
 async function main() {
 	const jiti = createJiti(__filename, {
 		interopDefault: true,
@@ -41,8 +45,8 @@ async function main() {
 		const result = await boundToolOutput("x".repeat(MAX_BYTES + 1000));
 		assert.equal(result.truncated, true);
 		assert.equal(result.fullOutputPath, undefined);
-		assert.match(result.text, /Full output could not be saved to a temporary file/);
-		assert.match(result.text, /Rerun or narrow the request/);
+		assert.match(result.text, /Full output could not be saved/);
+		assert.doesNotMatch(result.text, /temporary file|Rerun or narrow/);
 		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES);
 	} finally {
 		if (originalTmpdir === undefined) delete process.env.TMPDIR;
@@ -81,6 +85,35 @@ async function main() {
 	const search = tools.get("web_search");
 	const fetchTool = tools.get("web_fetch");
 	assert.ok(search && fetchTool);
+	assert.equal(search.parameters.additionalProperties, false);
+	assert.deepEqual(
+		{
+			query: { type: search.parameters.properties.query.type, minLength: search.parameters.properties.query.minLength, pattern: search.parameters.properties.query.pattern },
+			numResults: {
+				type: search.parameters.properties.numResults.type,
+				minimum: search.parameters.properties.numResults.minimum,
+				maximum: search.parameters.properties.numResults.maximum,
+			},
+		},
+		{ query: { type: "string", minLength: 1, pattern: "\\S" }, numResults: { type: "integer", minimum: 1, maximum: 10 } },
+	);
+	assert.equal(fetchTool.parameters.additionalProperties, false);
+	assert.deepEqual(
+		{
+			url: { type: fetchTool.parameters.properties.url.type, minLength: fetchTool.parameters.properties.url.minLength, pattern: fetchTool.parameters.properties.url.pattern },
+			maxChars: {
+				type: fetchTool.parameters.properties.maxChars.type,
+				minimum: fetchTool.parameters.properties.maxChars.minimum,
+				maximum: fetchTool.parameters.properties.maxChars.maximum,
+			},
+			pattern: { type: fetchTool.parameters.properties.pattern.type, minLength: fetchTool.parameters.properties.pattern.minLength, pattern: fetchTool.parameters.properties.pattern.pattern },
+		},
+		{
+			url: { type: "string", minLength: 1, pattern: "\\S" },
+			maxChars: { type: "integer", minimum: 1, maximum: 80_000 },
+			pattern: { type: "string", minLength: 1, pattern: "\\S" },
+		},
+	);
 	const callStyles = [];
 	const callTheme = {
 		bold: (text) => `<b>${text}</b>`,
@@ -117,26 +150,35 @@ async function main() {
 		: new Response("provider unavailable", { status: 503 });
 	try {
 		const longResult = await fetchTool.execute("test", { url: "https://example.com", maxChars: 80_000 }, undefined, undefined);
-		assert.deepEqual(Object.keys(longResult.details).sort(), ["chars", "fullOutputPath", "title", "truncated"]);
+		assert.deepEqual(Object.keys(longResult.details).sort(), ["chars", "title", "truncated"]);
 		assert.equal(longResult.details.truncated, true);
 		assert.ok(Buffer.byteLength(longResult.content[0].text) <= MAX_BYTES);
-		assert.equal(readFileSync(longResult.details.fullOutputPath, "utf8"), `# example.com\n\n${longPage}`);
-		rmSync(dirname(longResult.details.fullOutputPath), { recursive: true });
+		const fetchSpillPath = spillPathOf(longResult.content[0].text);
+		assert.ok(fetchSpillPath);
+		assert.equal(readFileSync(fetchSpillPath, "utf8"), `# example.com\n\n${longPage}`);
+		rmSync(dirname(fetchSpillPath), { recursive: true });
+		const patternResult = await fetchTool.execute("test", {
+			url: "https://example.com", maxChars: 80_000, pattern: "xxx",
+		}, undefined, undefined);
+		assert.match(patternResult.content[0].text, /^# example\.com\n\nFound 10 match\(es\) for "xxx":/);
 
 		delete process.env.EXA_API_KEY;
 		delete process.env.JINA_API_KEY;
 		process.env.TAVILY_API_KEY = "test-key";
-		const longAnswer = "y".repeat(80_000);
-		global.fetch = async () => new Response(JSON.stringify({
-			answer: longAnswer,
-			results: [{ title: "Example", url: "https://example.com", content: "snippet" }],
-		}), { status: 200, headers: { "content-type": "application/json" } });
-		const longSearchResult = await search.execute("test", { query: "test" }, undefined, undefined);
-		assert.deepEqual(Object.keys(longSearchResult.details).sort(), ["count", "fullOutputPath", "truncated"]);
-		assert.equal(longSearchResult.details.truncated, true);
-		assert.ok(Buffer.byteLength(longSearchResult.content[0].text) <= MAX_BYTES);
-		assert.equal(readFileSync(longSearchResult.details.fullOutputPath, "utf8"), `${longAnswer}\n\n---\n\nSources:\nsnippet\nSource: Example (https://example.com)`);
-		rmSync(dirname(longSearchResult.details.fullOutputPath), { recursive: true });
+		let tavilyRequest;
+		global.fetch = async (_url, init) => {
+			tavilyRequest = JSON.parse(init.body);
+			return new Response(JSON.stringify({
+				answer: "provider-generated answer must stay hidden",
+				results: [{ title: "Example", url: "https://example.com", content: "first\nsecond" }],
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+		const searchResult = await search.execute("test", { query: "test" }, undefined, undefined);
+		assert.equal(tavilyRequest.include_answer, false);
+		assert.deepEqual(searchResult.details, { count: 1, truncated: false });
+		assert.equal(searchResult.content[0].text,
+			"1. Example\n   URL: https://example.com\n   Snippet: first second");
+		assert.doesNotMatch(searchResult.content[0].text, /provider-generated answer/);
 
 		delete process.env.TAVILY_API_KEY;
 		global.fetch = async () => new Response("provider unavailable", { status: 503 });
@@ -157,7 +199,7 @@ async function main() {
 		assert.ok(oversizedSearchError instanceof Error);
 		assert.ok(Buffer.byteLength(oversizedSearchError.message) <= MAX_BYTES);
 		assert.ok(oversizedSearchError.message.split("\n").length <= MAX_LINES);
-		const errorOutputPath = oversizedSearchError.message.match(/Full output: (.+?\/output\.txt)\./)?.[1];
+		const errorOutputPath = spillPathOf(oversizedSearchError.message);
 		assert.ok(errorOutputPath, "oversized provider errors retain a full-output path");
 		rmSync(dirname(errorOutputPath), { recursive: true });
 
@@ -170,6 +212,21 @@ async function main() {
 		assert.ok(oversizedUrlError instanceof Error);
 		assert.ok(Buffer.byteLength(oversizedUrlError.message) <= MAX_BYTES, "web_fetch errors must not reflect the full URL");
 		assert.ok(oversizedUrlError.message.split("\n").length <= MAX_LINES);
+
+		process.env.TAVILY_API_KEY = "test-key";
+		global.fetch = async () => { throw new Error("aborted upstream"); };
+		const searchAbort = new AbortController();
+		searchAbort.abort();
+		await assert.rejects(
+			search.execute("test", { query: "test" }, searchAbort.signal, undefined),
+			/^Error: Search cancelled\.$/,
+		);
+		const fetchAbort = new AbortController();
+		fetchAbort.abort();
+		await assert.rejects(
+			fetchTool.execute("test", { url: "https://example.com" }, fetchAbort.signal, undefined),
+			/^Error: Fetch cancelled\.$/,
+		);
 	} finally {
 		global.fetch = originalFetch;
 		for (const [name, value] of Object.entries({ EXA_API_KEY: originalKeys.exa, JINA_API_KEY: originalKeys.jina, TAVILY_API_KEY: originalKeys.tavily })) {
@@ -178,7 +235,7 @@ async function main() {
 		}
 	}
 
-	console.log("pi-web: 8 output-bound cases, 2 integration cases, and 4 error cases passed");
+	console.log("pi-web: output bounds, schemas, provider normalization, cancellation, and errors passed");
 }
 
 main().catch((error) => {
