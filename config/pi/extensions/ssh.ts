@@ -5,8 +5,6 @@
  * - `--ssh user@host[:/remote/path]` startup flag
  * - `/ssh` slash command to view/switch/disable SSH mode
  * - argument completions from ~/.ssh/config
- * - abort propagation and bounded SSH child termination
- * - bounded remote errors with best-effort full stderr preservation
  * - subagent inheritance via environment variables
  */
 
