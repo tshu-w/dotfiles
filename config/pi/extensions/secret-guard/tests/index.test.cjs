@@ -52,7 +52,7 @@ async function main() {
     const text = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
     assert.ok(Buffer.byteLength(text) <= DEFAULT_MAX_BYTES, "redacted result stays within Pi's byte bound");
     assert.ok(text.split("\n").length <= DEFAULT_MAX_LINES, "redacted result stays within Pi's line bound");
-    assert.match(text, /Secret Guard redacted/);
+    assert.match(text, /Secret Guard redacted sensitive values and truncated this tool output/);
     assert.doesNotMatch(text, /sk-proj-/);
   }
 

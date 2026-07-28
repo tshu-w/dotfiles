@@ -1,13 +1,7 @@
 /**
- * Secret Guard — practical guard against LLM accessing sensitive files and leaking secrets.
+ * Secret Guard blocks model tool access to credential files and redacts secrets from tool output.
  *
- * Three layers, all via events (no registerTool, no conflict with SSH/Sandbox):
- *   1. tool_call: block read/write/edit and normalized shell references to credential files
- *   2. tool_result: always scrub high-confidence secret shapes, including scoped OpenAI tokens
- *   3. tool_result: scrub env assignments and generic secret fields only for config-like file reads
- *
- * Scope: LLM tool calls only. User `!` commands are not intercepted.
- * This is a practical guard, not a complete DLP solution.
+ * User `!` commands are not intercepted. This is a practical guard, not a complete DLP solution.
  */
 
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, isToolCallEventType, truncateHead } from "@earendil-works/pi-coding-agent";
@@ -38,17 +32,6 @@ function utf8Prefix(value: string, maxBytes: number): string {
   let end = maxBytes;
   while (end > 0 && (buffer[end] & 0b1100_0000) === 0b1000_0000) end--;
   return buffer.subarray(0, end).toString("utf8");
-}
-
-function boundRedactedText(value: string): string {
-  const notice = `\n${REDACTION_NOTICE}`;
-  const full = truncateHead(value + notice, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
-  if (!full.truncated) return value;
-
-  const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(notice);
-  const preview = truncateHead(value, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
-  const content = preview.content || utf8Prefix(value.split("\n")[0] ?? "", budget);
-  return content;
 }
 
 function matchedPath(p: string, shellCommand = false) {
@@ -113,10 +96,13 @@ export default function (pi: ExtensionAPI) {
         return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };
       }
 
-      const bounded = boundRedactedText(text);
+      const truncatedNotice = "[Secret Guard redacted sensitive values and truncated this tool output to fit the output limit. Do not copy [REDACTED] placeholders back into files.]";
+      const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(`\n${truncatedNotice}`);
+      const preview = truncateHead(text, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
+      const bounded = preview.content || utf8Prefix(text.split("\n")[0] ?? "", budget);
       const result = content.filter((part) => part.type !== "text") as typeof content;
       if (bounded) result.unshift({ type: "text" as const, text: bounded });
-      result.push({ type: "text" as const, text: REDACTION_NOTICE });
+      result.push({ type: "text" as const, text: truncatedNotice });
       return { content: result };
     }
   });
