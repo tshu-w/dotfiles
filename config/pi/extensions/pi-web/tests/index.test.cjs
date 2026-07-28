@@ -42,7 +42,7 @@ async function main() {
 		assert.equal(result.truncated, true);
 		assert.equal(result.fullOutputPath, undefined);
 		assert.match(result.text, /Full output could not be saved to a temporary file/);
-		assert.match(result.text, /rerun only if safe/);
+		assert.match(result.text, /Rerun or narrow the request/);
 		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES);
 	} finally {
 		if (originalTmpdir === undefined) delete process.env.TMPDIR;
@@ -86,8 +86,8 @@ async function main() {
 		bold: (text) => `<b>${text}</b>`,
 		fg: (color, text) => { callStyles.push([color, text]); return text; },
 	};
-	const searchArgs = { query: "Qwen release", numResults: 5, domainFilter: ["github.com"], recencyFilter: "month" };
-	const expectedSearch = '<b>web_search</b>(query="Qwen release", numResults=5, domainFilter=["github.com"], recencyFilter="month")';
+	const searchArgs = { query: "Qwen release", numResults: 5 };
+	const expectedSearch = '<b>web_search</b>(query="Qwen release", numResults=5)';
 	assert.deepEqual(search.renderCall(searchArgs, callTheme, { isPartial: true }).render(1000).map((line) => line.trimEnd()), [expectedSearch]);
 	assert.deepEqual(search.renderCall(searchArgs, callTheme, { isPartial: false }).render(1000).map((line) => line.trimEnd()), [expectedSearch, ""]);
 	const fetchArgs = { url: "https://example.com", maxChars: 80_000, pattern: "release notes" };

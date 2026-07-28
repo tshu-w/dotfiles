@@ -5,13 +5,12 @@
  * Fetch: Exa contents → direct HTTP → Jina Reader.
  *
  * Tools:
- *   web_search — search the web via Exa and return bounded sources + snippets
+ *   web_search — search the web via Exa and return sources + snippets
  *   web_fetch  — fetch readable text/markdown
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, truncateHead } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai/compat";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -38,7 +37,6 @@ interface SearchResult {
 	title: string;
 	url: string;
 	snippet: string;
-	publishedDate?: string;
 }
 
 interface SearchResponse {
@@ -86,13 +84,6 @@ const getExaKey = () => getKey("EXA_API_KEY", "exaApiKey");
 const getJinaKey = () => getKey("JINA_API_KEY", "jinaApiKey");
 const getTavilyKey = () => getKey("TAVILY_API_KEY", "tavilyApiKey");
 
-function splitDomainFilter(filter?: string[]): { include: string[]; exclude: string[] } {
-	return {
-		include: filter?.filter(d => !d.startsWith("-")).map(d => d.trim()).filter(Boolean) ?? [],
-		exclude: filter?.filter(d => d.startsWith("-")).map(d => d.slice(1).trim()).filter(Boolean) ?? [],
-	};
-}
-
 function formatSources(results: SearchResult[]): string {
 	return results
 		.filter(r => r.snippet)
@@ -136,22 +127,12 @@ function normalizeUrl(input: string): { url: string; titleFallback: string } {
 	};
 }
 
-function recencyToStartDate(filter: string): string | null {
-	const days: Record<string, number> = { day: 1, week: 7, month: 30, year: 365 };
-	const d = days[filter];
-	if (!d) return null;
-	return new Date(Date.now() - d * 86_400_000).toISOString();
-}
-
 function clampPositiveInt(value: unknown, fallback: number, max: number): number {
 	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
 	return Math.max(1, Math.min(Math.floor(value), max));
 }
 
-export async function boundToolOutput(
-	value: string,
-	saveFailureHint = "The web operation itself succeeded; rerun only if safe.",
-): Promise<{
+export async function boundToolOutput(value: string): Promise<{
 	text: string;
 	truncated: boolean;
 	bytes: number;
@@ -176,7 +157,7 @@ export async function boundToolOutput(
 		const summary = `\n\n[Output truncated: showing ${formatSize(previewBytes)} of ${formatSize(full.totalBytes)}` +
 			` (${full.totalLines} lines total).`;
 		if (!fullOutputPath) {
-			return `${summary} Full output could not be saved to a temporary file. ${saveFailureHint}]`;
+			return `${summary} Full output could not be saved to a temporary file. Rerun or narrow the request.]`;
 		}
 		return `${summary} Full output: ${fullOutputPath}. This is a temporary file;` +
 			" copy or move it if it should persist.]";
@@ -220,32 +201,22 @@ export async function boundToolOutput(
 
 async function boundWebError(prefix: string, error: unknown): Promise<Error> {
 	const message = error instanceof Error ? error.message : String(error);
-	const bounded = await boundToolOutput(
-		`${prefix}: ${message}`,
-		"The full error is unavailable; rerun only if safe.",
-	);
+	const bounded = await boundToolOutput(`${prefix}: ${message}`);
 	return new Error(bounded.text);
 }
 
 async function exaSearchDirect(
 	exaKey: string,
 	query: string,
-	opts: { numResults: number; domainFilter?: string[]; recencyFilter?: string },
+	numResults: number,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
-	const startDate = opts.recencyFilter ? recencyToStartDate(opts.recencyFilter) : null;
-	const { include: includeDomains, exclude: excludeDomains } = splitDomainFilter(opts.domainFilter);
-
 	const body: Record<string, unknown> = {
 		query,
 		type: "auto",
-		numResults: opts.numResults,
+		numResults,
 		contents: { text: { maxCharacters: 1500 }, highlights: true },
 	};
-	if (includeDomains?.length) body.includeDomains = includeDomains;
-	if (excludeDomains?.length) body.excludeDomains = excludeDomains;
-	if (startDate) body.startPublishedDate = startDate;
-
 	const res = await fetch(EXA_SEARCH_URL, {
 		method: "POST",
 		headers: { "x-api-key": exaKey, "Content-Type": "application/json" },
@@ -259,7 +230,7 @@ async function exaSearchDirect(
 	}
 
 	const data = await res.json() as {
-		results?: Array<{ title?: string; url?: string; text?: string; highlights?: string[]; publishedDate?: string }>;
+		results?: Array<{ title?: string; url?: string; text?: string; highlights?: string[] }>;
 	};
 
 	const results: SearchResult[] = [];
@@ -270,7 +241,7 @@ async function exaSearchDirect(
 		const snippet = highlights.length > 0
 			? sliceChars(highlights.join(" … "), 500)
 			: sliceChars(r.text ?? "", 500);
-		results.push({ title: r.title || r.url, url: r.url, snippet, publishedDate: r.publishedDate });
+		results.push({ title: r.title || r.url, url: r.url, snippet });
 	}
 
 	return { results, answer: formatSources(results) };
@@ -278,20 +249,9 @@ async function exaSearchDirect(
 
 async function exaSearchMcp(
 	query: string,
-	opts: { numResults: number; domainFilter?: string[]; recencyFilter?: string },
+	numResults: number,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
-	let enrichedQuery = query;
-	if (opts.domainFilter?.length) {
-		for (const d of opts.domainFilter) {
-			enrichedQuery += d.startsWith("-") ? ` -site:${d.slice(1)}` : ` site:${d}`;
-		}
-	}
-	if (opts.recencyFilter) {
-		const labels: Record<string, string> = { day: "past 24 hours", week: "past week", month: "past month", year: "past year" };
-		enrichedQuery += ` ${labels[opts.recencyFilter] ?? ""}`;
-	}
-
 	const res = await fetch(EXA_MCP_URL, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" },
@@ -299,7 +259,7 @@ async function exaSearchMcp(
 			jsonrpc: "2.0",
 			id: 1,
 			method: "tools/call",
-			params: { name: "web_search_exa", arguments: { query: enrichedQuery, numResults: opts.numResults, type: "auto" } },
+			params: { name: "web_search_exa", arguments: { query, numResults, type: "auto" } },
 		}),
 		signal: requestSignal(signal),
 	});
@@ -317,7 +277,7 @@ async function exaSearchMcp(
 async function jinaSearch(
 	jinaKey: string,
 	query: string,
-	opts: { numResults: number },
+	numResults: number,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
 	const res = await fetch(JINA_SEARCH_URL + encodeURIComponent(query), {
@@ -337,7 +297,7 @@ async function jinaSearch(
 
 	const results: SearchResult[] = [];
 
-	for (const r of (data.data ?? []).slice(0, opts.numResults)) {
+	for (const r of (data.data ?? []).slice(0, numResults)) {
 		if (!r.url) continue;
 		const snippet = sliceChars(r.description || r.content || "", 500);
 		results.push({ title: r.title || r.url, url: r.url, snippet });
@@ -349,24 +309,15 @@ async function jinaSearch(
 async function tavilySearch(
 	tavilyKey: string,
 	query: string,
-	opts: { numResults: number; domainFilter?: string[]; recencyFilter?: string },
+	numResults: number,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
-	const { include: includeDomains, exclude: excludeDomains } = splitDomainFilter(opts.domainFilter);
-
 	const body: Record<string, unknown> = {
 		query,
-		max_results: opts.numResults,
+		max_results: numResults,
 		include_answer: true,
 		search_depth: "basic",
 	};
-	if (includeDomains?.length) body.include_domains = includeDomains;
-	if (excludeDomains?.length) body.exclude_domains = excludeDomains;
-	if (opts.recencyFilter) {
-		const days: Record<string, string> = { day: "d", week: "w", month: "m", year: "y" };
-		body.time_range = days[opts.recencyFilter] ?? undefined;
-	}
-
 	const res = await fetch(TAVILY_SEARCH_URL, {
 		method: "POST",
 		headers: {
@@ -398,7 +349,7 @@ async function tavilySearch(
 
 async function searchWithFallback(
 	query: string,
-	opts: { numResults: number; domainFilter?: string[]; recencyFilter?: string },
+	numResults: number,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
 	const errors: string[] = [];
@@ -406,7 +357,7 @@ async function searchWithFallback(
 	// 1. Exa direct API
 	const exaKey = getExaKey();
 	if (exaKey) {
-		try { return await exaSearchDirect(exaKey, query, opts, signal); } catch (err) {
+		try { return await exaSearchDirect(exaKey, query, numResults, signal); } catch (err) {
 			if (signal?.aborted) throw err;
 			errors.push(`Exa: ${err instanceof Error ? err.message : err}`);
 		}
@@ -415,14 +366,14 @@ async function searchWithFallback(
 	// 2. Tavily
 	const tavilyKey = getTavilyKey();
 	if (tavilyKey) {
-		try { return await tavilySearch(tavilyKey, query, opts, signal); } catch (err) {
+		try { return await tavilySearch(tavilyKey, query, numResults, signal); } catch (err) {
 			if (signal?.aborted) throw err;
 			errors.push(`Tavily: ${err instanceof Error ? err.message : err}`);
 		}
 	}
 
 	// 3. Exa MCP (free, no key)
-	try { return await exaSearchMcp(query, opts, signal); } catch (err) {
+	try { return await exaSearchMcp(query, numResults, signal); } catch (err) {
 		if (signal?.aborted) throw err;
 		errors.push(`Exa MCP: ${err instanceof Error ? err.message : err}`);
 	}
@@ -430,7 +381,7 @@ async function searchWithFallback(
 	// 4. Jina Search
 	const jinaKey = getJinaKey();
 	if (jinaKey) {
-		try { return await jinaSearch(jinaKey, query, opts, signal); } catch (err) {
+		try { return await jinaSearch(jinaKey, query, numResults, signal); } catch (err) {
 			if (signal?.aborted) throw err;
 			errors.push(`Jina: ${err instanceof Error ? err.message : err}`);
 		}
@@ -655,17 +606,9 @@ function formatSearchResults(results: SearchResult[]): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	// Publish tool definitions to the in-process shared registry so cooperating
-	// extensions can dispatch these tools directly. Definitions must stay
-	// session-stateless: execute receives the dispatching session's ctx.
-	const sharedTools = ((globalThis as Record<symbol, unknown>)[Symbol.for("pi-agent-calculus:tool-registry")] ??= new Map()) as Map<string, unknown>;
-	const registerTool: typeof pi.registerTool = (definition) => {
-		sharedTools.set(definition.name, definition);
-		pi.registerTool(definition);
-	};
 	const searchToolName = "web_search";
 
-	registerTool({
+	pi.registerTool({
 		name: searchToolName,
 		label: "Web Search",
 		description: "Search the web and return relevant sources with titles, URLs, and snippets.",
@@ -677,17 +620,14 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
 			numResults: Type.Optional(Type.Number({ description: "Number of results (default: 5, max: 10)" })),
-			domainFilter: Type.Optional(Type.Array(Type.String(), { description: "Limit to domains (prefix with - to exclude)" })),
-			recencyFilter: Type.Optional(StringEnum(["day", "week", "month", "year"], { description: "Filter by recency" })),
 		}),
 
 		async execute(_id, params, signal, onUpdate) {
 			const numResults = clampPositiveInt(params.numResults, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-			const opts = { numResults, domainFilter: params.domainFilter, recencyFilter: params.recencyFilter };
 			onUpdate?.({ content: [{ type: "text", text: `Searching: ${params.query}` }], details: { phase: "searching" } });
 
 			try {
-				const response = await searchWithFallback(params.query, opts, signal);
+				const response = await searchWithFallback(params.query, numResults, signal);
 
 				if (response.results.length === 0) {
 					return { content: [{ type: "text", text: "No results found." }], details: { count: 0 } };
@@ -731,7 +671,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	registerTool({
+	pi.registerTool({
 		name: "web_fetch",
 		label: "Web Fetch",
 		description: "Fetch a URL and extract readable content. Optionally search within the page using a case-insensitive pattern.",
@@ -743,7 +683,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			url: Type.String({ description: "URL to fetch" }),
 			maxChars: Type.Optional(Type.Number({ description: "Max source characters to process (default: 30000, max: 80000)" })),
-			pattern: Type.Optional(Type.String({ description: "Search for this text within the page (case-insensitive)" })),
+			pattern: Type.Optional(Type.String({ description: "Search within the page and return up to 10 matching excerpts with surrounding context (case-insensitive)" })),
 		}),
 
 		async execute(_id, params, signal, onUpdate) {
