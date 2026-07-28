@@ -6,7 +6,7 @@
  *
  * Tools:
  *   web_search — search the web via Exa and return bounded sources + snippets
- *   web_fetch  — fetch readable text/markdown; cap output at 50KB and best-effort save truncated full results
+ *   web_fetch  — fetch readable text/markdown
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
