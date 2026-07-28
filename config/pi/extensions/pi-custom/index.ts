@@ -571,7 +571,7 @@ export class PreferencesPanel implements Component {
       field: "transcriptOptimization",
       group: "Transcript",
       label: "Optimization",
-      description: "Memoize transcript line rendering for long sessions.",
+      description: "Improve transcript rendering performance in long sessions.",
     },
     {
       field: "transcriptHistory",
