@@ -28,6 +28,7 @@ __pycache__/
 **/pi/auth.json
 **/pi/cache/**
 **/pi/sessions/**
+config/pi/models-store.json
 
 ### Env ###
 .env
