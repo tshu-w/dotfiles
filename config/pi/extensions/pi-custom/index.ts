@@ -32,6 +32,7 @@ import {
   type TranscriptHistoryControl,
 } from "./full-transcript.ts";
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
+import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerSystemTheme } from "./system-theme.ts";
 
@@ -134,7 +135,12 @@ const PACKAGE_UPDATE_STATUS_KEY = "pi-custom-package-update";
 const PACKAGE_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PACKAGE_UPDATE_STALE_LOCK_MS = 2 * 60 * 60 * 1000;
 
+type PackageUpdateCheck = () => Promise<unknown[]>;
+
 let packageUpdateBannerSuppressed = false;
+let packageUpdateBannerUsers = 0;
+let packageUpdateCheckOriginal: PackageUpdateCheck | undefined;
+let packageUpdateCheckPatched: PackageUpdateCheck | undefined;
 let packageUpdateStarted = false;
 
 interface PackageUpdateState {
@@ -145,14 +151,31 @@ interface PackageUpdateState {
 }
 
 function suppressPackageUpdateBanner(): void {
+  packageUpdateBannerUsers++;
   if (packageUpdateBannerSuppressed) return;
   packageUpdateBannerSuppressed = true;
   const proto = DefaultPackageManager.prototype as {
-    checkForAvailableUpdates?: () => Promise<unknown[]>;
+    checkForAvailableUpdates?: PackageUpdateCheck;
   };
   if (typeof proto.checkForAvailableUpdates === "function") {
-    proto.checkForAvailableUpdates = async () => [];
+    packageUpdateCheckOriginal = proto.checkForAvailableUpdates;
+    packageUpdateCheckPatched = async () => [];
+    proto.checkForAvailableUpdates = packageUpdateCheckPatched;
   }
+}
+
+function restorePackageUpdateBanner(): void {
+  packageUpdateBannerUsers = Math.max(0, packageUpdateBannerUsers - 1);
+  if (packageUpdateBannerUsers > 0 || !packageUpdateBannerSuppressed) return;
+  const proto = DefaultPackageManager.prototype as {
+    checkForAvailableUpdates?: PackageUpdateCheck;
+  };
+  if (proto.checkForAvailableUpdates === packageUpdateCheckPatched && packageUpdateCheckOriginal) {
+    proto.checkForAvailableUpdates = packageUpdateCheckOriginal;
+  }
+  packageUpdateCheckOriginal = undefined;
+  packageUpdateCheckPatched = undefined;
+  packageUpdateBannerSuppressed = false;
 }
 
 function getPackageUpdateCacheDir(): string {
@@ -355,6 +378,10 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
       setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     });
   });
+
+  pi.on("session_shutdown", () => {
+    restorePackageUpdateBanner();
+  });
 }
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
@@ -415,7 +442,7 @@ class TopBorderEditor extends CustomEditor {
 
 function registerEditor(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   pi.on("session_start", (_event, ctx) => {
-    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") return;
     ctx.ui.setEditorComponent(
       (tui, theme, kb) => new TopBorderEditor(pi, ctx, runtime, tui, theme, kb),
     );
@@ -430,7 +457,7 @@ function registerEditor(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
 
 function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   pi.on("session_start", (_event, ctx) => {
-    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") return;
 
     ctx.ui.setFooter((_tui, theme, footerData) => ({
       invalidate() {},
@@ -450,8 +477,13 @@ function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
         const dim = (s: string) => theme.fg("dim", s);
         let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalCost = 0;
         for (const entry of ctx.sessionManager.getEntries() as any[]) {
-          if (entry.type !== "message" || entry.message?.role !== "assistant" || !entry.message.usage) continue;
-          const u = entry.message.usage;
+          const u = entry.type === "message"
+            && (entry.message?.role === "assistant" || entry.message?.role === "toolResult")
+            ? entry.message.usage
+            : (entry.type === "compaction" || entry.type === "branch_summary")
+              ? entry.usage
+              : undefined;
+          if (!u) continue;
           totalInput += u.input ?? 0;
           totalOutput += u.output ?? 0;
           totalCacheRead += u.cacheRead ?? 0;
@@ -489,8 +521,13 @@ function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
         const lw = visibleWidth(left);
         const rw = visibleWidth(right);
         if (lw + rw + 1 <= width) return [left + " ".repeat(width - lw - rw) + right];
-        const truncLeft = truncateToWidth(left, Math.max(0, width - rw - 1), dim("…"));
-        return [truncLeft + (rw > 0 ? " " + right : "")];
+        const fittedLeft = truncateToWidth(left, width, dim("…"));
+        const fittedLeftWidth = visibleWidth(fittedLeft);
+        const availableRight = width - fittedLeftWidth - 1;
+        if (availableRight <= 0 || rw === 0) return [fittedLeft];
+        const fittedRight = truncateToWidth(right, availableRight, dim("…"));
+        const fittedRightWidth = visibleWidth(fittedRight);
+        return [fittedLeft + " ".repeat(width - fittedLeftWidth - fittedRightWidth) + fittedRight];
       },
     }));
   });
@@ -594,7 +631,7 @@ export class PreferencesPanel implements Component {
   private helpText(): string {
     return this.rows[this.selected]?.field === "transcriptHistory"
       ? "  Enter/Space load older · r recent · f full · Esc cancel"
-      : "  Enter/Space toggle · g save global · r reset · Esc cancel";
+      : "  Enter/Space toggle · Ctrl+S save global · r reset · Esc cancel";
   }
 
   private formatScopedValue(value: string, scope: "global" | "session"): string {
@@ -658,7 +695,7 @@ export class PreferencesPanel implements Component {
         else return;
       } else if (data === " " || matchesKey(data, Key.enter)) {
         this.actions.toggleSession(field);
-      } else if (data === "g") {
+      } else if (matchesKey(data, Key.ctrl("s"))) {
         this.actions.saveGlobal(field);
       } else if (data === "r") {
         this.actions.resetSession(field);
@@ -757,6 +794,10 @@ function registerRestart(pi: ExtensionAPI): void {
   pi.registerCommand("restart", {
     description: "Restart pi process; optional text is submitted after restart",
     handler: async (rawArgs, ctx) => {
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify("/restart is only available in TUI mode", "error");
+        return;
+      }
       const continuation = rawArgs.trim();
       const sessionFile = ctx.sessionManager.getSessionFile();
       const args = [process.execPath, process.argv[1]];
@@ -814,6 +855,7 @@ export default async function piCustom(pi: ExtensionAPI) {
 
   registerRestart(pi);
   registerSystemTheme(pi);
+  registerNotify(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);
   registerCustomSettings(pi, preferences, codexControl, transcriptHistory);

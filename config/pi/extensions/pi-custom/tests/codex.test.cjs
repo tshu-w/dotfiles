@@ -61,6 +61,13 @@ async function main() {
 		/before completion/,
 	);
 	assert.throws(
+		() => codex.extractCompactionResult([
+			{ type: "response.output_item.done", item: compactionItem },
+			{ type: "response.incomplete", response: {} },
+		]),
+		/before completion/,
+	);
+	assert.throws(
 		() => codex.extractCompactionResult([{ type: "error", message: "nope" }]),
 		/nope/,
 	);
@@ -102,12 +109,12 @@ async function main() {
 		},
 		{ type: "message", id: "m1", message: { role: "user", content: "after", timestamp: 1 } },
 	];
-	const [patched] = handlers.get("before_provider_request").map((handler) =>
+	const [patched] = await Promise.all(handlers.get("before_provider_request").map((handler) =>
 		handler(
 			{ payload: { model: "gpt-5.6", input: [{ stale: true }] } },
 			{ hasUI: false, ui, sessionManager: { getBranch: () => branch } },
 		),
-	);
+	));
 	assert.ok(patched, "replay injection should patch the payload");
 	assert.equal(patched.model, "gpt-5.6");
 	assert.equal(patched.input.length, 3);
@@ -117,11 +124,122 @@ async function main() {
 	assert.match(JSON.stringify(patched.input[2]), /after/);
 
 	// A newest compaction without an artifact falls back to the text summary.
-	const plain = handlers.get("before_provider_request")[0](
+	const plain = await handlers.get("before_provider_request")[0](
 		{ payload: { model: "gpt-5.6", input: [{ stale: true }] } },
 		{ hasUI: false, ui, sessionManager: { getBranch: () => [{ type: "compaction", id: "c2", summary: "s" }] } },
 	);
 	assert.equal(plain, undefined);
+
+	// After a text-only compaction, the next remote attempt must use Pi's
+	// active context instead of resurrecting every message in the branch.
+	const accountPayload = Buffer.from(JSON.stringify({
+		"https://api.openai.com/auth": { chatgpt_account_id: "acct" },
+	})).toString("base64url");
+	const originalFetch = global.fetch;
+	let remoteBody;
+	global.fetch = async (url, options) => {
+		if (String(url) !== "https://x.test/codex/responses") throw new Error(`unexpected fetch: ${url}`);
+		remoteBody = JSON.parse(options.body);
+		const sse = [
+			`data: ${JSON.stringify({ type: "response.output_item.done", item: compactionItem })}`,
+			`data: ${JSON.stringify({ type: "response.completed", response: {} })}`,
+			"data: [DONE]",
+		].join("\n\n");
+		return new Response(sse, { status: 200 });
+	};
+	try {
+		const aborted = AbortSignal.abort();
+		const activeMessage = { role: "user", content: "active only", timestamp: 2 };
+		const compactedBranch = [
+			{ type: "message", id: "old", message: { role: "user", content: "stale history", timestamp: 1 } },
+			{ type: "compaction", id: "text-only", summary: "text summary" },
+			{ type: "message", id: "active", message: activeMessage },
+		];
+		await handlers.get("session_before_compact")[0](
+			{
+				branchEntries: compactedBranch,
+				preparation: {
+					firstKeptEntryId: "active",
+					messagesToSummarize: [activeMessage],
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: 10,
+					fileOps: {},
+					settings: { reserveTokens: 1024, keepRecentTokens: 1024 },
+				},
+				signal: aborted,
+			},
+			{
+				model: { ...model, baseUrl: "https://x.test" },
+				hasUI: false,
+				ui,
+				getSystemPrompt: () => "system",
+				modelRegistry: {
+					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
+				},
+				sessionManager: {
+					getSessionId: () => "session",
+					buildSessionContext: () => ({ messages: [activeMessage] }),
+				},
+			},
+		);
+		assert.equal(remoteBody.input.length, 2, "active message plus compaction trigger");
+		assert.match(JSON.stringify(remoteBody.input[0]), /active only/);
+		assert.doesNotMatch(JSON.stringify(remoteBody.input), /stale history/);
+
+		// The trigger itself consumes one Responses input slot. Skip the remote
+		// request when active history would cross the 16,384-item API limit.
+		remoteBody = undefined;
+		let limitWarning;
+		global.fetch = async (_url, options) => {
+			const body = JSON.parse(options.body);
+			if (body.input?.at(-1)?.type === "compaction_trigger") remoteBody = body;
+			return new Response("local compaction disabled in test", { status: 500 });
+		};
+		const oversizedMessages = Array.from({ length: 16_384 }, (_, index) => index % 2 === 0
+			? { role: "user", content: `user ${index}`, timestamp: index }
+			: {
+				role: "assistant",
+				content: [{ type: "text", text: `assistant ${index}` }],
+				provider: "openai-codex",
+				model: "gpt-5.6",
+				stopReason: "stop",
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+				timestamp: index,
+			});
+		await handlers.get("session_before_compact")[0](
+			{
+				branchEntries: [{ type: "compaction", id: "text-only", summary: "text summary" }],
+				preparation: {
+					firstKeptEntryId: "active",
+					messagesToSummarize: [activeMessage],
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: 10,
+					fileOps: {},
+					settings: { reserveTokens: 1024, keepRecentTokens: 1024 },
+				},
+				signal: new AbortController().signal,
+			},
+			{
+				model: { ...model, baseUrl: "https://x.test" },
+				hasUI: true,
+				ui: { ...ui, notify: (message) => { limitWarning = message; } },
+				getSystemPrompt: () => "system",
+				modelRegistry: {
+					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
+				},
+				sessionManager: {
+					getSessionId: () => "session",
+					buildSessionContext: () => ({ messages: oversizedMessages }),
+				},
+			},
+		);
+		assert.equal(remoteBody, undefined, "oversized input must not reach fetch");
+		assert.match(limitWarning, /16385 items; maximum is 16384/);
+	} finally {
+		global.fetch = originalFetch;
+	}
 
 	console.log("pi-custom: codex compaction helpers verified");
 }

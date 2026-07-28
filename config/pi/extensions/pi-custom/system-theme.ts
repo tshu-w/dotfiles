@@ -19,7 +19,7 @@ export function registerSystemTheme(pi: ExtensionAPI): void {
   let checking = false;
 
   pi.on("session_start", async (_event, ctx) => {
-    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") return;
 
     let currentTheme: "dark" | "light" | undefined;
     const syncTheme = async () => {

@@ -78,7 +78,7 @@ export function registerRenderPerf(pi: ExtensionAPI, initiallyEnabled = true): R
   };
 
   pi.on("session_start", (_event, ctx) => {
-    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") return;
 
     ctx.ui.setWidget(WIDGET_KEY, (tui) => {
       restoreAll();

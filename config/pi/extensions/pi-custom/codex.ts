@@ -35,8 +35,8 @@ const FAST_STATUS_KEY = "pi-custom:fast";
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 const REMOTE_COMPACTION_FEATURE = "remote_compaction_v2";
 const REMOTE_COMPACTION_PROVIDER = "openai-codex-responses";
-const RETAINED_USER_TOKEN_BUDGET = 20_000;
-const REMOTE_COMPACTION_TIMEOUT_MS = 120_000;
+const RETAINED_USER_TOKEN_BUDGET = 32_000;
+const MAX_RESPONSES_INPUT_ITEMS = 16_384;
 
 interface RemoteCompactionDetails {
   provider: typeof REMOTE_COMPACTION_PROVIDER;
@@ -384,7 +384,7 @@ export function extractCompactionResult(events: unknown[]): { item: ResponseItem
       items.push(event.item);
       continue;
     }
-    if (event.type === "response.completed" || event.type === "response.done" || event.type === "response.incomplete") {
+    if (event.type === "response.completed") {
       completed = true;
       usage = isRecord(event.response) ? event.response.usage : undefined;
     }
@@ -433,7 +433,8 @@ export async function registerCodex(
   runtime: CodexRuntimeState,
   initial: { fast: boolean; compaction: boolean },
 ): Promise<CodexControl> {
-  const internals = await loadCodexAiInternals();
+  let internalsPromise: Promise<CodexAiInternals> | undefined;
+  const getInternals = () => internalsPromise ??= loadCodexAiInternals();
   let desired = initial.fast;
   let compactionEnabled = initial.compaction;
   let model: Model | undefined;
@@ -468,17 +469,20 @@ export async function registerCodex(
     syncStatus();
   });
 
-  pi.on("before_provider_request", (event, ctx) => {
+  pi.on("before_provider_request", async (event, ctx) => {
     if (!isCodexModel(model)) return undefined;
     if (!isRecord(event.payload)) return undefined;
     let payload = event.payload;
     let patched = false;
     if (compactionEnabled && Array.isArray(payload.input)) {
       try {
-        const input = reconstructInput(internals, model, ctx.sessionManager.getBranch(), activeTools(pi));
-        if (input) {
-          payload = { ...payload, input };
-          patched = true;
+        const branch = ctx.sessionManager.getBranch();
+        if (latestRemoteCompaction(branch, modelKey(model))) {
+          const input = reconstructInput(await getInternals(), model, branch, activeTools(pi));
+          if (input) {
+            payload = { ...payload, input };
+            patched = true;
+          }
         }
       } catch (error) {
         // Fall back to Pi's text-summary context, which is always present.
@@ -503,13 +507,25 @@ export async function registerCodex(
     const auth = await ctx.modelRegistry.getApiKeyAndHeaders(compactionModel);
     if (!auth.ok || !auth.apiKey) return undefined;
 
+    let internals: CodexAiInternals;
+    try {
+      internals = await getInternals();
+    } catch (error) {
+      if (!warnedReplayFailure && ctx.hasUI) {
+        warnedReplayFailure = true;
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Codex compaction unavailable; using text summary. ${message}`, "warning");
+      }
+      return undefined;
+    }
+
     const tools = activeTools(pi);
     const branch = event.branchEntries;
+    const activeMessages = ctx.sessionManager.buildSessionContext().messages as AgentMessage[];
     const input =
       reconstructInput(internals, compactionModel, branch, tools) ??
-      toResponseItems(internals, compactionModel, branchMessages(branch), tools);
+      toResponseItems(internals, compactionModel, activeMessages, tools);
     const sessionId = ctx.sessionManager.getSessionId();
-    const signal = AbortSignal.any([event.signal, AbortSignal.timeout(REMOTE_COMPACTION_TIMEOUT_MS)]);
 
     // Built before starting any promise: a synchronous throw here (e.g. a
     // non-JWT token in extractAccountId) must not orphan an already-started
@@ -525,8 +541,13 @@ export async function registerCodex(
         thinkingLevel: pi.getThinkingLevel(),
         sessionId,
       }),
-      signal,
+      signal: event.signal,
     };
+    const remotePromise = input.length + 1 <= MAX_RESPONSES_INPUT_ITEMS
+      ? requestRemoteCompaction(remoteRequest)
+      : Promise.reject(new Error(
+        `Codex compaction input has ${input.length + 1} items; maximum is ${MAX_RESPONSES_INPUT_ITEMS}`,
+      ));
 
     const [local, remote] = await Promise.allSettled([
       compact(
@@ -540,7 +561,7 @@ export async function registerCodex(
         undefined,
         auth.env,
       ),
-      requestRemoteCompaction(remoteRequest),
+      remotePromise,
     ]);
 
     if (remote.status !== "fulfilled") {

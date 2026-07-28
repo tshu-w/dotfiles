@@ -31,15 +31,17 @@ function extensionHarness() {
 
 function context(provider) {
 	return {
-		hasUI: false,
+		hasUI: true,
 		mode: "print",
 		cwd: "/tmp/pi-custom-test",
 		model: { provider, id: "model" },
 		ui: {
 			setStatus() {},
 			notify() {},
-			setEditorComponent() {},
-			setFooter() {},
+			setEditorComponent() { throw new Error("editor setup must be TUI-only"); },
+			setFooter() { throw new Error("footer setup must be TUI-only"); },
+			setWidget() { throw new Error("widget setup must be TUI-only"); },
+			setTheme() { throw new Error("theme setup must be TUI-only"); },
 		},
 		sessionManager: {
 			getBranch: () => [],
@@ -97,10 +99,10 @@ async function main() {
 	assert.match(initialPanel, /<b>Codex<\/b>/);
 	assert.match(initialPanel, /<b>Transcript<\/b>/);
 	assert.match(initialPanel, /Use OpenAI priority service tier/);
-	assert.match(initialPanel, /g save global · r reset/);
+	assert.match(initialPanel, /Ctrl\+S save global · r reset/);
 	assert.match(panel.render(80).join("\n"), /Off     <dim>\[global\]<\/dim>/);
 	panel.handleInput(" ");
-	panel.handleInput("g");
+	panel.handleInput("\x13");
 	panel.handleInput("\x1b[B");
 	assert.match(panel.render(80).join("\n"), /Codex-style remote compaction/);
 	panel.handleInput("\r");
@@ -129,10 +131,16 @@ async function main() {
 	]);
 	assert.equal(closed, true);
 
+	const originalUpdateCheck = piAgent.DefaultPackageManager.prototype.checkForAvailableUpdates;
 	const first = extensionHarness();
 	const second = extensionHarness();
 	await factory(first.pi);
 	await factory(second.pi);
+	assert.notEqual(
+		piAgent.DefaultPackageManager.prototype.checkForAvailableUpdates,
+		originalUpdateCheck,
+		"package-update banner check should be suppressed while pi-custom is active",
+	);
 
 	const firstCtx = context("openai-codex");
 	const secondCtx = context("anthropic");
@@ -159,12 +167,45 @@ async function main() {
 		customType: "pi-custom:settings",
 		data: { fast: true },
 	});
+	let restartNotice;
+	await first.commands.get("restart").handler("", {
+		...firstCtx,
+		mode: "rpc",
+		ui: { ...firstCtx.ui, notify: (message, level) => { restartNotice = { message, level }; } },
+		shutdown() { throw new Error("non-TUI restart must not shut down pi"); },
+	});
+	assert.deepEqual(restartNotice, { message: "/restart is only available in TUI mode", level: "error" });
 	await emit(second, "session_start", { reason: "new" }, secondCtx);
 
 	const firstResults = await emit(first, "before_provider_request", { payload: { model: "x" } }, firstCtx);
 	const secondResults = await emit(second, "before_provider_request", { payload: { model: "x" } }, secondCtx);
 	assert.deepEqual(firstResults.filter(Boolean), [{ model: "x", service_tier: "priority" }]);
 	assert.deepEqual(secondResults.filter(Boolean), []);
+
+	const originalWrite = process.stdout.write;
+	const originalWtSession = process.env.WT_SESSION;
+	const originalKittyWindow = process.env.KITTY_WINDOW_ID;
+	let notificationOutput = "";
+	delete process.env.WT_SESSION;
+	delete process.env.KITTY_WINDOW_ID;
+	process.stdout.write = (chunk) => { notificationOutput += String(chunk); return true; };
+	try {
+		await emit(first, "agent_end", {}, firstCtx);
+		assert.equal(notificationOutput, "", "print/RPC mode must not write terminal escape sequences");
+		await emit(first, "agent_end", {}, { ...firstCtx, mode: "tui" });
+		assert.match(notificationOutput, /Ready for input/);
+	} finally {
+		process.stdout.write = originalWrite;
+		if (originalWtSession === undefined) delete process.env.WT_SESSION;
+		else process.env.WT_SESSION = originalWtSession;
+		if (originalKittyWindow === undefined) delete process.env.KITTY_WINDOW_ID;
+		else process.env.KITTY_WINDOW_ID = originalKittyWindow;
+	}
+
+	await emit(first, "session_shutdown", {}, firstCtx);
+	assert.notEqual(piAgent.DefaultPackageManager.prototype.checkForAvailableUpdates, originalUpdateCheck);
+	await emit(second, "session_shutdown", {}, secondCtx);
+	assert.equal(piAgent.DefaultPackageManager.prototype.checkForAvailableUpdates, originalUpdateCheck);
 
 	console.log("pi-custom: scoped settings UI and session state verified");
 }
