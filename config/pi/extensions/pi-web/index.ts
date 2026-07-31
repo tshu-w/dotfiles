@@ -124,30 +124,6 @@ function normalizeUrl(input: string): { url: string; titleFallback: string } {
 	};
 }
 
-function isBlockedFetchHost(url: string): boolean {
-	const hostname = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
-	const octets = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) ? hostname.split(".").map(Number) : [];
-	const [a, b] = octets;
-	const privateIp = octets.length === 4 && (
-		a === 0 || a === 10 || a === 127 ||
-		(a === 100 && b >= 64 && b <= 127) ||
-		(a === 169 && b === 254) ||
-		(a === 172 && b >= 16 && b <= 31) ||
-		(a === 192 && b === 168) ||
-		(a === 198 && (b === 18 || b === 19))
-	);
-	const privateIpv6 = hostname === "::" || hostname === "::1" || hostname.startsWith("::ffff:") ||
-		/^(?:fc|fd|fe[89ab])/.test(hostname);
-	const blockedDomains = (process.env.WEB_FETCH_BLOCKED_DOMAINS ?? "")
-		.split(",")
-		.map((domain) => domain.trim().toLowerCase().replace(/^\.+|\.+$/g, ""))
-		.filter(Boolean);
-	return hostname === "localhost" || hostname.endsWith(".localhost") ||
-		(!hostname.includes(".") && !hostname.includes(":")) ||
-		/[.](?:internal|local|lan|home|test)$/.test(hostname) || privateIp || privateIpv6 ||
-		blockedDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
-}
-
 export async function boundToolOutput(value: string): Promise<{
 	text: string;
 	truncated: boolean;
@@ -376,10 +352,6 @@ async function fetchUrl(inputUrl: string, maxChars: number, signal?: AbortSignal
 		return { title: inputUrl, content: "", error: err instanceof Error ? err.message : String(err) };
 	}
 
-	if (isBlockedFetchHost(normalized.url)) {
-		return { title: normalized.titleFallback, content: "", error: "Local and private URLs are not supported" };
-	}
-
 	const exaKey = getExaKey();
 	if (exaKey) {
 		try {
@@ -419,7 +391,7 @@ async function directFetch(url: string, titleFallback: string, maxChars: number,
 	const res = await fetch(url, {
 		headers: { "User-Agent": "Mozilla/5.0 (compatible; PiBot/1.0)", "Accept": "text/html,text/plain,application/json,text/markdown" },
 		signal: requestSignal(signal),
-		redirect: "error",
+		redirect: "follow",
 	});
 	if (!res.ok) return null;
 

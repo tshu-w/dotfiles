@@ -143,7 +143,6 @@ async function main() {
 		exa: process.env.EXA_API_KEY,
 		jina: process.env.JINA_API_KEY,
 		tavily: process.env.TAVILY_API_KEY,
-		blockedDomains: process.env.WEB_FETCH_BLOCKED_DOMAINS,
 	};
 	const longPage = "x".repeat(80_000);
 	global.fetch = async (url) => String(url) === "https://example.com/"
@@ -162,34 +161,6 @@ async function main() {
 			url: "https://example.com", maxChars: 80_000, pattern: "xxx",
 		}, undefined, undefined);
 		assert.match(patternResult.content[0].text, /^# example\.com\n\nFound 10 match\(es\) for "xxx":/);
-
-		process.env.EXA_API_KEY = "unit-test";
-		delete process.env.JINA_API_KEY;
-		process.env.WEB_FETCH_BLOCKED_DOMAINS = ".corp.example.";
-		for (const localUrl of [
-			"http://localhost:8765/private",
-			"http://10.0.0.1/private",
-			"http://[::1]/private",
-			"http://service.internal/private",
-			"https://docs.corp.example/private",
-		]) {
-			let requests = 0;
-			global.fetch = async () => { requests += 1; return new Response("unexpected", { status: 500 }); };
-			await assert.rejects(
-				fetchTool.execute("test", { url: localUrl }, undefined, undefined),
-				/Local and private URLs are not supported/,
-			);
-			assert.equal(requests, 0);
-		}
-
-		let directFetchOptions;
-		global.fetch = async (url, init) => {
-			if (String(url) === "https://api.exa.ai/contents") return new Response("provider unavailable", { status: 503 });
-			directFetchOptions = init;
-			return new Response("public content ".repeat(10), { status: 200, headers: { "content-type": "text/plain" } });
-		};
-		await fetchTool.execute("test", { url: "http://93.184.216.34/page" }, undefined, undefined);
-		assert.equal(directFetchOptions.redirect, "error");
 
 		delete process.env.EXA_API_KEY;
 		delete process.env.JINA_API_KEY;
@@ -258,12 +229,7 @@ async function main() {
 		);
 	} finally {
 		global.fetch = originalFetch;
-		for (const [name, value] of Object.entries({
-			EXA_API_KEY: originalKeys.exa,
-			JINA_API_KEY: originalKeys.jina,
-			TAVILY_API_KEY: originalKeys.tavily,
-			WEB_FETCH_BLOCKED_DOMAINS: originalKeys.blockedDomains,
-		})) {
+		for (const [name, value] of Object.entries({ EXA_API_KEY: originalKeys.exa, JINA_API_KEY: originalKeys.jina, TAVILY_API_KEY: originalKeys.tavily })) {
 			if (value === undefined) delete process.env[name];
 			else process.env[name] = value;
 		}
