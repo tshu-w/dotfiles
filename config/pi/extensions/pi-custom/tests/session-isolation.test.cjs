@@ -70,6 +70,7 @@ async function main() {
 	const piAgent = await jiti.import("@earendil-works/pi-coding-agent");
 	piAgent.initTheme("dark");
 	const extension = await jiti.import("../index.ts");
+	const titleStatus = await jiti.import("../title-status.ts");
 	const factory = extension.default;
 	const calls = [];
 	let closed = false;
@@ -130,6 +131,16 @@ async function main() {
 		"history:recent",
 	]);
 	assert.equal(closed, true);
+
+	const titleHarness = extensionHarness();
+	titleHarness.pi.getSessionName = () => "Named session";
+	titleStatus.default(titleHarness.pi);
+	let rpcTitle;
+	await emit(titleHarness, "session_start", {}, {
+		mode: "rpc",
+		ui: { setTitle: (title) => { rpcTitle = title; } },
+	});
+	assert.equal(rpcTitle, "π - Named session");
 
 	const originalUpdateCheck = piAgent.DefaultPackageManager.prototype.checkForAvailableUpdates;
 	const first = extensionHarness();

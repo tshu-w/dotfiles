@@ -6,14 +6,14 @@ const { pathToFileURL } = require("node:url");
 
 const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim())));
 const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-coding-agent");
-const EXTENSION = join(__dirname, "../index.ts");
+const EXTENSIONS = [join(__dirname, "../index.ts"), join(__dirname, "../title-status.ts")];
 
 async function main() {
 	const loader = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/extensions/loader.js")).href);
-	const result = await loader.loadExtensions([EXTENSION], process.cwd());
+	const result = await loader.loadExtensions(EXTENSIONS, process.cwd());
 
 	assert.deepEqual(result.errors, []);
-	assert.equal(result.extensions.length, 1);
+	assert.equal(result.extensions.length, 2);
 	console.log("pi-custom: production extension loader verified");
 }
 

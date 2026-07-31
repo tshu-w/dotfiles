@@ -1,24 +1,24 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const APP = "π";
 
-const active = Boolean(process.stdout.isTTY);
-const isITerm = active && process.env.TERM_PROGRAM === "iTerm.app";
-
-// One-time cleanup: earlier versions colored the tab; reset any leftover color.
-if (isITerm) {
-	process.stdout.write("\x1b]6;1;bg;*;default\x07");
-}
-
-function setTitle(title: string): void {
-	if (!active) return;
-	process.stdout.write(`\x1b]0;${title}\x07`);
-}
-
 export default function (pi: ExtensionAPI) {
-	const render = () => {
+	let resetITermTabColor = false;
+
+	const render = (_event: unknown, ctx: ExtensionContext) => {
+		if (
+			!resetITermTabColor
+			&& ctx.mode === "tui"
+			&& process.stdout.isTTY
+			&& process.env.TERM_PROGRAM === "iTerm.app"
+		) {
+			// One-time cleanup: earlier versions colored the tab.
+			process.stdout.write("\x1b]6;1;bg;*;default\x07");
+			resetITermTabColor = true;
+		}
+
 		const name = pi.getSessionName();
-		setTitle(name ? `${APP} - ${name}` : APP);
+		ctx.ui.setTitle(name ? `${APP} - ${name}` : APP);
 	};
 
 	pi.on("session_start", render);
