@@ -2,15 +2,15 @@
  * pi-web — Web search and fetch for Pi.
  *
  * Search: Exa → Tavily → Jina Search (uses whichever keys are available).
- * Fetch: Exa contents → direct HTTP → Jina Reader.
+ * Fetch: Exa contents → Jina Reader.
  *
  * Tools:
- *   web_search — search the web via Exa and return sources + snippets
+ *   web_search — search the web and return sources + snippets
  *   web_fetch  — fetch readable text/markdown
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, truncateHead } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, TruncationResult } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, keyText, truncateHead } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -30,7 +30,7 @@ const DEFAULT_NUM_RESULTS = 5;
 const DEFAULT_MAX_CHARS = 30_000;
 const MAX_NUM_RESULTS = 10;
 const MAX_FETCH_CHARS = 80_000;
-const DIRECT_FETCH_MAX_BYTES = 2_000_000;
+const MAX_RESPONSE_BYTES = 2_000_000;
 
 interface SearchResult {
 	title: string;
@@ -91,30 +91,31 @@ function sliceChars(value: string, max: number): string {
 	return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 }
 
-// Longest prefix of value that fits maxBytes as valid UTF-8 (never splits a
-// multi-byte sequence, so the decoded text has no lone surrogates).
-function utf8Prefix(value: string, maxBytes: number): string {
-	const buf = Buffer.from(value, "utf8");
-	if (buf.length <= maxBytes) return value;
-	let end = maxBytes;
-	while (end > 0 && (buf[end] & 0b1100_0000) === 0b1000_0000) end--;
-	return buf.subarray(0, end).toString("utf8");
+function sanitizeExternalText(value: string): string {
+	// Preserve text layout while removing terminal control sequences.
+	// eslint-disable-next-line no-control-regex
+	return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "");
 }
 
 function sourceTitle(title: string | undefined, url: string): string {
-	const normalized = title?.replace(/\s+/g, " ").trim();
-	if (normalized) return sliceChars(normalized, 300);
+	const normalized = title ? sanitizeExternalText(title).replace(/\s+/g, " ").trim() : "";
+	if (normalized) return sliceChars(normalized, 200);
 	try {
 		return new URL(url).hostname;
 	} catch {
-		return sliceChars(url, 300);
+		return sliceChars(sanitizeExternalText(url), 200);
 	}
 }
 
 function normalizeUrl(input: string): { url: string; titleFallback: string } {
 	const trimmed = input.trim();
 	const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-	const parsed = new URL(withScheme);
+	let parsed: URL;
+	try {
+		parsed = new URL(withScheme);
+	} catch {
+		throw new Error("Invalid URL");
+	}
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 		throw new Error("Only http and https URLs are supported");
 	}
@@ -126,12 +127,11 @@ function normalizeUrl(input: string): { url: string; titleFallback: string } {
 
 export async function boundToolOutput(value: string): Promise<{
 	text: string;
-	truncated: boolean;
-	bytes: number;
+	truncation?: TruncationResult;
 	fullOutputPath?: string;
 }> {
 	const full = truncateHead(value, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
-	if (!full.truncated) return { text: value, truncated: false, bytes: Buffer.byteLength(value) };
+	if (!full.truncated) return { text: value };
 
 	// Preserving the full output is best-effort: a failed temp write must not
 	// turn a successful remote operation into a failure that may be unsafe or
@@ -145,54 +145,27 @@ export async function boundToolOutput(value: string): Promise<{
 		fullOutputPath = undefined;
 	}
 
-	const makeNote = (previewBytes: number, previewLines: number): string => {
-		const summary = `\n\n[Output truncated: showing ${previewLines} of ${full.totalLines} lines` +
-			` (${formatSize(previewBytes)} of ${formatSize(full.totalBytes)}).`;
-		if (!fullOutputPath) return `${summary} Full output could not be saved.]`;
-		return `${summary} Full output saved to: ${fullOutputPath}]`;
+	const notice = `[Output truncated: ${full.totalLines} lines, ${formatSize(full.totalBytes)} total.` +
+		(fullOutputPath ? ` Full output: ${fullOutputPath}]` : " Full output could not be saved to a temporary file.]");
+	const suffix = `\n\n${notice}`;
+	const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(suffix);
+	const truncation = truncateHead(value, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 2 });
+	return {
+		text: truncation.content ? truncation.content + suffix : notice,
+		truncation,
+		fullOutputPath,
 	};
-
-	const makePreview = (budget: number): string => {
-		if (budget <= 0) return "";
-		const preview = truncateHead(value, {
-			maxBytes: budget,
-			maxLines: DEFAULT_MAX_LINES - 2,
-		});
-		// truncateHead keeps whole lines only; web content is often one huge line
-		// (minified JSON, unwrapped markdown), so fill the remaining budget with
-		// a valid UTF-8 prefix of the next line.
-		let content = preview.content;
-		const remaining = budget - preview.outputBytes;
-		if (preview.truncatedBy === "bytes" && remaining > 256) {
-			const nextLine = value.split("\n")[preview.outputLines];
-			if (nextLine !== undefined) {
-				const separatorBytes = content ? 1 : 0;
-				const partial = utf8Prefix(nextLine, remaining - separatorBytes);
-				if (partial) content = content ? `${content}\n${partial}` : partial;
-			}
-		}
-		return content;
-	};
-
-	// The notice embeds the temp path and the preview size, so its length
-	// depends on the preview itself. Build the preview against a worst-case
-	// note, then trim until the aggregate fits the hard bound.
-	let previewContent = makePreview(Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(makeNote(DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES))));
-	const previewLineCount = () => previewContent ? previewContent.split("\n").length : 0;
-	let note = makeNote(Buffer.byteLength(previewContent), previewLineCount());
-	while (Buffer.byteLength(previewContent) + Buffer.byteLength(note) > DEFAULT_MAX_BYTES) {
-		previewContent = utf8Prefix(previewContent, Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(note)));
-		note = makeNote(Buffer.byteLength(previewContent), previewLineCount());
-	}
-
-	const content = previewContent + note;
-	return { text: content, truncated: true, bytes: Buffer.byteLength(content), fullOutputPath };
 }
 
-async function boundWebError(prefix: string, error: unknown): Promise<Error> {
+function webError(prefix: string, error: unknown): Error {
+	const message = sanitizeExternalText(error instanceof Error ? error.message : String(error));
+	return new Error(`${prefix}:${message.startsWith("\n") ? "" : " "}${message}`);
+}
+
+function formatProviderError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
-	const bounded = await boundToolOutput(`${prefix}: ${message}`);
-	return new Error(bounded.text);
+	const normalized = sanitizeExternalText(message).replace(/\s+/g, " ").trim();
+	return normalized.length > 200 ? `${sliceChars(normalized, 199)}…` : normalized;
 }
 
 async function exaSearchDirect(
@@ -215,17 +188,17 @@ async function exaSearchDirect(
 	});
 
 	if (!res.ok) {
-		const text = await res.text();
-		throw new Error(`Exa API ${res.status}: ${text.slice(0, 200)}`);
+		const text = await readBodyLimited(res, MAX_RESPONSE_BYTES);
+		throw new Error(`HTTP ${res.status}: ${sliceChars(text, 200)}`);
 	}
 
-	const data = await res.json() as {
+	const data = await readJsonLimited<{
 		results?: Array<{ title?: string; url?: string; text?: string; highlights?: string[] }>;
-	};
+	}>(res);
 
 	const results: SearchResult[] = [];
 
-	for (const r of data.results ?? []) {
+	for (const r of (data.results ?? []).slice(0, numResults)) {
 		if (!r.url) continue;
 		const highlights = Array.isArray(r.highlights) ? r.highlights.filter(h => typeof h === "string") : [];
 		const snippet = highlights.length > 0
@@ -252,11 +225,11 @@ async function jinaSearch(
 		signal: requestSignal(signal),
 	});
 
-	if (!res.ok) throw new Error(`Jina Search ${res.status}: ${(await res.text()).slice(0, 200)}`);
+	if (!res.ok) throw new Error(`HTTP ${res.status}: ${sliceChars(await readBodyLimited(res, MAX_RESPONSE_BYTES), 200)}`);
 
-	const data = await res.json() as {
+	const data = await readJsonLimited<{
 		data?: Array<{ title?: string; url?: string; content?: string; description?: string }>;
-	};
+	}>(res);
 
 	const results: SearchResult[] = [];
 
@@ -291,15 +264,15 @@ async function tavilySearch(
 		signal: requestSignal(signal),
 	});
 
-	if (!res.ok) throw new Error(`Tavily ${res.status}: ${(await res.text()).slice(0, 200)}`);
+	if (!res.ok) throw new Error(`HTTP ${res.status}: ${sliceChars(await readBodyLimited(res, MAX_RESPONSE_BYTES), 200)}`);
 
-	const data = await res.json() as {
+	const data = await readJsonLimited<{
 		results?: Array<{ title?: string; url?: string; content?: string }>;
-	};
+	}>(res);
 
 	const results: SearchResult[] = [];
 
-	for (const r of data.results ?? []) {
+	for (const r of (data.results ?? []).slice(0, numResults)) {
 		if (!r.url) continue;
 		results.push({ title: sourceTitle(r.title, r.url), url: r.url, snippet: sliceChars(r.content || "", 500) });
 	}
@@ -313,35 +286,49 @@ async function searchWithFallback(
 	signal?: AbortSignal,
 ): Promise<SearchResult[]> {
 	const errors: string[] = [];
+	let hadEmptyResult = false;
 
 	// 1. Exa direct API
 	const exaKey = getExaKey();
 	if (exaKey) {
-		try { return await exaSearchDirect(exaKey, query, numResults, signal); } catch (err) {
+		try {
+			const results = await exaSearchDirect(exaKey, query, numResults, signal);
+			if (results.length > 0) return results;
+			hadEmptyResult = true;
+		} catch (err) {
 			if (signal?.aborted) throw err;
-			errors.push(`Exa: ${err instanceof Error ? err.message : err}`);
+			errors.push(`- Exa: ${formatProviderError(err)}`);
 		}
 	}
 
 	// 2. Tavily
 	const tavilyKey = getTavilyKey();
 	if (tavilyKey) {
-		try { return await tavilySearch(tavilyKey, query, numResults, signal); } catch (err) {
+		try {
+			const results = await tavilySearch(tavilyKey, query, numResults, signal);
+			if (results.length > 0) return results;
+			hadEmptyResult = true;
+		} catch (err) {
 			if (signal?.aborted) throw err;
-			errors.push(`Tavily: ${err instanceof Error ? err.message : err}`);
+			errors.push(`- Tavily: ${formatProviderError(err)}`);
 		}
 	}
 
 	// 3. Jina Search
 	const jinaKey = getJinaKey();
 	if (jinaKey) {
-		try { return await jinaSearch(jinaKey, query, numResults, signal); } catch (err) {
+		try {
+			const results = await jinaSearch(jinaKey, query, numResults, signal);
+			if (results.length > 0) return results;
+			hadEmptyResult = true;
+		} catch (err) {
 			if (signal?.aborted) throw err;
-			errors.push(`Jina: ${err instanceof Error ? err.message : err}`);
+			errors.push(`- Jina: ${formatProviderError(err)}`);
 		}
 	}
 
-	throw new Error(`All search providers failed:\n${errors.join("\n")}`);
+	if (hadEmptyResult) return [];
+	throw new Error(`\n${errors.length > 0 ? errors.join("\n") : "- No search providers configured"}`);
 }
 
 async function fetchUrl(inputUrl: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult> {
@@ -349,27 +336,32 @@ async function fetchUrl(inputUrl: string, maxChars: number, signal?: AbortSignal
 	try {
 		normalized = normalizeUrl(inputUrl);
 	} catch (err) {
-		return { title: inputUrl, content: "", error: err instanceof Error ? err.message : String(err) };
+		return { title: inputUrl, content: "", error: err instanceof Error ? err.message : "Invalid URL" };
 	}
 
+	const errors: string[] = [];
 	const exaKey = getExaKey();
 	if (exaKey) {
 		try {
 			const result = await exaGetContents(normalized.url, exaKey, maxChars, signal);
 			if (result) return result;
+			errors.push("- Exa: no usable content");
 		} catch (err) {
 			if (signal?.aborted) throw err;
+			errors.push(`- Exa: ${formatProviderError(err)}`);
 		}
 	}
 
 	try {
-		const result = await directFetch(normalized.url, normalized.titleFallback, maxChars, signal);
-		if (result) return result;
+		const result = await jinaFetch(normalized.url, normalized.titleFallback, maxChars, signal);
+		if (!result.error) return result;
+		errors.push(`- Jina: ${formatProviderError(result.error)}`);
 	} catch (err) {
 		if (signal?.aborted) throw err;
+		errors.push(`- Jina: ${formatProviderError(err)}`);
 	}
 
-	return jinaFetch(normalized.url, normalized.titleFallback, maxChars, signal);
+	return { title: normalized.titleFallback, content: "", error: `\n${errors.join("\n")}` };
 }
 
 async function exaGetContents(url: string, exaKey: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult | null> {
@@ -379,77 +371,57 @@ async function exaGetContents(url: string, exaKey: string, maxChars: number, sig
 		body: JSON.stringify({ urls: [url], text: { maxCharacters: maxChars } }),
 		signal: requestSignal(signal),
 	});
-	if (!res.ok) return null;
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-	const data = await res.json() as { results?: Array<{ title?: string; text?: string }> };
+	const data = await readJsonLimited<{ results?: Array<{ title?: string; text?: string }> }>(res);
 	const first = data.results?.[0];
-	if (!first?.text || first.text.length < 50) return null;
-	return { title: first.title || url, content: sliceChars(first.text, maxChars), error: null };
-}
-
-async function directFetch(url: string, titleFallback: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult | null> {
-	const res = await fetch(url, {
-		headers: { "User-Agent": "Mozilla/5.0 (compatible; PiBot/1.0)", "Accept": "text/html,text/plain,application/json,text/markdown" },
-		signal: requestSignal(signal),
-		redirect: "follow",
-	});
-	if (!res.ok) return null;
-
-	const contentLength = Number.parseInt(res.headers.get("content-length") || "0", 10);
-	if (Number.isFinite(contentLength) && contentLength > DIRECT_FETCH_MAX_BYTES) return null;
-
-	const contentType = res.headers.get("content-type") ?? "";
-	const text = await readBodyLimited(res, DIRECT_FETCH_MAX_BYTES);
-
-	if (contentType.includes("text/plain") || contentType.includes("application/json") || contentType.includes("text/markdown")) {
-		return { title: titleFallback, content: sliceChars(text, maxChars), error: null };
-	}
-
-	if (!contentType.includes("text/html")) return null;
-
-	const title = decodeHtmlEntities(text.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || titleFallback);
-	let body = text
-		.replace(/<script[\s\S]*?<\/script>/gi, "")
-		.replace(/<style[\s\S]*?<\/style>/gi, "")
-		.replace(/<nav[\s\S]*?<\/nav>/gi, "")
-		.replace(/<header[\s\S]*?<\/header>/gi, "")
-		.replace(/<footer[\s\S]*?<\/footer>/gi, "")
-		.replace(/<(h[1-6]|p|div|section|article|li|br|tr|blockquote)\b[^>]*>/gi, "\n")
-		.replace(/<\/\s*(h[1-6]|p|div|section|article|li|tr|blockquote)>/gi, "\n")
-		.replace(/<[^>]+>/g, " ");
-	body = decodeHtmlEntities(body)
-		.split("\n")
-		.map(line => line.replace(/\s+/g, " ").trim())
-		.filter(Boolean)
-		.join("\n");
-
-	if (body.length < 100) return null;
-	return { title, content: sliceChars(body, maxChars), error: null };
+	if (!first?.text) return null;
+	const content = sanitizeExternalText(first.text);
+	if (!content.trim()) return null;
+	return { title: sourceTitle(first.title, url), content: sliceChars(content, maxChars), error: null };
 }
 
 async function jinaFetch(url: string, titleFallback: string, maxChars: number, signal?: AbortSignal): Promise<FetchResult> {
 	const jinaKey = getJinaKey();
-	const res = await fetch(JINA_READER_BASE + url, {
+	const request = (key: string | null) => fetch(JINA_READER_BASE + url, {
 		headers: {
 			"Accept": "text/markdown",
 			"X-No-Cache": "true",
-			...(jinaKey ? { "Authorization": `Bearer ${jinaKey}` } : {}),
+			...(key ? { "Authorization": `Bearer ${key}` } : {}),
 		},
 		signal: requestSignal(signal),
 	});
-
-	if (!res.ok) return { title: titleFallback, content: "", error: `Fetch failed (Jina ${res.status})` };
-
-	const text = await readBodyLimited(res, DIRECT_FETCH_MAX_BYTES);
-	const contentStart = text.indexOf("Markdown Content:");
-	const markdown = contentStart >= 0 ? text.slice(contentStart + "Markdown Content:".length).trim() : text.trim();
-
-	if (markdown.length < 50 || markdown.startsWith("Loading...") || markdown.startsWith("Please enable JavaScript")) {
-		return { title: titleFallback, content: "", error: "Page requires JavaScript rendering" };
+	let res = await request(jinaKey);
+	let authenticatedStatus: number | undefined;
+	if (jinaKey && (res.status === 401 || res.status === 402)) {
+		authenticatedStatus = res.status;
+		await res.body?.cancel();
+		res = await request(null);
 	}
 
-	const title = markdown.match(/^#\s+(.+)/m)?.[1]?.trim() || titleFallback;
+	if (!res.ok) {
+		const error = authenticatedStatus
+			? `authenticated HTTP ${authenticatedStatus}; anonymous HTTP ${res.status}`
+			: `HTTP ${res.status}`;
+		return { title: titleFallback, content: "", error };
+	}
+
+	const text = sanitizeExternalText(await readBodyLimited(res, MAX_RESPONSE_BYTES));
+	const contentStart = text.indexOf("Markdown Content:");
+	const metadata = contentStart >= 0 ? text.slice(0, contentStart) : "";
+	const markdown = contentStart >= 0 ? text.slice(contentStart + "Markdown Content:".length).trim() : text.trim();
+
+	if (!markdown.trim()) return { title: titleFallback, content: "", error: "no usable content" };
+
+	const title = sourceTitle(
+		metadata.match(/^Title:\s*(.+)$/m)?.[1]?.trim() || markdown.match(/^#\s+(.+)/m)?.[1]?.trim(),
+		url,
+	);
 	return { title, content: sliceChars(markdown, maxChars), error: null };
+}
+
+async function readJsonLimited<T>(res: Response): Promise<T> {
+	return JSON.parse(await readBodyLimited(res, MAX_RESPONSE_BYTES)) as T;
 }
 
 async function readBodyLimited(res: Response, maxBytes: number): Promise<string> {
@@ -482,17 +454,6 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<string>
 	return result;
 }
 
-function decodeHtmlEntities(value: string): string {
-	// &amp; must decode last so "&amp;lt;" yields the literal "&lt;".
-	return value
-		.replace(/&nbsp;/g, " ")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&amp;/g, "&");
-}
-
 function findInContent(content: string, pattern: string, contextChars = 200): string {
 	const normalizedPattern = pattern.trim();
 	if (!normalizedPattern) return "Pattern is empty.";
@@ -521,8 +482,8 @@ function findInContent(content: string, pattern: string, contextChars = 200): st
 
 function formatSearchResults(results: SearchResult[]): string {
 	return results.map((result, index) => {
-		const snippet = result.snippet.replace(/\s+/g, " ").trim();
-		const lines = [`${index + 1}. ${result.title}`, `   URL: ${result.url}`];
+		const snippet = sanitizeExternalText(result.snippet).replace(/\s+/g, " ").trim();
+		const lines = [`${index + 1}. ${result.title}`, `   URL: ${sanitizeExternalText(result.url)}`];
 		if (snippet) lines.push(`   Snippet: ${snippet}`);
 		return lines.join("\n");
 	}).join("\n\n");
@@ -553,19 +514,21 @@ export default function (pi: ExtensionAPI) {
 
 			try {
 				const results = await searchWithFallback(query, numResults, signal);
-
 				if (results.length === 0) {
 					return { content: [{ type: "text", text: "No results found." }], details: { count: 0 } };
 				}
-
 				const bounded = await boundToolOutput(formatSearchResults(results));
 				return {
 					content: [{ type: "text", text: bounded.text }],
-					details: { count: results.length, truncated: bounded.truncated },
+					details: {
+						count: results.length,
+						...(bounded.truncation ? { truncation: bounded.truncation } : {}),
+						...(bounded.fullOutputPath ? { fullOutputPath: bounded.fullOutputPath } : {}),
+					},
 				};
 			} catch (err) {
 				if (signal?.aborted) throw new Error("Search cancelled.");
-				throw await boundWebError("Web search failed", err);
+				throw webError("Web search failed", err);
 			}
 		},
 
@@ -574,17 +537,16 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
-			const details = result.details as { count?: number; phase?: string; truncated?: boolean };
+			const details = result.details as { count?: number; phase?: string; truncation?: TruncationResult };
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "searching"), 0, 0);
 			if (context.isError) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web search failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
-			const summary = theme.fg("success", `${details?.count ?? 0} sources${details?.truncated ? ", truncated" : ""}`);
-			if (!expanded) return new Text(summary, 0, 0);
+			const summary = theme.fg("success", `${details?.count ?? 0} sources${details?.truncation?.truncated ? ", truncated" : ""}`);
+			if (!expanded) return new Text(`${summary}${theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)}`, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			const preview = text.length > 400 ? text.slice(0, 400) + "..." : text;
-			return new Text(summary + "\n" + theme.fg("dim", preview), 0, 0);
+			return new Text(theme.fg("toolOutput", text), 0, 0);
 		},
 	});
 
@@ -606,6 +568,10 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, signal, onUpdate) {
 			const url = params.url.trim();
 			const maxChars = params.maxChars ?? DEFAULT_MAX_CHARS;
+			// eslint-disable-next-line no-control-regex
+			if (params.pattern && /[\u0000-\u001F\u007F-\u009F]/.test(params.pattern)) {
+				throw new Error("Pattern must not contain control characters.");
+			}
 			onUpdate?.({ content: [{ type: "text", text: `Fetching: ${url}` }], details: { phase: "fetching" } });
 
 			try {
@@ -613,8 +579,8 @@ export default function (pi: ExtensionAPI) {
 				if (result.error) throw new Error(result.error);
 
 				const output = params.pattern
-					? `# ${result.title}\n\n${findInContent(result.content, params.pattern)}`
-					: `# ${result.title}\n\n${result.content}`;
+					? `Title: ${result.title}\n\n${findInContent(result.content, params.pattern)}`
+					: `Title: ${result.title}\n\n${result.content}`;
 				const bounded = await boundToolOutput(output);
 
 				return {
@@ -622,12 +588,13 @@ export default function (pi: ExtensionAPI) {
 					details: {
 						title: result.title,
 						chars: result.content.length,
-						truncated: bounded.truncated,
+						...(bounded.truncation ? { truncation: bounded.truncation } : {}),
+						...(bounded.fullOutputPath ? { fullOutputPath: bounded.fullOutputPath } : {}),
 					},
 				};
 			} catch (err) {
 				if (signal?.aborted) throw new Error("Fetch cancelled.");
-				throw await boundWebError("Web fetch failed", err);
+				throw webError("Web fetch failed", err);
 			}
 		},
 
@@ -636,19 +603,18 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
-			const details = result.details as { title?: string; chars?: number; phase?: string; truncated?: boolean };
+			const details = result.details as { title?: string; chars?: number; phase?: string; truncation?: TruncationResult };
 			const pattern = context.args.pattern;
 			if (isPartial) return new Text(theme.fg("accent", details?.phase || "fetching"), 0, 0);
 			if (context.isError) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web fetch failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
-			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars${details?.truncated ? ", truncated" : ""})`);
+			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars${details?.truncation?.truncated ? ", truncated" : ""})`);
 			if (pattern) summary += theme.fg("accent", ` [find: "${pattern}"]`);
-			if (!expanded) return new Text(summary, 0, 0);
+			if (!expanded) return new Text(`${summary}${theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)}`, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			const preview = text.length > 400 ? text.slice(0, 400) + "..." : text;
-			return new Text(summary + "\n" + theme.fg("dim", preview), 0, 0);
+			return new Text(theme.fg("toolOutput", text), 0, 0);
 		},
 	});
 }
