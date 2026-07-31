@@ -19,7 +19,6 @@
       "source": "git:github.com/mitsuhiko/agent-stuff",
       "extensions": [
         "extensions/goal.ts",
-        "extensions/review.ts",
         "extensions/session-breakdown.ts"
       ],
       "skills": [
