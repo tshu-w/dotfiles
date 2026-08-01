@@ -223,10 +223,16 @@ function approximateItemTokens(item: ResponseItem): number {
   return Math.max(1, Math.ceil(userItemTextParts(item).join("").length / 4));
 }
 
+function truncateUtf16Prefix(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const prefix = value.slice(0, maxLength);
+  return /[\uD800-\uDBFF]$/.test(prefix) ? prefix.slice(0, -1) : prefix;
+}
+
 function truncateUserItem(item: ResponseItem, maxTokens: number): ResponseItem | undefined {
   let remaining = Math.max(0, maxTokens * 4);
   if (typeof item.content === "string") {
-    const text = item.content.slice(0, remaining);
+    const text = truncateUtf16Prefix(item.content, remaining);
     return text ? { ...item, content: text } : undefined;
   }
   if (!Array.isArray(item.content)) return undefined;
@@ -234,7 +240,7 @@ function truncateUserItem(item: ResponseItem, maxTokens: number): ResponseItem |
     if (!isRecord(part)) return [];
     if (part.type === "input_image") return [part];
     if (typeof part.text !== "string" || remaining === 0) return [];
-    const text = part.text.slice(0, remaining);
+    const text = truncateUtf16Prefix(part.text, remaining);
     remaining -= text.length;
     return text ? [{ ...part, text }] : [];
   });

@@ -43,6 +43,8 @@ async function main() {
 	]);
 	const truncated = codex.retainUserMessages([user("x".repeat(400)), user("tail")], 2);
 	assert.deepEqual(truncated.map((item) => item.content[0].text), ["x".repeat(4), "tail"]);
+	assert.equal(codex.retainUserMessages([user("aaa😀")], 1)[0].content[0].text, "aaa");
+	assert.equal(codex.retainUserMessages([{ role: "user", content: "aaa😀" }], 1)[0].content, "aaa");
 
 	// Stream parsing: exactly one compaction item plus completion is required.
 	const compactionItem = { type: "compaction", encrypted_content: "blob" };
