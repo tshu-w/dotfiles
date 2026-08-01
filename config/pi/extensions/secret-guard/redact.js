@@ -6,7 +6,11 @@ const BEARER_TOKEN_RE = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{20,})\b/gi;
 const PRIVATE_KEY_BLOCK_RE = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 const URL_CREDENTIALS_RE = /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]*):([^@\s/]+)@/gi;
 
-const GENERIC_SECRET_KEY = String.raw`(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token)`;
+const GENERIC_SECRET_WORD = String.raw`(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token)`;
+// Vendor prefixes and suffixes are common in config keys (exaApiKey, ANTHROPIC_API_KEY,
+// aws_secret_access_key). A lowercase letter right after the word continues a different
+// word (tokenizer, max_tokens), so it does not count as a match.
+const GENERIC_SECRET_KEY = String.raw`(?:[\w.-]*${GENERIC_SECRET_WORD}(?![a-z])[\w.-]*)`;
 const JSON_QUOTED_SECRET_FIELD_RE = new RegExp(String.raw`((?:["'])${GENERIC_SECRET_KEY}(?:["'])\s*:\s*)(["'\x60])([^"'\x60\n]{6,})(\2)`, "gi");
 const LINE_QUOTED_SECRET_FIELD_RE = new RegExp(String.raw`(^[ \t-]*(?:${GENERIC_SECRET_KEY})[ \t]*[:=][ \t]*)(["'\x60])([^"'\x60\n]{6,})(\2)`, "gim");
 const LINE_BARE_SECRET_FIELD_RE = new RegExp(String.raw`(^[ \t-]*(?:${GENERIC_SECRET_KEY})[ \t]*[:=][ \t]*)([^\s,#}\]\["'\x60]{6,})`, "gim");

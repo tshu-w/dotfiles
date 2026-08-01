@@ -4,11 +4,11 @@
  * User `!` commands are not intercepted. This is a practical guard, not a complete DLP solution.
  */
 
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, isToolCallEventType, truncateHead } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, isToolCallEventType, truncateHead, truncateTail } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isConfigLikePath, scrubOutput } from "./redact.js";
 
-// Credential files — read/write/edit/bash all blocked
+// Credential files — read/write/edit/grep/bash all blocked
 const REDACTION_NOTICE = "[Secret Guard redacted sensitive values from this tool output. Do not copy [REDACTED] placeholders back into files.]";
 
 const BLOCKED_PATHS = [
@@ -49,7 +49,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     const path = (event.input as { path?: string }).path;
 
-    if (["read", "write", "edit"].includes(event.toolName) && path) {
+    if (["read", "write", "edit", "grep"].includes(event.toolName) && path) {
       const hit = matchedPath(path);
       if (hit) {
         if (ctx.hasUI) ctx.ui.notify(`Blocked ${event.toolName}: ${path}`, "warning");
@@ -90,15 +90,18 @@ export default function (pi: ExtensionAPI) {
         .map((part) => part.type === "text" ? part.text : "")
         .filter(Boolean)
         .join("\n");
+      // bash keeps the tail of its output, so trimming its head preserves the
+      // window it chose along with its own full-output footer.
+      const truncate = event.toolName === "bash" ? truncateTail : truncateHead;
       const completeText = `${text}\n${REDACTION_NOTICE}`;
-      const complete = truncateHead(completeText, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
+      const complete = truncate(completeText, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
       if (!complete.truncated) {
         return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };
       }
 
       const truncatedNotice = "[Secret Guard redacted sensitive values and truncated this tool output to fit the output limit. Do not copy [REDACTED] placeholders back into files.]";
       const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(`\n${truncatedNotice}`);
-      const preview = truncateHead(text, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
+      const preview = truncate(text, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
       const bounded = preview.content || utf8Prefix(text.split("\n")[0] ?? "", budget);
       const result = content.filter((part) => part.type !== "text") as typeof content;
       if (bounded) result.unshift({ type: "text" as const, text: bounded });
