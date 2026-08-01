@@ -87,7 +87,7 @@ async function main() {
 		getAllTools: () => [],
 		getThinkingLevel: () => "high",
 	};
-	const model = { provider: "openai-codex", id: "gpt-5.6", api: "openai-codex-responses", compat: {}, input: ["text", "image"], output: ["text"] };
+	const model = { provider: "openai-codex", id: "gpt-5.6", api: "openai-codex-responses", compat: {}, input: ["text", "image"], output: ["text"], contextWindow: 272_000 };
 	await codex.registerCodex(pi, {}, { fast: false, compaction: true });
 	const ui = { setStatus() {}, notify() {} };
 	for (const handler of handlers.get("session_start")) {
@@ -188,6 +188,96 @@ async function main() {
 		assert.equal(remoteBody.input.length, 2, "active message plus compaction trigger");
 		assert.match(JSON.stringify(remoteBody.input[0]), /active only/);
 		assert.doesNotMatch(JSON.stringify(remoteBody.input), /stale history/);
+
+		// Pi checks compaction after the agent run, so a final assistant message
+		// may follow the tool outputs that pushed the request over the limit.
+		// Remote compaction must rewrite those outputs before sending the request.
+		remoteBody = undefined;
+		const oversizedToolOutput = "oversized tool output ".repeat(40);
+		global.fetch = async (_url, options) => {
+			const body = JSON.parse(options.body);
+			if (body.input?.at(-1)?.type !== "compaction_trigger") {
+				return new Response("local compaction disabled in test", { status: 500 });
+			}
+			remoteBody = body;
+			const events = JSON.stringify(body.input).includes(oversizedToolOutput)
+				? [{
+					type: "error",
+					error: {
+						type: "invalid_request_error",
+						code: "context_length_exceeded",
+						message: "Your input exceeds the context window of this model.",
+					},
+				}]
+				: [
+					{ type: "response.output_item.done", item: compactionItem },
+					{ type: "response.completed", response: {} },
+				];
+			return new Response(events.map((event) => `data: ${JSON.stringify(event)}`).join("\n\n"), { status: 200 });
+		};
+		const oversizedContext = [
+			{ role: "user", content: "inspect", timestamp: 1 },
+			{
+				role: "assistant",
+				content: [{ type: "toolCall", id: "call_1|fc_1", name: "read", arguments: { path: "large.log" } }],
+				provider: "openai-codex",
+				model: "gpt-5.6",
+				stopReason: "toolUse",
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+				timestamp: 2,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "call_1|fc_1",
+				toolName: "read",
+				content: [{ type: "text", text: oversizedToolOutput }],
+				isError: false,
+				timestamp: 3,
+			},
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "done" }],
+				provider: "openai-codex",
+				model: "gpt-5.6",
+				stopReason: "stop",
+				usage: { input: 115, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 120, cost: {} },
+				timestamp: 4,
+			},
+		];
+		const oversizedResult = await handlers.get("session_before_compact")[0](
+			{
+				reason: "threshold",
+				willRetry: false,
+				branchEntries: [],
+				preparation: {
+					firstKeptEntryId: "active",
+					messagesToSummarize: oversizedContext,
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: 120,
+					fileOps: {},
+					settings: { reserveTokens: 10, keepRecentTokens: 10 },
+				},
+				signal: aborted,
+			},
+			{
+				model: { ...model, baseUrl: "https://x.test", contextWindow: 100 },
+				hasUI: false,
+				ui,
+				getSystemPrompt: () => "system",
+				modelRegistry: {
+					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
+				},
+				sessionManager: {
+					getSessionId: () => "session",
+					buildSessionContext: () => ({ messages: oversizedContext }),
+				},
+			},
+		);
+		assert.ok(oversizedResult?.compaction?.details?.remoteCompaction, "trimmed request should compact remotely");
+		assert.doesNotMatch(JSON.stringify(remoteBody.input), /oversized tool output/);
+		assert.match(JSON.stringify(remoteBody.input), /Output exceeded the available model context and was truncated/);
+		assert.match(JSON.stringify(remoteBody.input), /done/, "final assistant message must be preserved");
 
 		// The trigger itself consumes one Responses input slot. Skip the remote
 		// request when active history would cross the 16,384-item API limit.

@@ -1,13 +1,15 @@
 // codex.ts — openai-codex provider integration: fast mode (priority service
 // tier) and Codex-style remote compaction over the Responses API.
 //
-// On compaction with an openai-codex model, the full conversation is sent to
-// the codex/responses endpoint with a trailing compaction_trigger item, the
-// way the Codex CLI compacts. The returned opaque `compaction` item is stored
-// in the compaction entry's details and replayed — together with retained
-// user messages and everything after the compaction — as the request input on
-// later same-model turns. Pi's regular text summary is still generated and
-// stored, so other models, forks, and tree navigation keep working unchanged.
+// On compaction with an openai-codex model, the conversation is sent to the
+// codex/responses endpoint with a trailing compaction_trigger item, the way
+// the Codex CLI compacts. Tool outputs are rewritten when needed to keep an
+// already-oversized request within the model context window. The returned
+// opaque `compaction` item is stored in the compaction entry's details and
+// replayed — together with retained user messages and everything after the
+// compaction — as the request input on later same-model turns. Pi's regular
+// text summary is still generated and stored, so other models, forks, and tree
+// navigation keep working unchanged.
 // The conversion helpers are loaded from Pi's bundled pi-ai files because the
 // extension loader aliases the pi-ai package root and does not expose its API
 // subpaths through Jiti.
@@ -37,6 +39,8 @@ const REMOTE_COMPACTION_FEATURE = "remote_compaction_v2";
 const REMOTE_COMPACTION_PROVIDER = "openai-codex-responses";
 const RETAINED_USER_TOKEN_BUDGET = 32_000;
 const MAX_RESPONSES_INPUT_ITEMS = 16_384;
+const CONTEXT_WINDOW_TRUNCATED_OUTPUT_MESSAGE =
+  "Output exceeded the available model context and was truncated";
 
 interface RemoteCompactionDetails {
   provider: typeof REMOTE_COMPACTION_PROVIDER;
@@ -267,6 +271,44 @@ export function retainUserMessages(
     remaining = 0;
   }
   return retainedReversed.reverse();
+}
+
+function approximateResponseItemTokens(item: ResponseItem): number {
+  return Math.max(1, Math.ceil(Buffer.byteLength(JSON.stringify(item), "utf8") / 4));
+}
+
+function rewriteToolOutput(item: ResponseItem): ResponseItem | undefined {
+  if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
+    if (item.output === CONTEXT_WINDOW_TRUNCATED_OUTPUT_MESSAGE) return undefined;
+    return { ...item, output: CONTEXT_WINDOW_TRUNCATED_OUTPUT_MESSAGE };
+  }
+  if (item.type === "tool_search_output" && Array.isArray(item.tools) && item.tools.length > 0) {
+    return { ...item, tools: [] };
+  }
+  return undefined;
+}
+
+function trimCompactionInput(
+  items: ResponseItem[],
+  tokensBefore: number,
+  maxTokens: number,
+): ResponseItem[] {
+  if (tokensBefore <= maxTokens) return items;
+  let estimatedTokens = tokensBefore;
+  let trimmed = items;
+  // Pi compacts after the final response, so search past non-tool items that
+  // the inline Codex loop would not have appended yet.
+  for (let index = items.length - 1; index >= 0 && estimatedTokens > maxTokens; index--) {
+    const item = items[index]!;
+    const rewritten = rewriteToolOutput(item);
+    if (!rewritten) continue;
+    const removedTokens = approximateResponseItemTokens(item) - approximateResponseItemTokens(rewritten);
+    if (removedTokens <= 0) continue;
+    if (trimmed === items) trimmed = [...items];
+    trimmed[index] = rewritten;
+    estimatedTokens -= removedTokens;
+  }
+  return trimmed;
 }
 
 // ─── Remote compaction request ───────────────────────────────────────────────
@@ -532,6 +574,15 @@ export async function registerCodex(
     const input =
       reconstructInput(internals, compactionModel, branch, tools) ??
       toResponseItems(internals, compactionModel, activeMessages, tools);
+    const maxInputTokens = Math.max(
+      0,
+      compactionModel.contextWindow - event.preparation.settings.reserveTokens,
+    );
+    const remoteInput = trimCompactionInput(
+      input,
+      event.preparation.tokensBefore,
+      maxInputTokens,
+    );
     const sessionId = ctx.sessionManager.getSessionId();
 
     // Built before starting any promise: a synchronous throw here (e.g. a
@@ -542,7 +593,7 @@ export async function registerCodex(
       headers: buildCompactionHeaders(compactionModel, auth.apiKey, auth.headers, sessionId),
       body: buildCompactionBody(internals, {
         model: compactionModel,
-        input,
+        input: remoteInput,
         instructions: ctx.getSystemPrompt(),
         tools,
         thinkingLevel: pi.getThinkingLevel(),
@@ -550,10 +601,10 @@ export async function registerCodex(
       }),
       signal: event.signal,
     };
-    const remotePromise = input.length + 1 <= MAX_RESPONSES_INPUT_ITEMS
+    const remotePromise = remoteInput.length + 1 <= MAX_RESPONSES_INPUT_ITEMS
       ? requestRemoteCompaction(remoteRequest)
       : Promise.reject(new Error(
-        `Codex compaction input has ${input.length + 1} items; maximum is ${MAX_RESPONSES_INPUT_ITEMS}`,
+        `Codex compaction input has ${remoteInput.length + 1} items; maximum is ${MAX_RESPONSES_INPUT_ITEMS}`,
       ));
 
     const [local, remote] = await Promise.allSettled([
@@ -582,7 +633,7 @@ export async function registerCodex(
     const remoteDetails: RemoteCompactionDetails = {
       provider: REMOTE_COMPACTION_PROVIDER,
       modelKey: modelKey(compactionModel),
-      replacementHistory: [...retainUserMessages(input), remote.value.item],
+      replacementHistory: [...retainUserMessages(remoteInput), remote.value.item],
       ...(remote.value.usage !== undefined ? { usage: remote.value.usage } : {}),
     };
     const localResult = local.status === "fulfilled" ? local.value : undefined;
