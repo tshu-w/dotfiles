@@ -135,12 +135,21 @@ async function main() {
 	assert.equal(callStyles.some(([color]) => color === "muted"), false);
 	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 	const renderedFetch = fetchTool.renderResult(
-		{ content: [{ type: "text", text: "body" }], details: { title: "Example", chars: 4 } },
+		{ content: [{ type: "text", text: 'Title: Example\n\n3 matches for "release notes"\n\nMatch 1 of 3:\n...one...' }], details: { title: "Example", chars: 4 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
 		{ args: fetchArgs, isError: false },
-	).render(1000).join("\n");
-	assert.match(renderedFetch, /\[find: "release notes"\]/, "renderer reads pattern from tool-call args");
+	).render(1000).map((line) => line.trimEnd()).join("\n");
+	assert.match(renderedFetch, /^Example \(4 chars, 3 matches\)\n\.\.\. \(match excerpts hidden,/);
+	assert.doesNotMatch(renderedFetch, /\[find:/);
+	const noMatchesFetch = fetchTool.renderResult(
+		{ content: [{ type: "text", text: 'Title: Example\n\nNo matches for "release notes".' }], details: { title: "Example", chars: 4 } },
+		{ expanded: false, isPartial: false },
+		callTheme,
+		{ args: fetchArgs, isError: false },
+	).render(1000).map((line) => line.trimEnd()).join("\n");
+	assert.equal(noMatchesFetch, "Example (4 chars, no matches)");
+	assert.doesNotMatch(noMatchesFetch, /expand/);
 	const expandedContent = "Title: Example\n\n# Body\n\nfull result";
 	const expandedFetch = fetchTool.renderResult(
 		{ content: [{ type: "text", text: expandedContent }], details: { title: "Example", chars: 18 } },
@@ -149,13 +158,29 @@ async function main() {
 		{ args: fetchArgs, isError: false },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(expandedFetch, expandedContent);
+	const searchContent = "- Example — https://example.com\n  Snippet: release notes";
+	const collapsedSearch = search.renderResult(
+		{ content: [{ type: "text", text: searchContent }], details: { count: 1 } },
+		{ expanded: false, isPartial: false },
+		callTheme,
+		{ args: searchArgs, isError: false },
+	).render(1000).map((line) => line.trimEnd()).join("\n");
+	assert.match(collapsedSearch, /^- Example — https:\/\/example\.com\n\.\.\. \(snippets hidden,/);
+	assert.doesNotMatch(collapsedSearch, /Snippet:/);
+	const emptySearch = search.renderResult(
+		{ content: [{ type: "text", text: "No results found." }], details: { count: 0 } },
+		{ expanded: false, isPartial: false },
+		callTheme,
+		{ args: searchArgs, isError: false },
+	).render(1000).map((line) => line.trimEnd()).join("\n");
+	assert.equal(emptySearch, "No results found.");
 	const expandedSearch = search.renderResult(
-		{ content: [{ type: "text", text: expandedContent }], details: { count: 1 } },
+		{ content: [{ type: "text", text: searchContent }], details: { count: 1 } },
 		{ expanded: true, isPartial: false },
 		callTheme,
 		{ args: searchArgs, isError: false },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
-	assert.equal(expandedSearch, expandedContent);
+	assert.equal(expandedSearch, searchContent);
 
 	const originalFetch = global.fetch;
 	const originalKeys = {
@@ -196,7 +221,8 @@ async function main() {
 		const patternResult = await fetchTool.execute("test", {
 			url: "https://example.com", maxChars: 80_000, pattern: "xxx",
 		}, undefined, undefined);
-		assert.match(patternResult.content[0].text, /^Title: example\.com\n\nFound 10 match\(es\) for "xxx":/);
+		assert.match(patternResult.content[0].text, /^Title: example\.com\n\n10 matches for "xxx"\n\nMatch 1 of 10:/);
+		assert.match(patternResult.content[0].text, /\n\nMatch 10 of 10:/);
 		assert.equal(fetchUrls.filter((url) => url === "https://r.jina.ai/https://example.com/").length, 2);
 		assert.equal(fetchUrls.includes("https://example.com/"), false, "web_fetch does not fetch URLs directly");
 
@@ -244,7 +270,7 @@ async function main() {
 		assert.equal(tavilyRequest.max_results, 1);
 		assert.deepEqual(searchResult.details, { count: 1 });
 		assert.equal(searchResult.content[0].text,
-			"1. Example\n   URL: https://example.com\n   Snippet: first second");
+			"- Example — https://example.com\n  Snippet: first second");
 		assert.doesNotMatch(searchResult.content[0].text, /provider-generated answer/);
 
 		process.env.EXA_API_KEY = "test-key";
@@ -285,7 +311,7 @@ async function main() {
 		assert.ok(searchSpillPath);
 		assert.equal(truncatedSearch.details.truncation.truncated, true);
 		assert.equal(truncatedSearch.details.fullOutputPath, searchSpillPath);
-		assert.equal(readFileSync(searchSpillPath, "utf8"), `1. Example\n   URL: ${longResultUrl}\n   Snippet: large URL`);
+		assert.equal(readFileSync(searchSpillPath, "utf8"), `- Example — ${longResultUrl}\n  Snippet: large URL`);
 		rmSync(dirname(searchSpillPath), { recursive: true });
 
 		let bodyPulls = 0;

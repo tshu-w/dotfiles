@@ -473,15 +473,17 @@ function findInContent(content: string, pattern: string, contextChars = 200): st
 		start = idx + normalizedPattern.length;
 	}
 
-	if (matches.length === 0) return `Pattern "${normalizedPattern}" not found in page.`;
-	return `Found ${matches.length} match(es) for "${normalizedPattern}":\n\n${matches.join("\n\n---\n\n")}`;
+	if (matches.length === 0) return `No matches for "${normalizedPattern}".`;
+	const count = matches.length;
+	return `${count} ${count === 1 ? "match" : "matches"} for "${normalizedPattern}"\n\n` +
+		matches.map((match, index) => `Match ${index + 1} of ${count}:\n${match}`).join("\n\n");
 }
 
 function formatSearchResults(results: SearchResult[]): string {
-	return results.map((result, index) => {
+	return results.map((result) => {
 		const snippet = sanitizeExternalText(result.snippet).replace(/\s+/g, " ").trim();
-		const lines = [`${index + 1}. ${result.title}`, `   URL: ${sanitizeExternalText(result.url)}`];
-		if (snippet) lines.push(`   Snippet: ${snippet}`);
+		const lines = [`- ${result.title} — ${sanitizeExternalText(result.url)}`];
+		if (snippet) lines.push(`  Snippet: ${snippet}`);
 		return lines.join("\n");
 	}).join("\n\n");
 }
@@ -540,10 +542,20 @@ export default function (pi: ExtensionAPI) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web search failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
-			const summary = theme.fg("success", `${details?.count ?? 0} sources${details?.truncation?.truncated ? ", truncated" : ""}`);
-			if (!expanded) return new Text(`${summary}${theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)}`, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			return new Text(theme.fg("toolOutput", text), 0, 0);
+			if (expanded || details?.count === 0) return new Text(theme.fg("toolOutput", text), 0, 0);
+
+			const sourceLines = text.split("\n").filter((line) => line.startsWith("- "));
+			const snippetsHidden = text.split("\n").some((line) => line.startsWith("  Snippet: "));
+			const hidden = [
+				...(snippetsHidden ? ["snippets hidden"] : []),
+				...(details?.truncation?.truncated ? ["output truncated"] : []),
+			];
+			const lines = sourceLines.map((line) => theme.fg("toolOutput", line));
+			if (hidden.length > 0) {
+				lines.push(theme.fg("dim", `... (${hidden.join(", ")}, ${keyText("app.tools.expand")} to expand)`));
+			}
+			return new Text(lines.join("\n"), 0, 0);
 		},
 	});
 
@@ -607,11 +619,22 @@ export default function (pi: ExtensionAPI) {
 				const text = result.content.find(c => c.type === "text")?.text ?? "Web fetch failed";
 				return new Text(theme.fg("error", text), 0, 0);
 			}
-			let summary = theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${details?.chars ?? 0} chars${details?.truncation?.truncated ? ", truncated" : ""})`);
-			if (pattern) summary += theme.fg("accent", ` [find: "${pattern}"]`);
-			if (!expanded) return new Text(`${summary}${theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)}`, 0, 0);
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			return new Text(theme.fg("toolOutput", text), 0, 0);
+			if (expanded) return new Text(theme.fg("toolOutput", text), 0, 0);
+
+			const countMatch = pattern ? text.match(/(?:^|\n)(\d+) (?:match|matches) for /) : undefined;
+			const matchCount = countMatch ? Number(countMatch[1]) : undefined;
+			const noMatches = Boolean(pattern && /(?:^|\n)No matches for /.test(text));
+			let metadata = `${details?.chars ?? 0} chars`;
+			if (matchCount !== undefined) metadata += `, ${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
+			else if (noMatches) metadata += ", no matches";
+			if (details?.truncation?.truncated) metadata += ", truncated";
+			const lines = [theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${metadata})`)];
+			if (!noMatches) {
+				const hidden = pattern ? "match excerpts hidden" : "page content hidden";
+				lines.push(theme.fg("dim", `... (${hidden}, ${keyText("app.tools.expand")} to expand)`));
+			}
+			return new Text(lines.join("\n"), 0, 0);
 		},
 	});
 }
