@@ -25,11 +25,11 @@ description: Development and review guidelines for Pi extensions (plugins) and c
 
 ## Truncation
 
-8. Bound result text with Pi's exported limits and truncation functions instead of hard-coded values. Keep error messages bounded at their source instead of generically rewrapping errors. Count the truncation notice against the result budget.
+8. Bound result content with Pi's exported limits and truncation functions instead of hard-coded values. Append notices after applying the limits. Keep error messages bounded at their source instead of generically rewrapping errors.
 
-9. Use Pi's native truncation format. The `truncation` fields must describe the text actually returned, including whether the last line is partial.
+9. Use Pi's native truncation format. The `truncation` fields must describe the retained content, including whether its last line is partial.
 
-10. When passing an upstream result through, keep its content and `details` if the final text fits. If it does not, truncate again, update `truncation` to match the final text, and keep any existing `fullOutputPath`.
+10. Pass through bounded upstream results with their content and `details` unchanged. For unbounded upstream results, truncate when the content exceeds the limits, update `truncation`, and preserve any existing `fullOutputPath`.
 
 11. Save complete output to a temporary file when it is too large. When stable pagination can recover everything omitted, provide a continuation offset instead of a temporary file.
 
