@@ -69,9 +69,13 @@ setTimeout(() => process.exit(0), 5000);
 		const ctx = {
 			cwd: EXTENSIONS_DIR,
 			hasUI: false,
-			sessionManager: { getEntries: () => [] },
+			sessionManager: { getEntries: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
 			ui: { notify() {}, setStatus() {}, theme: { fg: (_color, text) => text } },
 		};
+		// Local execution keeps Pi's session environment, which needs the tool context.
+		const localBash = await tools.get("bash").execute("local-bash", { command: "printenv PI_SESSION_ID" }, undefined, undefined, ctx);
+		assert.match(localBash.content[0].text, /session-test/);
+
 		await handlers.get("session_start")({ reason: "startup" }, ctx);
 
 		await commands.get("ssh").handler(`fake-host:/${"x".repeat(60 * 1024)}`, ctx);

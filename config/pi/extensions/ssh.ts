@@ -509,9 +509,9 @@ export default function (pi: ExtensionAPI) {
     ...baseRead,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
+      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
     },
   });
 
@@ -519,9 +519,9 @@ export default function (pi: ExtensionAPI) {
     ...baseWrite,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
+      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
     },
   });
 
@@ -529,9 +529,9 @@ export default function (pi: ExtensionAPI) {
     ...baseEdit,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate);
+      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
     },
   });
 
@@ -539,9 +539,9 @@ export default function (pi: ExtensionAPI) {
     ...baseBash,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate);
+      if (!ssh) return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate);
+      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate, ctx);
     },
   });
 
