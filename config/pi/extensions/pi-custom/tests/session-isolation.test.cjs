@@ -201,9 +201,11 @@ async function main() {
 	delete process.env.KITTY_WINDOW_ID;
 	process.stdout.write = (chunk) => { notificationOutput += String(chunk); return true; };
 	try {
-		await emit(first, "agent_end", {}, firstCtx);
-		assert.equal(notificationOutput, "", "print/RPC mode must not write terminal escape sequences");
 		await emit(first, "agent_end", {}, { ...firstCtx, mode: "tui" });
+		assert.equal(notificationOutput, "", "agent_end may still be followed by automatic work");
+		await emit(first, "agent_settled", {}, firstCtx);
+		assert.equal(notificationOutput, "", "print/RPC mode must not write terminal escape sequences");
+		await emit(first, "agent_settled", {}, { ...firstCtx, mode: "tui" });
 		assert.match(notificationOutput, /Ready for input/);
 	} finally {
 		process.stdout.write = originalWrite;

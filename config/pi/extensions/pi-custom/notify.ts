@@ -1,4 +1,4 @@
-// Native terminal notification when a TUI agent run finishes.
+// Native terminal notification when a TUI agent run fully settles.
 
 import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -28,7 +28,7 @@ function notify(title: string, body: string): void {
 }
 
 export function registerNotify(pi: ExtensionAPI): void {
-  pi.on("agent_end", (_event, ctx) => {
+  pi.on("agent_settled", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
     notify("Pi", "Ready for input");
   });
