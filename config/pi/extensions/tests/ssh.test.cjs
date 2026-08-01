@@ -22,21 +22,36 @@ async function main() {
 	const fakeSsh = join(root, "ssh");
 	const signalLog = join(root, "signals.log");
 	writeFileSync(fakeSsh, `#!/usr/bin/env node
-const { appendFileSync } = require("node:fs");
+const { appendFileSync, writeFileSync } = require("node:fs");
 appendFileSync(process.env.PI_SSH_SMOKE_LOG, "ready\\n");
-if (process.env.PI_SSH_SMOKE_MODE === "error") {
-	const text = process.env.PI_SSH_SMOKE_LINES === "1"
-		? Array.from({ length: 2100 }, (_, i) => "line " + i).join("\\n")
-		: "e".repeat(60 * 1024);
+const remoteCommand = process.argv.at(-1);
+if (process.env.PI_SSH_SMOKE_MODE === "error" || (process.env.PI_SSH_SMOKE_MODE === "write-error" && remoteCommand.includes("cat >"))) {
+	const text = process.env.PI_SSH_SMOKE_MODE === "write-error"
+		? "write failed"
+		: process.env.PI_SSH_SMOKE_LINES === "1"
+			? Array.from({ length: 2100 }, (_, i) => "line " + i).join("\\n")
+			: "e".repeat(60 * 1024);
 	process.stderr.write(text);
 	process.exit(2);
 }
-process.on("SIGTERM", () => appendFileSync(process.env.PI_SSH_SMOKE_LOG, "TERM\\n"));
-setTimeout(() => process.exit(0), 5000);
+if (process.env.PI_SSH_SMOKE_MODE === "write-error") process.exit(0);
+if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
+	appendFileSync(process.env.PI_SSH_SMOKE_ARGV, JSON.stringify(process.argv.slice(2)) + "\\n");
+	if (!process.argv.at(-1).includes("cat >")) process.exit(0);
+	const chunks = [];
+	process.stdin.on("data", chunk => chunks.push(chunk));
+	process.stdin.on("end", () => {
+		writeFileSync(process.env.PI_SSH_SMOKE_INPUT, Buffer.concat(chunks));
+		process.exit(0);
+	});
+} else {
+	process.on("SIGTERM", () => appendFileSync(process.env.PI_SSH_SMOKE_LOG, "TERM\\n"));
+	setTimeout(() => process.exit(0), 5000);
+}
 `);
 	chmodSync(fakeSsh, 0o755);
 
-	const savedEnv = Object.fromEntries(["PATH", "TMPDIR", "PI_SSH_REMOTE", "PI_SSH_REMOTE_CWD", "PI_SSH_LOCAL_CWD", "PI_SSH_SMOKE_LOG", "PI_SSH_SMOKE_MODE", "PI_SSH_SMOKE_LINES"].map(name => [name, process.env[name]]));
+	const savedEnv = Object.fromEntries(["PATH", "TMPDIR", "PI_SSH_REMOTE", "PI_SSH_REMOTE_CWD", "PI_SSH_LOCAL_CWD", "PI_SSH_SMOKE_LOG", "PI_SSH_SMOKE_MODE", "PI_SSH_SMOKE_LINES", "PI_SSH_SMOKE_ARGV", "PI_SSH_SMOKE_INPUT"].map(name => [name, process.env[name]]));
 	process.env.PATH = `${root}:${process.env.PATH}`;
 	process.env.PI_SSH_REMOTE = "fake-host";
 	process.env.PI_SSH_REMOTE_CWD = "/remote";
@@ -87,6 +102,24 @@ setTimeout(() => process.exit(0), 5000);
 		assert.ok(statusContent.split("\n").length <= DEFAULT_MAX_LINES, "SSH status content stays within Pi's line bound");
 		assert.match(statusMessage, /SSH status truncated/);
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
+
+		const inputCapture = join(root, "input.bin");
+		const argvLog = join(root, "argv.log");
+		const largeContent = `WRITE-MARKER\\n${"z".repeat(1_100_000)}`;
+		process.env.PI_SSH_SMOKE_MODE = "capture-input";
+		process.env.PI_SSH_SMOKE_INPUT = inputCapture;
+		process.env.PI_SSH_SMOKE_ARGV = argvLog;
+		await tools.get("write").execute("write-large", { path: "large.txt", content: largeContent }, undefined, undefined, ctx);
+		delete process.env.PI_SSH_SMOKE_MODE;
+		assert.equal(readFileSync(inputCapture, "utf8"), largeContent, "remote write streams content beyond the argv limit");
+		assert.ok(!readFileSync(argvLog, "utf8").includes("WRITE-MARKER"), "remote write content stays out of argv");
+
+		process.env.PI_SSH_SMOKE_MODE = "write-error";
+		const writeError = await tools.get("write").execute("write-error", { path: "large.txt", content: largeContent }, undefined, undefined, ctx)
+			.then(() => null, error => error);
+		delete process.env.PI_SSH_SMOKE_MODE;
+		assert.match(writeError.message, /SSH failed \(2\)/, "an early remote failure is not replaced by stdin EPIPE");
+		assert.doesNotMatch(writeError.message, /EPIPE/);
 
 		const fileToolCases = [
 			["read", { path: "large.txt" }],

@@ -93,6 +93,7 @@ function runSshProcess(
     signal?: AbortSignal;
     timeoutMs?: number;
     timeoutError?: Error;
+    input?: string | Buffer;
     onStdout?: (data: Buffer) => void;
     onStderr?: (data: Buffer) => void;
   },
@@ -100,7 +101,7 @@ function runSshProcess(
   if (options.signal?.aborted) return Promise.reject(new Error("aborted"));
 
   return new Promise((resolve, reject) => {
-    const child = spawn("ssh", [remote, command], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("ssh", [remote, command], { stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     let settled = false;
     let stopError: Error | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
@@ -137,6 +138,13 @@ function runSshProcess(
     child.on("error", (error) => settle(stopError ?? error));
     child.on("close", (code) => settle(stopError, code));
     options.signal?.addEventListener("abort", onAbort, { once: true });
+
+    if (options.input !== undefined && child.stdin) {
+      child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code !== "EPIPE") stop(error);
+      });
+      child.stdin.end(options.input);
+    }
 
     if (options.timeoutMs && options.timeoutMs > 0) {
       timeoutTimer = setTimeout(
@@ -185,12 +193,13 @@ function sshFailure(code: number | null, stderr: string): Error {
   return new Error(full.content + notice);
 }
 
-function sshExec(remote: string, command: string, signal?: AbortSignal, timeoutMs?: number): Promise<Buffer> {
+function sshExec(remote: string, command: string, signal?: AbortSignal, timeoutMs?: number, input?: string | Buffer): Promise<Buffer> {
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   return runSshProcess(remote, command, {
     signal,
     timeoutMs,
+    input,
     onStdout: (data) => stdoutChunks.push(data),
     onStderr: (data) => stderrChunks.push(data),
   }).then((code) => {
@@ -249,12 +258,7 @@ function createRemoteWriteOps(getSsh: () => SshState | null, signal?: AbortSigna
   return {
     writeFile: async (filePath, content) => {
       const ssh = requireSshState(getSsh);
-      const base64 = Buffer.from(content).toString("base64");
-      await sshExec(
-        ssh.remote,
-        `echo ${shellQuote(base64)} | base64 -d > ${shellQuote(filePath)}`,
-        signal,
-      );
+      await sshExec(ssh.remote, `cat > ${shellQuote(filePath)}`, signal, undefined, content);
     },
     mkdir: async (dirPath) => {
       const ssh = requireSshState(getSsh);
