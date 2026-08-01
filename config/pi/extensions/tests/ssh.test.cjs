@@ -103,6 +103,18 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		assert.match(statusMessage, /SSH status truncated/);
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
 
+		for (const [timeout, message] of [
+			[0, "Invalid timeout: must be a finite number of seconds"],
+			[-1, "Invalid timeout: must be a finite number of seconds"],
+			[Number.POSITIVE_INFINITY, "Invalid timeout: must be a finite number of seconds"],
+			[2_147_483.648, "Invalid timeout: maximum is 2147483.647 seconds"],
+		]) {
+			await assert.rejects(
+				tools.get("bash").execute("invalid-timeout", { command: "true", timeout }, undefined, undefined, ctx),
+				new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+			);
+		}
+
 		const inputCapture = join(root, "input.bin");
 		const argvLog = join(root, "argv.log");
 		const largeContent = `WRITE-MARKER\\n${"z".repeat(1_100_000)}`;

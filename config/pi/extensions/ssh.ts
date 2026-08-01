@@ -282,11 +282,18 @@ function createRemoteBashOps(getSsh: () => SshState | null, { mapLocalCwd = fals
   return {
     exec: async (command, cwd, { onData, signal, timeout }) => {
       const ssh = requireSshState(getSsh);
+      if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
+        throw new Error("Invalid timeout: must be a finite number of seconds");
+      }
+      const timeoutMs = timeout === undefined ? undefined : timeout * 1000;
+      if (timeoutMs !== undefined && timeoutMs > 2_147_483_647) {
+        throw new Error("Invalid timeout: maximum is 2147483.647 seconds");
+      }
       const remoteCwd = mapLocalCwd ? mapCwdToRemote(cwd, ssh) : cwd;
       const remoteCommand = `cd ${shellQuote(remoteCwd)} && ${command}`;
       const exitCode = await runSshProcess(ssh.remote, remoteCommand, {
         signal,
-        timeoutMs: timeout ? timeout * 1000 : undefined,
+        timeoutMs,
         timeoutError: new Error(`timeout:${timeout}`),
         onStdout: onData,
         onStderr: onData,
