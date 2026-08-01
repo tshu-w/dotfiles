@@ -39,7 +39,6 @@ const SSH_OFF_TEXT = "SSH: off";
 const SSH_INACTIVE_ERROR = "SSH mode is not active";
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const TERMINATION_GRACE_MS = 250;
-const SSH_ERROR_MAX_BYTES = DEFAULT_MAX_BYTES - 2048;
 
 type SshState = {
   remote: string;
@@ -156,28 +155,17 @@ function utf8Prefix(value: string, maxBytes: number): string {
   return buffer.subarray(0, end).toString("utf8");
 }
 
-function utf8Suffix(value: string, maxBytes: number): string {
-  const buffer = Buffer.from(value, "utf8");
-  if (buffer.length <= maxBytes) return value;
-  let start = buffer.length - maxBytes;
-  while (start < buffer.length && (buffer[start] & 0b1100_0000) === 0b1000_0000) start++;
-  return buffer.subarray(start).toString("utf8");
-}
-
 function boundHeadText(value: string, notice: string): string {
   const full = truncateHead(value, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
   if (!full.truncated) return value;
 
-  const suffix = `\n${notice}`;
-  const budget = DEFAULT_MAX_BYTES - Buffer.byteLength(suffix);
-  const preview = truncateHead(value, { maxBytes: budget, maxLines: DEFAULT_MAX_LINES - 1 });
-  const content = preview.content || utf8Prefix(value.split("\n")[0] ?? "", budget);
-  return content ? content + suffix : notice;
+  const content = full.content || utf8Prefix(value.split("\n")[0] ?? "", DEFAULT_MAX_BYTES);
+  return `${content}\n${notice}`;
 }
 
 function sshFailure(code: number | null, stderr: string): Error {
   const message = `SSH failed (${code}): ${stderr}`;
-  const full = truncateTail(message, { maxBytes: SSH_ERROR_MAX_BYTES, maxLines: DEFAULT_MAX_LINES - 2 });
+  const full = truncateTail(message, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
   if (!full.truncated) return new Error(message);
 
   let fullOutputPath: string | undefined;
@@ -189,35 +177,12 @@ function sshFailure(code: number | null, stderr: string): Error {
     fullOutputPath = undefined;
   }
 
-  const makeNotice = (previewBytes: number) => fullOutputPath
-    ? `\n\n[SSH error truncated: showing the last ${formatSize(previewBytes)} of ${formatSize(full.totalBytes)}.` +
+  const notice = fullOutputPath
+    ? `\n\n[SSH error truncated: showing the last ${formatSize(full.outputBytes)} of ${formatSize(full.totalBytes)}.` +
       ` Full error: ${fullOutputPath}. This is a temporary file; copy or move it if it should persist.]`
-    : `\n\n[SSH error truncated: showing the last ${formatSize(previewBytes)} of ${formatSize(full.totalBytes)}.` +
+    : `\n\n[SSH error truncated: showing the last ${formatSize(full.outputBytes)} of ${formatSize(full.totalBytes)}.` +
       " Full error could not be saved to a temporary file; rerun the command only if safe.]";
-  let notice = makeNotice(SSH_ERROR_MAX_BYTES);
-  let preview = truncateTail(message, {
-    maxBytes: Math.max(0, SSH_ERROR_MAX_BYTES - Buffer.byteLength(notice)),
-    maxLines: DEFAULT_MAX_LINES - 2,
-  });
-  notice = makeNotice(preview.outputBytes);
-  while (preview.outputBytes + Buffer.byteLength(notice) > SSH_ERROR_MAX_BYTES) {
-    preview = truncateTail(message, {
-      maxBytes: Math.max(0, SSH_ERROR_MAX_BYTES - Buffer.byteLength(notice)),
-      maxLines: DEFAULT_MAX_LINES - 2,
-    });
-    notice = makeNotice(preview.outputBytes);
-  }
-
-  let content = preview.content;
-  if (!content) {
-    content = utf8Suffix(message, Math.max(0, SSH_ERROR_MAX_BYTES - Buffer.byteLength(notice)));
-    notice = makeNotice(Buffer.byteLength(content));
-    while (Buffer.byteLength(content) + Buffer.byteLength(notice) > SSH_ERROR_MAX_BYTES) {
-      content = utf8Suffix(content, Math.max(0, SSH_ERROR_MAX_BYTES - Buffer.byteLength(notice)));
-      notice = makeNotice(Buffer.byteLength(content));
-    }
-  }
-  return new Error(content + notice);
+  return new Error(full.content + notice);
 }
 
 function sshExec(remote: string, command: string, signal?: AbortSignal, timeoutMs?: number): Promise<Buffer> {
