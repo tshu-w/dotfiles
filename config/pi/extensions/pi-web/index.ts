@@ -467,7 +467,7 @@ function findInContent(content: string, pattern: string, contextChars = 200): st
 		const from = Math.max(0, idx - contextChars);
 		const to = Math.min(content.length, idx + normalizedPattern.length + contextChars);
 		if (from > lastTo) {
-			matches.push(`...${content.slice(from, to)}...`);
+			matches.push(content.slice(from, to));
 			lastTo = to;
 		}
 		start = idx + normalizedPattern.length;
@@ -476,7 +476,7 @@ function findInContent(content: string, pattern: string, contextChars = 200): st
 	if (matches.length === 0) return `No matches for "${normalizedPattern}".`;
 	const count = matches.length;
 	return `${count} ${count === 1 ? "match" : "matches"} for "${normalizedPattern}"\n\n` +
-		matches.map((match, index) => `Match ${index + 1} of ${count}:\n${match}`).join("\n\n");
+		`...\n${matches.join("\n...\n")}\n...`;
 }
 
 function formatSearchResults(results: SearchResult[]): string {
@@ -548,7 +548,7 @@ export default function (pi: ExtensionAPI) {
 			const sourceLines = text.split("\n").filter((line) => line.startsWith("- "));
 			const snippetsHidden = text.split("\n").some((line) => line.startsWith("  Snippet: "));
 			const hidden = [
-				...(snippetsHidden ? ["snippets hidden"] : []),
+				...(snippetsHidden ? ["source snippets hidden"] : []),
 				...(details?.truncation?.truncated ? ["output truncated"] : []),
 			];
 			const lines = sourceLines.map((line) => theme.fg("toolOutput", line));

@@ -135,7 +135,7 @@ async function main() {
 	assert.equal(callStyles.some(([color]) => color === "muted"), false);
 	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 	const renderedFetch = fetchTool.renderResult(
-		{ content: [{ type: "text", text: 'Title: Example\n\n3 matches for "release notes"\n\nMatch 1 of 3:\n...one...' }], details: { title: "Example", chars: 4 } },
+		{ content: [{ type: "text", text: 'Title: Example\n\n3 matches for "release notes"\n\n...\none\n...\ntwo\n...\nthree\n...' }], details: { title: "Example", chars: 4 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
 		{ args: fetchArgs, isError: false },
@@ -165,7 +165,7 @@ async function main() {
 		callTheme,
 		{ args: searchArgs, isError: false },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
-	assert.match(collapsedSearch, /^- Example — https:\/\/example\.com\n\.\.\. \(snippets hidden,/);
+	assert.match(collapsedSearch, /^- Example — https:\/\/example\.com\n\.\.\. \(source snippets hidden,/);
 	assert.doesNotMatch(collapsedSearch, /Snippet:/);
 	const emptySearch = search.renderResult(
 		{ content: [{ type: "text", text: "No results found." }], details: { count: 0 } },
@@ -221,8 +221,9 @@ async function main() {
 		const patternResult = await fetchTool.execute("test", {
 			url: "https://example.com", maxChars: 80_000, pattern: "xxx",
 		}, undefined, undefined);
-		assert.match(patternResult.content[0].text, /^Title: example\.com\n\n10 matches for "xxx"\n\nMatch 1 of 10:/);
-		assert.match(patternResult.content[0].text, /\n\nMatch 10 of 10:/);
+		assert.match(patternResult.content[0].text, /^Title: example\.com\n\n10 matches for "xxx"\n\n\.\.\.\n/);
+		assert.match(patternResult.content[0].text, /\n\.\.\.\n.*\n\.\.\.$/s);
+		assert.doesNotMatch(patternResult.content[0].text, /Match \d+ of \d+:/);
 		assert.equal(fetchUrls.filter((url) => url === "https://r.jina.ai/https://example.com/").length, 2);
 		assert.equal(fetchUrls.includes("https://example.com/"), false, "web_fetch does not fetch URLs directly");
 
