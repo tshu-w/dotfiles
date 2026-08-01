@@ -10,13 +10,14 @@ const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"
 
 // Assembled at runtime so this file never carries a literal blocked path.
 const NETRC = `.net${"rc"}`;
+const REDACTION_NOTICE = "[Secret Guard redacted sensitive values. Do not copy [REDACTED] back into files.]";
 
 async function main() {
 	const jiti = createJiti(__filename, {
 		interopDefault: true,
 		alias: { "@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js` },
 	});
-	const { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
+	const { DEFAULT_MAX_BYTES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
 	const { scrubOutput } = await jiti.import(join(EXTENSIONS_DIR, "secret-guard/redact.js"));
 	const register = await jiti.import(join(EXTENSIONS_DIR, "secret-guard/index.ts"), { default: true });
 
@@ -68,7 +69,7 @@ async function main() {
 	const untouched = await toolResult("read", { path: "src/app.ts" }, "const timeout = 30;");
 	assert.equal(untouched, undefined, "results without secrets pass through unchanged");
 
-	// Truncation follows the direction the source tool chose.
+	// Redaction never trims the tool's own output, so its truncation footer survives.
 	const footer = "[Showing lines 1-9 of 99. Full output: /tmp/pi-bash-example/output.txt]";
 	const bashResult = await toolResult(
 		"bash",
@@ -77,28 +78,14 @@ async function main() {
 	);
 	const bashText = textOf(bashResult);
 	assert.ok(bashText.includes(footer), "bash keeps its own full-output footer");
+	assert.ok(bashText.includes("tail line"), "nothing is trimmed to make room for the notice");
 	assert.ok(!bashText.includes("s".repeat(24)), "the secret is gone");
-	assert.match(bashText, /Secret Guard redacted sensitive values and truncated this tool output/);
-	assert.ok(Buffer.byteLength(bashText) <= DEFAULT_MAX_BYTES);
-	assert.ok(bashText.split("\n").length <= DEFAULT_MAX_LINES);
-
-	const readResult = await toolResult(
-		"read",
-		{ path: "/tmp/app.yaml" },
-		`password: abcdef123456\n${"y".repeat(DEFAULT_MAX_BYTES)}\ntail marker`,
-	);
-	const readText = textOf(readResult);
-	assert.ok(readText.startsWith("password: [REDACTED]"), "read keeps the head");
-	assert.ok(!readText.includes("tail marker"), "read drops the tail");
-	assert.ok(Buffer.byteLength(readText) <= DEFAULT_MAX_BYTES);
+	assert.ok(bashText.endsWith(REDACTION_NOTICE), "the notice follows the tool's own footer");
 
 	const shortResult = await toolResult("read", { path: "/tmp/app.yaml" }, "password: abcdef123456");
-	assert.deepEqual(shortResult.content.map((part) => part.text), [
-		"password: [REDACTED]",
-		"[Secret Guard redacted sensitive values from this tool output. Do not copy [REDACTED] placeholders back into files.]",
-	]);
+	assert.deepEqual(shortResult.content.map((part) => part.text), ["password: [REDACTED]", REDACTION_NOTICE]);
 
-	console.log("secret-guard: path blocking, config-key redaction, and per-tool truncation passed");
+	console.log("secret-guard: path blocking, config-key redaction, and notice placement passed");
 }
 
 main().catch((error) => {
