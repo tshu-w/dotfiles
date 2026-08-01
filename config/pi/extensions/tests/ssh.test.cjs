@@ -72,6 +72,7 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		const handlers = new Map();
 		const commands = new Map();
 		const messages = [];
+		const notifications = [];
 		module.default({
 			appendEntry() {},
 			getFlag() { return undefined; },
@@ -83,9 +84,9 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		});
 		const ctx = {
 			cwd: EXTENSIONS_DIR,
-			hasUI: false,
+			hasUI: true,
 			sessionManager: { getEntries: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
-			ui: { notify() {}, setStatus() {}, theme: { fg: (_color, text) => text } },
+			ui: { notify(message) { notifications.push(message); }, setStatus() {}, theme: { fg: (_color, text) => text } },
 		};
 		// Local execution keeps Pi's session environment, which needs the tool context.
 		const localBash = await tools.get("bash").execute("local-bash", { command: "printenv PI_SESSION_ID" }, undefined, undefined, ctx);
@@ -101,7 +102,9 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		assert.ok(Buffer.byteLength(statusContent) <= DEFAULT_MAX_BYTES, "SSH status content stays within Pi's byte bound");
 		assert.ok(statusContent.split("\n").length <= DEFAULT_MAX_LINES, "SSH status content stays within Pi's line bound");
 		assert.match(statusMessage, /SSH status truncated/);
+		assert.equal(messages.at(-1).display, false, "state messages stay in model context without duplicating the UI notification");
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
+		assert.equal(notifications.at(-1), "SSH mode enabled: fake-host:/remote (disable: /ssh off)");
 
 		for (const [timeout, message] of [
 			[0, "Invalid timeout: must be a finite number of seconds"],
@@ -198,6 +201,9 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		assert.ok(Date.now() - abortStarted < 1500, "remote bash abort has a hard settle bound");
 
 		assert.ok(readFileSync(signalLog, "utf8").split("TERM").length >= 6, "each stopped ssh process receives SIGTERM");
+		await commands.get("ssh").handler("off", ctx);
+		assert.equal(notifications.at(-1), "SSH mode disabled.");
+		assert.equal(messages.at(-1).display, false, "disabled state messages also stay hidden");
 		console.log("ssh: file-tool aborts and remote bash timeout/abort settle bounds passed");
 	} finally {
 		for (const [name, value] of Object.entries(savedEnv)) {

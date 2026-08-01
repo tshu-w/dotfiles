@@ -490,7 +490,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (options?.notify !== false && ctx.hasUI) {
-      ctx.ui.notify(activeSsh ? `SSH mode: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)} (disable: /ssh off)` : "SSH mode disabled", "info");
+      ctx.ui.notify(activeSsh ? `SSH mode enabled: ${activeSsh.remote}:${mapCwdToRemote(ctx.cwd, activeSsh)} (disable: /ssh off)` : "SSH mode disabled.", "info");
     }
   };
 
@@ -577,7 +577,7 @@ export default function (pi: ExtensionAPI) {
         pi.sendMessage({
           customType: "ssh-state-change",
           content: "SSH mode disabled. All tool calls (read, write, edit, bash) and user ! commands now execute locally.",
-          display: true,
+          display: false,
         }, { triggerTurn: false });
         return;
       }
@@ -589,7 +589,7 @@ export default function (pi: ExtensionAPI) {
         pi.sendMessage({
           customType: "ssh-state-change",
           content: boundHeadText(content, "[SSH status truncated; full state remains stored in session metadata.]"),
-          display: true,
+          display: false,
         }, { triggerTurn: false });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
