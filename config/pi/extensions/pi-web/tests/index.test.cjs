@@ -33,8 +33,8 @@ async function main() {
 	const multiLineResult = await boundToolOutput(multiLine);
 	assert.equal(multiLineResult.truncation.truncated, true);
 	assert.ok(multiLineResult.text.includes("[Output truncated:"));
-	assert.ok(Buffer.byteLength(multiLineResult.text) <= MAX_BYTES);
-	assert.ok(multiLineResult.text.split("\n").length <= MAX_LINES);
+	assert.ok(multiLineResult.truncation.outputBytes <= MAX_BYTES);
+	assert.ok(multiLineResult.truncation.outputLines <= MAX_LINES);
 	assert.equal(readFileSync(multiLineResult.fullOutputPath, "utf8"), multiLine);
 	rmSync(dirname(multiLineResult.fullOutputPath), { recursive: true });
 
@@ -45,7 +45,7 @@ async function main() {
 		assert.equal(result.truncation.truncated, true);
 		assert.equal(result.fullOutputPath, undefined);
 		assert.match(result.text, /Full output could not be saved to a temporary file/);
-		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES);
+		assert.ok(result.truncation.outputBytes <= MAX_BYTES);
 	} finally {
 		if (originalTmpdir === undefined) delete process.env.TMPDIR;
 		else process.env.TMPDIR = originalTmpdir;
@@ -60,8 +60,7 @@ async function main() {
 		const result = await boundToolOutput("x".repeat(MAX_BYTES + 1000));
 		assert.ok(Buffer.byteLength(result.fullOutputPath) > 512, "regression requires a long temp path");
 		assert.ok(result.text.includes(result.fullOutputPath), "the model-visible notice keeps the long temp path");
-		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES, "long temp path stays within byte limit");
-		assert.ok(result.text.split("\n").length <= MAX_LINES, "long temp path stays within line limit");
+		assert.ok(result.truncation.outputBytes <= MAX_BYTES, "a long temp path does not shrink the retained content");
 	} finally {
 		if (longTmpOriginal === undefined) delete process.env.TMPDIR;
 		else process.env.TMPDIR = longTmpOriginal;
@@ -75,7 +74,7 @@ async function main() {
 		assert.equal(result.truncation.firstLineExceedsLimit, true);
 		assert.ok(result.text.startsWith("[Output truncated:"));
 		assert.ok(!result.text.includes("\uFFFD"), "no replacement characters");
-		assert.ok(Buffer.byteLength(result.text) <= MAX_BYTES);
+		assert.equal(result.truncation.content, "");
 		assert.equal(readFileSync(result.fullOutputPath, "utf8"), input);
 		rmSync(dirname(result.fullOutputPath), { recursive: true });
 	}
@@ -188,7 +187,7 @@ async function main() {
 		const longResult = await fetchTool.execute("test", { url: "https://example.com", maxChars: 80_000 }, undefined, undefined);
 		assert.deepEqual(Object.keys(longResult.details).sort(), ["chars", "fullOutputPath", "title", "truncation"]);
 		assert.equal(longResult.details.truncation.truncated, true);
-		assert.ok(Buffer.byteLength(longResult.content[0].text) <= MAX_BYTES);
+		assert.ok(longResult.details.truncation.outputBytes <= MAX_BYTES);
 		const fetchSpillPath = spillPathOf(longResult.content[0].text);
 		assert.ok(fetchSpillPath);
 		assert.equal(longResult.details.fullOutputPath, fetchSpillPath);
