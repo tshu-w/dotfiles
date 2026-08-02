@@ -34,6 +34,7 @@ import {
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
+import { registerReroll } from "./reroll.ts";
 import { registerSystemTheme } from "./system-theme.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
@@ -844,6 +845,7 @@ export default async function piCustom(pi: ExtensionAPI) {
     fast: initial.fast.value,
     compaction: initial.codexCompaction.value,
   });
+  registerReroll(pi);
   const applyPreferences = () => {
     const settings = preferences.get();
     codexControl.setDesired(settings.fast.value);
