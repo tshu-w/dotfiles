@@ -73,6 +73,7 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		const commands = new Map();
 		const messages = [];
 		const notifications = [];
+		const statusUpdates = [];
 		module.default({
 			appendEntry() {},
 			getFlag() { return undefined; },
@@ -86,13 +87,18 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 			cwd: EXTENSIONS_DIR,
 			hasUI: true,
 			sessionManager: { getEntries: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
-			ui: { notify(message) { notifications.push(message); }, setStatus() {}, theme: { fg: (_color, text) => text } },
+			ui: {
+				notify(message) { notifications.push(message); },
+				setStatus(key, text) { statusUpdates.push({ key, text }); },
+				theme: { fg: (_color, text) => text },
+			},
 		};
 		// Local execution keeps Pi's session environment, which needs the tool context.
 		const localBash = await tools.get("bash").execute("local-bash", { command: "printenv PI_SESSION_ID" }, undefined, undefined, ctx);
 		assert.match(localBash.content[0].text, /session-test/);
 
 		await handlers.get("session_start")({ reason: "startup" }, ctx);
+		const startupNotificationCount = notifications.length;
 
 		await commands.get("ssh").handler(`fake-host:/${"x".repeat(60 * 1024)}`, ctx);
 		assert.ok(messages.length > 0);
@@ -102,9 +108,10 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 		assert.ok(Buffer.byteLength(statusContent) <= DEFAULT_MAX_BYTES, "SSH status content stays within Pi's byte bound");
 		assert.ok(statusContent.split("\n").length <= DEFAULT_MAX_LINES, "SSH status content stays within Pi's line bound");
 		assert.match(statusMessage, /SSH status truncated/);
-		assert.equal(messages.at(-1).display, false, "state messages stay in model context without duplicating the UI notification");
+		assert.equal(messages.at(-1).display, false, "state messages stay in model context");
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
-		assert.equal(notifications.at(-1), "SSH mode enabled: fake-host:/remote (disable: /ssh off)");
+		assert.equal(notifications.length, startupNotificationCount, "explicit mode changes do not duplicate the state message as UI notifications");
+		assert.match(statusUpdates.at(-1).text, /^SSH: fake-host:\/remote$/);
 
 		for (const [timeout, message] of [
 			[0, "Invalid timeout: must be a finite number of seconds"],
@@ -202,7 +209,8 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 
 		assert.ok(readFileSync(signalLog, "utf8").split("TERM").length >= 6, "each stopped ssh process receives SIGTERM");
 		await commands.get("ssh").handler("off", ctx);
-		assert.equal(notifications.at(-1), "SSH mode disabled.");
+		assert.equal(notifications.length, startupNotificationCount, "disabling SSH does not duplicate the state message as a UI notification");
+		assert.equal(statusUpdates.at(-1).text, undefined);
 		assert.equal(messages.at(-1).display, false, "disabled state messages also stay hidden");
 		console.log("ssh: file-tool aborts and remote bash timeout/abort settle bounds passed");
 	} finally {

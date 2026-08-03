@@ -573,7 +573,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (["off", "disable", "clear"].includes(trimmed)) {
-        await applyState(null, ctx, { persist: true });
+        await applyState(null, ctx, { persist: true, notify: false });
         pi.sendMessage({
           customType: "ssh-state-change",
           content: "SSH mode disabled. All tool calls (read, write, edit, bash) and user ! commands now execute locally.",
@@ -584,7 +584,7 @@ export default function (pi: ExtensionAPI) {
 
       try {
         const nextState = await resolveSshTarget(trimmed, ctx.cwd);
-        await applyState(nextState, ctx, { persist: true });
+        await applyState(nextState, ctx, { persist: true, notify: false });
         const content = `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.\nTo return tools to local execution, run /ssh off.`;
         pi.sendMessage({
           customType: "ssh-state-change",
