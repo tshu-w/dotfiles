@@ -138,7 +138,6 @@ export function registerUvGuard(pi: ExtensionAPI): void {
     if (!command.trim()) return;
     const rule = findUvRule(command);
     if (!rule) return;
-    if (ctx.hasUI) ctx.ui.notify(`${rule.title}. ${rule.suggestion}`, "warning");
     return { block: true, reason: `${rule.title}. ${rule.suggestion}` };
   });
 }
