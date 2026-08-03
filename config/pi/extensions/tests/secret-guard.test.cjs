@@ -22,9 +22,13 @@ async function main() {
 	const register = await jiti.import(join(EXTENSIONS_DIR, "secret-guard/index.ts"), { default: true });
 
 	const handlers = {};
+	let notifications = 0;
 	register({ on: (name, handler) => { handlers[name] = handler; } });
 	const toolCall = (toolName, input) =>
-		handlers.tool_call({ type: "tool_call", toolCallId: "call", toolName, input }, { hasUI: false });
+		handlers.tool_call(
+			{ type: "tool_call", toolCallId: "call", toolName, input },
+			{ hasUI: true, ui: { notify() { notifications++; } } },
+		);
 	const toolResult = (toolName, input, text) =>
 		handlers.tool_result({
 			type: "tool_result",
@@ -45,6 +49,7 @@ async function main() {
 	assert.equal(await toolCall("grep", { pattern: "token", path: "src/app.ts" }), undefined);
 	assert.equal(await toolCall("grep", { pattern: "token" }), undefined, "grep without a path still runs");
 	assert.equal(await toolCall("find", { pattern: "*", path: "~/.ssh" }), undefined, "find only lists names");
+	assert.equal(notifications, 0, "blocked tool results do not duplicate their reason as UI notifications");
 
 	// Layer 2: config keys carry vendor prefixes and suffixes.
 	const configOptions = { envAssignments: true, genericFields: true };

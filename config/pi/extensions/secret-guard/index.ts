@@ -38,13 +38,12 @@ function matchedPath(p: string, shellCommand = false) {
 
 export default function (pi: ExtensionAPI) {
   // Layer 1: block file access and bash references to credential paths
-  pi.on("tool_call", async (event, ctx) => {
+  pi.on("tool_call", async (event) => {
     const path = (event.input as { path?: string }).path;
 
     if (["read", "write", "edit", "grep"].includes(event.toolName) && path) {
       const hit = matchedPath(path);
       if (hit) {
-        if (ctx.hasUI) ctx.ui.notify(`Blocked ${event.toolName}: ${path}`, "warning");
         return { block: true, reason: `Sensitive file (${hit})` };
       }
     }
@@ -52,7 +51,6 @@ export default function (pi: ExtensionAPI) {
     if (isToolCallEventType("bash", event)) {
       const hit = matchedPath(event.input.command, true);
       if (hit) {
-        if (ctx.hasUI) ctx.ui.notify("Blocked bash: sensitive file reference", "warning");
         return { block: true, reason: `Sensitive path in command (${hit})` };
       }
     }
