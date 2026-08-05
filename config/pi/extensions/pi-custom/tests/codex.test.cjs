@@ -239,6 +239,44 @@ async function main() {
 		);
 		assert.equal(remoteBody, undefined, "oversized input must not reach fetch");
 		assert.match(limitWarning, /16385 items; maximum is 16384/);
+
+		// A provider overflow already proves that the active payload cannot be
+		// accepted by the same remote endpoint. Let Pi's built-in text compaction
+		// recover instead of resending the overflowing input.
+		remoteBody = undefined;
+		let overflowWarning;
+		await handlers.get("session_before_compact")[0](
+			{
+				reason: "overflow",
+				willRetry: true,
+				branchEntries: [],
+				preparation: {
+					firstKeptEntryId: "active",
+					messagesToSummarize: [activeMessage],
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: 272_001,
+					fileOps: {},
+					settings: { reserveTokens: 1024, keepRecentTokens: 1024 },
+				},
+				signal: new AbortController().signal,
+			},
+			{
+				model: { ...model, baseUrl: "https://x.test" },
+				hasUI: true,
+				ui: { ...ui, notify: (message) => { overflowWarning = message; } },
+				getSystemPrompt: () => "system",
+				modelRegistry: {
+					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
+				},
+				sessionManager: {
+					getSessionId: () => "session",
+					buildSessionContext: () => ({ messages: [activeMessage] }),
+				},
+			},
+		);
+		assert.equal(remoteBody, undefined, "overflow recovery must not resend the rejected payload");
+		assert.equal(overflowWarning, undefined, "expected overflow recovery does not emit a remote failure warning");
 	} finally {
 		global.fetch = originalFetch;
 	}

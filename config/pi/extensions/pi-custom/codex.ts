@@ -508,6 +508,7 @@ export async function registerCodex(
 
   pi.on("session_before_compact", async (event, ctx) => {
     if (!compactionEnabled) return undefined;
+    if (event.reason === "overflow" && event.willRetry) return undefined;
     const compactionModel = ctx.model;
     if (!isCodexModel(compactionModel)) return undefined;
     const auth = await ctx.modelRegistry.getApiKeyAndHeaders(compactionModel);
