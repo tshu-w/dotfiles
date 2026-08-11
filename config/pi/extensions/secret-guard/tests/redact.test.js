@@ -52,6 +52,19 @@ const fixtures = [
     expected: 'OPENAI_API_KEY="[REDACTED]"',
   },
   {
+    name: "environment references stay visible",
+    actual: scrubOutput(
+      ['OPENAI_API_KEY=${OPENAI_API_KEY}', 'api_key: ${MATRIX_API_KEY}', '"client_secret": "${CLIENT_SECRET}"'].join("\n"),
+      configOptions,
+    ),
+    expected: ['OPENAI_API_KEY=${OPENAI_API_KEY}', 'api_key: ${MATRIX_API_KEY}', '"client_secret": "${CLIENT_SECRET}"'].join("\n"),
+  },
+  {
+    name: "derived environment values are redacted",
+    actual: scrubOutput("api_key: ${MATRIX_API_KEY}-suffix", configOptions),
+    expected: "api_key: [REDACTED]",
+  },
+  {
     name: "env assignment remains intact for source reads",
     actual: scrubOutput('OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")'),
     expected: 'OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")',

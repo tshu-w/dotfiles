@@ -6,6 +6,8 @@ const BEARER_TOKEN_RE = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{20,})\b/gi;
 const PRIVATE_KEY_BLOCK_RE = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 const URL_CREDENTIALS_RE = /\b([a-z][a-z0-9+.-]*:\/\/)([^:\s/@]*):([^@\s/]+)@/gi;
 
+const ENV_REFERENCE_RE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
+
 const GENERIC_SECRET_WORD = String.raw`(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token)`;
 // Vendor prefixes and suffixes are common in config keys (exaApiKey, ANTHROPIC_API_KEY,
 // aws_secret_access_key). A lowercase letter right after the word continues a different
@@ -13,7 +15,10 @@ const GENERIC_SECRET_WORD = String.raw`(?:password|passwd|pwd|secret|token|api[_
 const GENERIC_SECRET_KEY = String.raw`(?:[\w.-]*${GENERIC_SECRET_WORD}(?![a-z])[\w.-]*)`;
 const JSON_QUOTED_SECRET_FIELD_RE = new RegExp(String.raw`((?:["'])${GENERIC_SECRET_KEY}(?:["'])\s*:\s*)(["'\x60])([^"'\x60\n]{6,})(\2)`, "gi");
 const LINE_QUOTED_SECRET_FIELD_RE = new RegExp(String.raw`(^[ \t-]*(?:${GENERIC_SECRET_KEY})[ \t]*[:=][ \t]*)(["'\x60])([^"'\x60\n]{6,})(\2)`, "gim");
-const LINE_BARE_SECRET_FIELD_RE = new RegExp(String.raw`(^[ \t-]*(?:${GENERIC_SECRET_KEY})[ \t]*[:=][ \t]*)([^\s,#}\]\["'\x60]{6,})`, "gim");
+const LINE_BARE_SECRET_FIELD_RE = new RegExp(
+  String.raw`(^[ \t-]*(?:${GENERIC_SECRET_KEY})[ \t]*[:=][ \t]*)(\$\{[^}\r\n]+\}[^\s,#}\]\["'\x60]*|[^\s,#}\]\["'\x60]{6,})`,
+  "gim",
+);
 
 const CONFIG_EXTENSIONS = new Set([
   ".cfg",
@@ -33,9 +38,10 @@ const CONFIG_FILENAMES = new Set([".npmrc", ".pypirc"]);
 
 function redactPreservingQuotes(prefix, value) {
   const quote = value[0];
-  if ((quote === '"' || quote === "'") && value.at(-1) === quote) {
-    return `${prefix}${quote}[REDACTED]${quote}`;
-  }
+  const quoted = (quote === '"' || quote === "'" || quote === "\x60") && value.at(-1) === quote;
+  const rawValue = quoted ? value.slice(1, -1) : value;
+  if (ENV_REFERENCE_RE.test(rawValue)) return `${prefix}${value}`;
+  if (quoted) return `${prefix}${quote}[REDACTED]${quote}`;
   return `${prefix}[REDACTED]`;
 }
 
@@ -57,9 +63,13 @@ export function scrubOutput(text, { envAssignments = false, genericFields = fals
     out = out.replace(ENV_ASSIGNMENT_RE, (_match, prefix, value) => redactPreservingQuotes(prefix, value));
   }
   if (genericFields) {
-    out = out.replace(JSON_QUOTED_SECRET_FIELD_RE, "$1$2[REDACTED]$4");
-    out = out.replace(LINE_QUOTED_SECRET_FIELD_RE, "$1$2[REDACTED]$4");
-    out = out.replace(LINE_BARE_SECRET_FIELD_RE, "$1[REDACTED]");
+    out = out.replace(JSON_QUOTED_SECRET_FIELD_RE, (_match, prefix, quote, value) =>
+      redactPreservingQuotes(prefix, `${quote}${value}${quote}`),
+    );
+    out = out.replace(LINE_QUOTED_SECRET_FIELD_RE, (_match, prefix, quote, value) =>
+      redactPreservingQuotes(prefix, `${quote}${value}${quote}`),
+    );
+    out = out.replace(LINE_BARE_SECRET_FIELD_RE, (_match, prefix, value) => redactPreservingQuotes(prefix, value));
   }
   return out;
 }
