@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
-const { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
+const { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 
@@ -22,22 +22,33 @@ async function main() {
 	const fakeSsh = join(root, "ssh");
 	const signalLog = join(root, "signals.log");
 	writeFileSync(fakeSsh, `#!/usr/bin/env node
+const { spawn } = require("node:child_process");
 const { appendFileSync, writeFileSync } = require("node:fs");
 appendFileSync(process.env.PI_SSH_SMOKE_LOG, "ready\\n");
 const remoteCommand = process.argv.at(-1);
-if (process.env.PI_SSH_SMOKE_MODE === "error" || (process.env.PI_SSH_SMOKE_MODE === "write-error" && remoteCommand.includes("cat >"))) {
-	const text = process.env.PI_SSH_SMOKE_MODE === "write-error"
+const mode = process.env.PI_SSH_SMOKE_MODE;
+if (mode === "execute" || mode === "execute-truncated") {
+	const chunks = [];
+	process.stdin.on("data", chunk => chunks.push(chunk));
+	process.stdin.on("end", () => {
+		const input = Buffer.concat(chunks);
+		const child = spawn("/bin/sh", ["-c", remoteCommand], { stdio: ["pipe", "inherit", "inherit"] });
+		child.on("exit", code => process.exit(code ?? 1));
+		child.stdin.end(mode === "execute-truncated" ? input.subarray(0, 10) : input);
+	});
+} else if (mode === "error" || (mode === "write-error" && remoteCommand.includes("cat >"))) {
+	const text = mode === "write-error"
 		? "write failed"
 		: process.env.PI_SSH_SMOKE_LINES === "1"
 			? Array.from({ length: 2100 }, (_, i) => "line " + i).join("\\n")
 			: "e".repeat(60 * 1024);
 	process.stderr.write(text);
 	process.exit(2);
-}
-if (process.env.PI_SSH_SMOKE_MODE === "write-error") process.exit(0);
-if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
+} else if (mode === "write-error") {
+	process.exit(0);
+} else if (mode === "capture-input") {
 	appendFileSync(process.env.PI_SSH_SMOKE_ARGV, JSON.stringify(process.argv.slice(2)) + "\\n");
-	if (!process.argv.at(-1).includes("cat >")) process.exit(0);
+	if (!remoteCommand.includes("cat >")) process.exit(0);
 	const chunks = [];
 	process.stdin.on("data", chunk => chunks.push(chunk));
 	process.stdin.on("end", () => {
@@ -124,6 +135,48 @@ if (process.env.PI_SSH_SMOKE_MODE === "capture-input") {
 				new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
 			);
 		}
+
+		const remoteRoot = mkdtempSync(join(root, "remote-"));
+		await commands.get("ssh").handler(`fake-host:${remoteRoot}`, ctx);
+		const existingPath = join(remoteRoot, "atomic.txt");
+		writeFileSync(existingPath, "original content");
+		chmodSync(existingPath, 0o640);
+
+		process.env.PI_SSH_SMOKE_MODE = "execute";
+		await tools.get("write").execute("write-atomic", { path: "atomic.txt", content: "complete replacement" }, undefined, undefined, ctx);
+		assert.equal(readFileSync(existingPath, "utf8"), "complete replacement");
+		assert.equal(statSync(existingPath).mode & 0o777, 0o640, "atomic replacement preserves existing permissions");
+		await tools.get("edit").execute(
+			"edit-atomic",
+			{ path: "atomic.txt", edits: [{ oldText: "complete", newText: "atomic" }] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.equal(readFileSync(existingPath, "utf8"), "atomic replacement");
+		assert.equal(statSync(existingPath).mode & 0o777, 0o640, "remote edits use the same permission-preserving replacement");
+
+		const newPath = join(remoteRoot, "new.txt");
+		await tools.get("write").execute("write-atomic-new", { path: "new.txt", content: "new content" }, undefined, undefined, ctx);
+		assert.equal(statSync(newPath).mode & 0o777, 0o600, "new remote files default to owner-only permissions");
+
+		writeFileSync(existingPath, "still original");
+		process.env.PI_SSH_SMOKE_MODE = "execute-truncated";
+		const truncatedWriteError = await tools.get("write").execute(
+			"write-truncated",
+			{ path: "atomic.txt", content: "replacement that must arrive in full" },
+			undefined,
+			undefined,
+			ctx,
+		).then(() => null, error => error);
+		delete process.env.PI_SSH_SMOKE_MODE;
+		assert.match(truncatedWriteError.message, /incomplete remote write/);
+		assert.equal(readFileSync(existingPath, "utf8"), "still original", "an incomplete transfer leaves the target unchanged");
+		assert.deepEqual(
+			readdirSync(remoteRoot).sort(),
+			["atomic.txt", "new.txt"],
+			"failed writes remove their temporary file",
+		);
 
 		const inputCapture = join(root, "input.bin");
 		const argvLog = join(root, "argv.log");

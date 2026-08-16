@@ -5,6 +5,7 @@
  * - `--ssh user@host[:/remote/path]` startup flag
  * - `/ssh` slash command to view/switch/disable SSH mode
  * - argument completions from ~/.ssh/config
+ * - atomic remote writes that preserve existing file permissions
  * - subagent inheritance via environment variables
  */
 
@@ -258,7 +259,18 @@ function createRemoteWriteOps(getSsh: () => SshState | null, signal?: AbortSigna
   return {
     writeFile: async (filePath, content) => {
       const ssh = requireSshState(getSsh);
-      await sshExec(ssh.remote, `cat > ${shellQuote(filePath)}`, signal, undefined, content);
+      const expectedBytes = Buffer.byteLength(content);
+      const target = shellQuote(filePath);
+      const command =
+        `set -eu; target=${target}; tmp=$(mktemp "\${target}.XXXXXX"); ` +
+        `trap 'rm -f "$tmp"' EXIT HUP INT TERM; cat > "$tmp"; ` +
+        `actual=$(wc -c < "$tmp"); ` +
+        `if [ "$actual" -ne ${expectedBytes} ]; then ` +
+        `printf 'incomplete remote write: expected ${expectedBytes} bytes, received %s bytes\\n' "$actual" >&2; exit 1; fi; ` +
+        `if [ -e "$target" ]; then ` +
+        `mode=$(stat -c %a "$target" 2>/dev/null || stat -f %Lp "$target"); chmod "$mode" "$tmp"; ` +
+        `else chmod 600 "$tmp"; fi; mv "$tmp" "$target"`;
+      await sshExec(ssh.remote, command, signal, undefined, content);
     },
     mkdir: async (dirPath) => {
       const ssh = requireSshState(getSsh);
