@@ -10,7 +10,6 @@
     "extensions/official/questionnaire.ts",
     "extensions/pi-custom/index.ts",
     "extensions/pi-custom/title-status.ts",
-    "extensions/rtk.ts",
     "extensions/pi-web/index.ts"
   ],
   "packages": [
