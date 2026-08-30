@@ -9,7 +9,7 @@
  *   web_fetch  — fetch readable text/markdown
  */
 
-import type { ExtensionAPI, TruncationResult } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme, TruncationResult } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, keyText, truncateHead } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
@@ -123,6 +123,16 @@ function normalizeUrl(input: string): { url: string; titleFallback: string } {
 		url: parsed.toString(),
 		titleFallback: parsed.pathname.split("/").filter(Boolean).pop() || parsed.hostname,
 	};
+}
+
+function styleToolOutput(text: string, truncated: boolean, theme: Theme): string {
+	if (!truncated) return theme.fg("toolOutput", text);
+	const marker = "[Output truncated:";
+	const separatedFooterStart = text.lastIndexOf(`\n\n${marker}`);
+	const footerStart = separatedFooterStart >= 0 ? separatedFooterStart : text.startsWith(marker) ? 0 : -1;
+	if (footerStart < 0) return theme.fg("toolOutput", text);
+	if (footerStart === 0) return theme.fg("warning", text);
+	return `${theme.fg("toolOutput", text.slice(0, footerStart))}\n\n${theme.fg("warning", text.slice(footerStart + 2))}`;
 }
 
 export async function boundToolOutput(value: string): Promise<{
@@ -543,17 +553,22 @@ export default function (pi: ExtensionAPI) {
 				return new Text(theme.fg("error", text), 0, 0);
 			}
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			if (expanded || details?.count === 0) return new Text(theme.fg("toolOutput", text), 0, 0);
+			const truncated = details?.truncation?.truncated === true;
+			if (expanded || details?.count === 0) return new Text(styleToolOutput(text, truncated, theme), 0, 0);
 
 			const sourceLines = text.split("\n").filter((line) => line.startsWith("- "));
 			const snippetsHidden = text.split("\n").some((line) => line.startsWith("  Snippet: "));
 			const hidden = [
-				...(snippetsHidden ? ["source snippets hidden"] : []),
-				...(details?.truncation?.truncated ? ["output truncated"] : []),
+				...(snippetsHidden ? [theme.fg("dim", "source snippets hidden")] : []),
+				...(truncated ? [theme.fg("warning", "output truncated")] : []),
 			];
 			const lines = sourceLines.map((line) => theme.fg("toolOutput", line));
 			if (hidden.length > 0) {
-				lines.push(theme.fg("dim", `... (${hidden.join(", ")}, ${keyText("app.tools.expand")} to expand)`));
+				lines.push(
+					theme.fg("dim", "... (") +
+					hidden.join(theme.fg("dim", ", ")) +
+					theme.fg("dim", `, ${keyText("app.tools.expand")} to expand)`),
+				);
 			}
 			return new Text(lines.join("\n"), 0, 0);
 		},
@@ -620,7 +635,8 @@ export default function (pi: ExtensionAPI) {
 				return new Text(theme.fg("error", text), 0, 0);
 			}
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			if (expanded) return new Text(theme.fg("toolOutput", text), 0, 0);
+			const truncated = details?.truncation?.truncated === true;
+			if (expanded) return new Text(styleToolOutput(text, truncated, theme), 0, 0);
 
 			const countMatch = pattern ? text.match(/(?:^|\n)(\d+) (?:match|matches) for /) : undefined;
 			const matchCount = countMatch ? Number(countMatch[1]) : undefined;
@@ -628,8 +644,13 @@ export default function (pi: ExtensionAPI) {
 			let metadata = `${details?.chars ?? 0} chars`;
 			if (matchCount !== undefined) metadata += `, ${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
 			else if (noMatches) metadata += ", no matches";
-			if (details?.truncation?.truncated) metadata += ", truncated";
-			const lines = [theme.fg("success", details?.title || "Fetched") + theme.fg("muted", ` (${metadata})`)];
+			const truncationStatus = truncated ? theme.fg("warning", ", truncated") : "";
+			const lines = [
+				theme.fg("success", details?.title || "Fetched") +
+				theme.fg("muted", ` (${metadata}`) +
+				truncationStatus +
+				theme.fg("muted", ")"),
+			];
 			if (!noMatches) {
 				const hidden = pattern ? "match excerpts hidden" : "page content hidden";
 				lines.push(theme.fg("dim", `... (${hidden}, ${keyText("app.tools.expand")} to expand)`));

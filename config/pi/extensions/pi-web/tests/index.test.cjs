@@ -182,6 +182,35 @@ async function main() {
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(expandedSearch, searchContent);
 
+	const truncationNotice = "[Output truncated: 100 lines. Full output: /tmp/web.txt]";
+	callStyles.length = 0;
+	search.renderResult(
+		{ content: [{ type: "text", text: `[Output truncated: quoted page text]\nbody\n\n${truncationNotice}` }], details: { count: 1, truncation: { truncated: true } } },
+		{ expanded: true, isPartial: false },
+		callTheme,
+		{ args: searchArgs, isError: false },
+	).render(1000);
+	assert.ok(callStyles.some(([color, text]) => color === "warning" && text === truncationNotice));
+
+	callStyles.length = 0;
+	search.renderResult(
+		{ content: [{ type: "text", text: searchContent }], details: { count: 1, truncation: { truncated: true } } },
+		{ expanded: false, isPartial: false },
+		callTheme,
+		{ args: searchArgs, isError: false },
+	).render(1000);
+	assert.ok(callStyles.some(([color, text]) => color === "warning" && text === "output truncated"));
+	assert.equal(callStyles.some(([color, text]) => color === "warning" && /source snippets|to expand/.test(text)), false);
+
+	callStyles.length = 0;
+	fetchTool.renderResult(
+		{ content: [{ type: "text", text: expandedContent }], details: { title: "Example", chars: 18, truncation: { truncated: true } } },
+		{ expanded: false, isPartial: false },
+		callTheme,
+		{ args: fetchArgs, isError: false },
+	).render(1000);
+	assert.ok(callStyles.some(([color, text]) => color === "warning" && text.includes("truncated")));
+
 	const originalFetch = global.fetch;
 	const originalKeys = {
 		exa: process.env.EXA_API_KEY,
