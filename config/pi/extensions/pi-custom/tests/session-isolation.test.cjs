@@ -68,17 +68,30 @@ async function main() {
 		},
 	});
 	const piAgent = await jiti.import("@earendil-works/pi-coding-agent");
+	const piTui = await jiti.import("@earendil-works/pi-tui");
 	piAgent.initTheme("dark");
 	const extension = await jiti.import("../index.ts");
 	const titleStatus = await jiti.import("../title-status.ts");
 	const factory = extension.default;
 	const calls = [];
 	let closed = false;
+	const panelBindings = {
+		"tui.select.up": ["up"],
+		"tui.select.down": ["down"],
+		"tui.select.confirm": ["enter"],
+		"tui.select.cancel": ["escape", "ctrl+c"],
+		"app.models.save": ["ctrl+s"],
+	};
+	const panelKeybindings = {
+		getKeys: (keybinding) => panelBindings[keybinding] ?? [],
+		matches: (data, keybinding) => (panelBindings[keybinding] ?? []).some((key) => piTui.matchesKey(data, key)),
+	};
 	const panel = new extension.PreferencesPanel(
 		{
 			fg: (role, text) => role === "dim" ? `<dim>${text}</dim>` : text,
 			bold: (text) => `<b>${text}</b>`,
 		},
+		panelKeybindings,
 		{
 			get: () => ({
 				fast: { value: false, scope: "global" },
@@ -100,7 +113,7 @@ async function main() {
 	assert.match(initialPanel, /<b>Codex<\/b>/);
 	assert.match(initialPanel, /<b>Transcript<\/b>/);
 	assert.match(initialPanel, /Use OpenAI priority service tier/);
-	assert.match(initialPanel, /Ctrl\+S save global · r reset/);
+	assert.match(initialPanel, /enter\/space toggle · ctrl\+s save global · r reset · escape\/ctrl\+c cancel/);
 	assert.match(panel.render(80).join("\n"), /Off     <dim>\[global\]<\/dim>/);
 	panel.handleInput(" ");
 	panel.handleInput("\x13");
@@ -114,7 +127,7 @@ async function main() {
 	panel.handleInput("r");
 	panel.handleInput("\x1b[B");
 	assert.match(panel.render(80).join("\n"), /Load older compaction intervals/);
-	assert.match(panel.render(80).join("\n"), /Enter\/Space load older · r recent · f full/);
+	assert.match(panel.render(80).join("\n"), /enter\/space load older · r recent · f full · escape\/ctrl\+c cancel/);
 	panel.handleInput("\r");
 	panel.handleInput("f");
 	panel.handleInput("r");
@@ -167,7 +180,7 @@ async function main() {
 				const settingsPanel = create(
 					{ requestRender() {} },
 					{ fg: (_role, text) => text, bold: (text) => text },
-					{},
+					panelKeybindings,
 					() => {},
 				);
 				settingsPanel.handleInput(" ");

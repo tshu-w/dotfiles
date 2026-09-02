@@ -14,7 +14,7 @@ import {
   InteractiveMode,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
-import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -624,15 +624,26 @@ export class PreferencesPanel implements Component {
 
   constructor(
     private readonly theme: Theme,
+    private readonly keybindings: KeybindingsManager,
     private readonly actions: PreferencesPanelActions,
     private readonly requestRender: () => void,
     private readonly close: () => void,
   ) {}
 
+  private keyText(keybinding: "tui.select.confirm" | "tui.select.cancel" | "app.models.save"): string {
+    return this.keybindings.getKeys(keybinding)
+      .map((key) => key.split("+")
+        .map((part) => process.platform === "darwin" && part.toLowerCase() === "alt" ? "option" : part)
+        .join("+"))
+      .join("/");
+  }
+
   private helpText(): string {
+    const confirm = this.keyText("tui.select.confirm");
+    const cancel = this.keyText("tui.select.cancel");
     return this.rows[this.selected]?.field === "transcriptHistory"
-      ? "  Enter/Space load older · r recent · f full · Esc cancel"
-      : "  Enter/Space toggle · Ctrl+S save global · r reset · Esc cancel";
+      ? `  ${confirm}/space load older · r recent · f full · ${cancel} cancel`
+      : `  ${confirm}/space toggle · ${this.keyText("app.models.save")} save global · r reset · ${cancel} cancel`;
   }
 
   private formatScopedValue(value: string, scope: "global" | "session"): string {
@@ -680,23 +691,23 @@ export class PreferencesPanel implements Component {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, Key.up)) {
+    if (this.keybindings.matches(data, "tui.select.up")) {
       this.selected = (this.selected + this.rows.length - 1) % this.rows.length;
-    } else if (matchesKey(data, Key.down)) {
+    } else if (this.keybindings.matches(data, "tui.select.down")) {
       this.selected = (this.selected + 1) % this.rows.length;
-    } else if (matchesKey(data, Key.escape)) {
+    } else if (this.keybindings.matches(data, "tui.select.cancel")) {
       this.close();
       return;
     } else {
       const field = this.rows[this.selected]!.field;
       if (field === "transcriptHistory") {
-        if (data === " " || matchesKey(data, Key.enter)) this.actions.showOlderHistory();
+        if (data === " " || this.keybindings.matches(data, "tui.select.confirm")) this.actions.showOlderHistory();
         else if (data === "r") this.actions.showRecentHistory();
         else if (data === "f") this.actions.showFullHistory();
         else return;
-      } else if (data === " " || matchesKey(data, Key.enter)) {
+      } else if (data === " " || this.keybindings.matches(data, "tui.select.confirm")) {
         this.actions.toggleSession(field);
-      } else if (matchesKey(data, Key.ctrl("s"))) {
+      } else if (this.keybindings.matches(data, "app.models.save")) {
         this.actions.saveGlobal(field);
       } else if (data === "r") {
         this.actions.resetSession(field);
@@ -750,8 +761,9 @@ function registerCustomSettings(
       return;
     }
     await ctx.ui.custom<void>(
-      (tui, theme, _keybindings, done) => new PreferencesPanel(
+      (tui, theme, keybindings, done) => new PreferencesPanel(
         theme,
+        keybindings,
         {
           get: () => preferences.get(),
           getHistoryStatus: () => transcriptHistory.getStatus(),
