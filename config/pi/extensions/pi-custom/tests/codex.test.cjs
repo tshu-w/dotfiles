@@ -90,8 +90,9 @@ async function main() {
 	const model = { provider: "openai-codex", id: "gpt-5.6", api: "openai-codex-responses", compat: {}, input: ["text", "image"], output: ["text"], contextWindow: 272_000 };
 	await codex.registerCodex(pi, {}, { fast: false, compaction: true });
 	const ui = { setStatus() {}, notify() {} };
+	const sessionManager = { getBranch: () => [] };
 	for (const handler of handlers.get("session_start")) {
-		handler({ reason: "new" }, { model, ui, sessionManager: { getBranch: () => [] } });
+		handler({ reason: "new" }, { model, ui, sessionManager });
 	}
 	const branch = [
 		{
@@ -369,6 +370,7 @@ async function main() {
 		assert.equal(overflowWarning, undefined, "expected overflow recovery does not emit a remote failure warning");
 	} finally {
 		global.fetch = originalFetch;
+		for (const handler of handlers.get("session_shutdown")) await handler({}, { ui, sessionManager });
 	}
 
 	console.log("pi-custom: codex compaction helpers verified");

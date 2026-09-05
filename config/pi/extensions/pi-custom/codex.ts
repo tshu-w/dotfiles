@@ -9,7 +9,10 @@
 // replayed — together with retained user messages and everything after the
 // compaction — as the request input on later same-model turns. Pi's regular
 // text summary is still generated and stored, so other models, forks, and tree
-// navigation keep working unchanged.
+// navigation keep working unchanged. While a tape Anchor is active, tape owns
+// the compaction hook and supplies its projected context through a temporary
+// versioned, session-scoped bridge so both artifacts summarize the same history.
+// A newer Anchor also supersedes replay of any older Codex artifact.
 // The conversion helpers are loaded from Pi's bundled pi-ai files because the
 // extension loader aliases the pi-ai package root and does not expose its API
 // subpaths through Jiti.
@@ -20,6 +23,7 @@ import { arch, platform, release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
+  CompactionResult,
   ExtensionAPI,
   ExtensionContext,
   SessionBeforeCompactEvent,
@@ -41,12 +45,36 @@ const RETAINED_USER_TOKEN_BUDGET = 32_000;
 const MAX_RESPONSES_INPUT_ITEMS = 16_384;
 const CONTEXT_WINDOW_TRUNCATED_OUTPUT_MESSAGE =
   "Output exceeded the available model context and was truncated";
+const PROJECTED_COMPACTION_BRIDGE_SYMBOL = Symbol.for("pi-tape.projected-compaction.v1");
 
 interface RemoteCompactionDetails {
   provider: typeof REMOTE_COMPACTION_PROVIDER;
   modelKey: string;
   replacementHistory: ResponseItem[];
   usage?: unknown;
+}
+
+interface ProjectedCompactionBridgeInput {
+  event: SessionBeforeCompactEvent;
+  context: ExtensionContext;
+  preparation: SessionBeforeCompactEvent["preparation"];
+  messages: AgentMessage[];
+}
+
+interface ProjectedCompactionAdapter {
+  compact(input: ProjectedCompactionBridgeInput): Promise<{ compaction: CompactionResult } | undefined>;
+}
+
+interface ProjectedCompactionBridge extends ProjectedCompactionAdapter {
+  adapters: Map<ExtensionContext["sessionManager"], ProjectedCompactionAdapter>;
+}
+
+// Keep the shared dispatcher outside registerCodex so it cannot retain its first runtime.
+async function dispatchProjectedCompaction(
+  this: ProjectedCompactionBridge,
+  input: ProjectedCompactionBridgeInput,
+) {
+  return this.adapters.get(input.context.sessionManager)?.compact(input);
 }
 
 interface CodexAiInternals {
@@ -190,6 +218,30 @@ function branchMessages(branch: SessionEntry[], fromIndex = 0): AgentMessage[] {
   return branch
     .slice(fromIndex)
     .flatMap((entry) => (entry.type === "message" ? [entry.message as AgentMessage] : []));
+}
+
+function hasActiveTapeAnchor(branch: SessionEntry[]): boolean {
+  let active = false;
+  for (const entry of branch) {
+    if (entry?.type === "compaction") {
+      active = false;
+      continue;
+    }
+    if (entry?.type !== "message") continue;
+    const message = entry.message as AgentMessage & { details?: unknown; toolName?: string };
+    const details = isRecord(message.details) ? message.details.tapeAnchor : undefined;
+    if (
+      message.role === "toolResult" &&
+      message.toolName === "tape" &&
+      isRecord(details) &&
+      details.version === 1 &&
+      typeof details.name === "string" &&
+      typeof details.summary === "string"
+    ) {
+      active = true;
+    }
+  }
+  return active;
 }
 
 function reconstructInput(
@@ -525,7 +577,7 @@ export async function registerCodex(
     if (compactionEnabled && Array.isArray(payload.input)) {
       try {
         const branch = ctx.sessionManager.getBranch();
-        if (latestRemoteCompaction(branch, modelKey(model))) {
+        if (!hasActiveTapeAnchor(branch) && latestRemoteCompaction(branch, modelKey(model))) {
           const input = reconstructInput(await getInternals(), model, branch, activeTools(pi));
           if (input) {
             payload = { ...payload, input };
@@ -548,7 +600,12 @@ export async function registerCodex(
     return patched ? payload : undefined;
   });
 
-  pi.on("session_before_compact", async (event, ctx) => {
+  const compactCodex = async (
+    event: SessionBeforeCompactEvent,
+    ctx: ExtensionContext,
+    preparation: SessionBeforeCompactEvent["preparation"],
+    projectedMessages?: AgentMessage[],
+  ) => {
     if (!compactionEnabled) return undefined;
     if (event.reason === "overflow" && event.willRetry) return undefined;
     const compactionModel = ctx.model;
@@ -570,19 +627,16 @@ export async function registerCodex(
 
     const tools = activeTools(pi);
     const branch = event.branchEntries;
-    const activeMessages = ctx.sessionManager.buildSessionContext().messages as AgentMessage[];
-    const input =
-      reconstructInput(internals, compactionModel, branch, tools) ??
-      toResponseItems(internals, compactionModel, activeMessages, tools);
+    const activeMessages = projectedMessages ?? ctx.sessionManager.buildSessionContext().messages as AgentMessage[];
+    const input = projectedMessages
+      ? toResponseItems(internals, compactionModel, activeMessages, tools)
+      : reconstructInput(internals, compactionModel, branch, tools) ??
+        toResponseItems(internals, compactionModel, activeMessages, tools);
     const maxInputTokens = Math.max(
       0,
-      compactionModel.contextWindow - event.preparation.settings.reserveTokens,
+      compactionModel.contextWindow - preparation.settings.reserveTokens,
     );
-    const remoteInput = trimCompactionInput(
-      input,
-      event.preparation.tokensBefore,
-      maxInputTokens,
-    );
+    const remoteInput = trimCompactionInput(input, preparation.tokensBefore, maxInputTokens);
     const sessionId = ctx.sessionManager.getSessionId();
 
     // Built before starting any promise: a synchronous throw here (e.g. a
@@ -609,7 +663,7 @@ export async function registerCodex(
 
     const [local, remote] = await Promise.allSettled([
       compact(
-        event.preparation,
+        preparation,
         compactionModel,
         auth.apiKey,
         auth.headers,
@@ -623,11 +677,24 @@ export async function registerCodex(
     ]);
 
     if (remote.status !== "fulfilled") {
+      const message = remote.reason instanceof Error ? remote.reason.message : String(remote.reason);
       if (!event.signal.aborted && ctx.hasUI) {
-        const message = remote.reason instanceof Error ? remote.reason.message : String(remote.reason);
         ctx.ui.notify(`Codex remote compaction failed; keeping text summary only. ${message}`, "warning");
       }
-      return local.status === "fulfilled" ? { compaction: local.value } : undefined;
+      if (local.status !== "fulfilled") return undefined;
+      return {
+        compaction: {
+          ...local.value,
+          details: {
+            ...(isRecord(local.value.details) ? local.value.details : {}),
+            remoteCompactionError: {
+              provider: REMOTE_COMPACTION_PROVIDER,
+              modelKey: modelKey(compactionModel),
+              message,
+            },
+          },
+        },
+      };
     }
 
     const remoteDetails: RemoteCompactionDetails = {
@@ -642,8 +709,8 @@ export async function registerCodex(
         summary:
           localResult?.summary ??
           `Conversation compacted into an opaque ${compactionModel.id} artifact; no portable text summary is available.`,
-        firstKeptEntryId: event.preparation.firstKeptEntryId,
-        tokensBefore: event.preparation.tokensBefore,
+        firstKeptEntryId: preparation.firstKeptEntryId,
+        tokensBefore: preparation.tokensBefore,
         ...(localResult?.usage ? { usage: localResult.usage } : {}),
         details: {
           ...(isRecord(localResult?.details) ? localResult.details : {}),
@@ -651,6 +718,35 @@ export async function registerCodex(
         },
       },
     };
+  };
+
+  // Temporary bridge until Pi exposes the effective compaction context to
+  // extensions. Tape owns active-anchor compaction and passes that projection
+  // here so the text summary and Codex artifact are built from the same input.
+  const projectedCompactionBridge: ProjectedCompactionAdapter = {
+    compact: ({ event, context, preparation, messages }) =>
+      compactCodex(event, context, preparation, messages),
+  };
+  const shared = globalThis as typeof globalThis & {
+    [PROJECTED_COMPACTION_BRIDGE_SYMBOL]?: ProjectedCompactionBridge;
+  };
+  pi.on("session_start", (_event, ctx) => {
+    const bridge = shared[PROJECTED_COMPACTION_BRIDGE_SYMBOL] ??= {
+      adapters: new Map(),
+      compact: dispatchProjectedCompaction,
+    };
+    bridge.adapters.set(ctx.sessionManager, projectedCompactionBridge);
+  });
+  pi.on("session_shutdown", (_event, ctx) => {
+    const bridge = shared[PROJECTED_COMPACTION_BRIDGE_SYMBOL];
+    if (bridge?.adapters.get(ctx.sessionManager) !== projectedCompactionBridge) return;
+    bridge.adapters.delete(ctx.sessionManager);
+    if (bridge.adapters.size === 0) delete shared[PROJECTED_COMPACTION_BRIDGE_SYMBOL];
+  });
+
+  pi.on("session_before_compact", async (event, ctx) => {
+    if (hasActiveTapeAnchor(event.branchEntries)) return undefined;
+    return compactCodex(event, ctx, event.preparation);
   });
 
   return {
