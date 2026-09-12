@@ -42,6 +42,7 @@
     {
       "source": "git:github.com/tshu-w/pi-control"
     },
+    "./git/github.com/tshu-w/pi-agent-calculus",
     {
       "source": "git:github.com/addyosmani/agent-skills",
       "skills": []
@@ -79,5 +80,12 @@
   "quietStartup": true,
   "enabledModels": [
     "openai-codex/gpt-6-astra"
-  ]
+  ],
+  "pi-agent-calculus": {
+    "agentExtensions": [
+      "extensions/pi-web/index.ts",
+      "extensions/ssh.ts",
+      "extensions/secret-guard/index.ts"
+    ]
+  }
 }
