@@ -5,18 +5,15 @@ description: "Routing skill for engineering workflow methods (two upstream packs
 
 # Engineering Methods (Router)
 
-This is a router skill. The actual method content lives in two upstream packages:
+Methods come from two upstream packages:
 
 - `github.com/addyosmani/agent-skills` — broad lifecycle guardrails (spec → plan → build → verify → review → ship).
 - `github.com/mattpocock/skills` — opinionated idea→ship flow: grilling, domain language, deep modules, issue-driven implementation.
 
 ## How to use
 
-1. Identify the development phase / concern of the current task.
-2. Choose a route (see *Route selection*), pick the matching entry from the index.
-3. Resolve the package dir (see *Locate packages*), then `read` the referenced `SKILL.md`.
-4. If unsure between two, read both first paragraphs; otherwise pick one and proceed.
-5. Do NOT load these proactively for trivial edits, simple Q&A, or pure tool/CLI usage — only when a real engineering process decision is at stake.
+1. Only when an engineering process decision is needed, select a relevant method using *Route selection* and the index.
+2. Resolve the package directory and read its `SKILL.md`; if unsure between two candidates, compare their first paragraphs.
 
 ## Locate packages
 
@@ -35,21 +32,9 @@ If a repo doesn't print, install it: `pi install git:github.com/<owner>/<repo>`.
 
 ## Route selection
 
-**Prefer Matt (`mattpocock/skills`) when:**
-
-- Sharpening an idea or plan by interview before building (grilling).
-- The project keeps a persistent domain vocabulary (`CONTEXT.md`) or ADRs.
-- The question is codebase *shape*: module depth, seams, interfaces, adapters, locality.
-- The flow is issue-driven: spec → tracer-bullet tickets → implement per ticket → two-axis review.
-- A large, unclear effort needs a multi-session map of decisions before it can become a spec.
-- Debugging a hard bug that needs a tight feedback loop before theorizing.
-
-**Prefer Addy (`addyosmani/agent-skills`) when:**
-
-- The task maps to a broad lifecycle phase without Matt's tracker/doc conventions.
-- You need a guardrail Matt doesn't cover: security, performance, CI/CD, migration, launch readiness, frontend UI, observability, source-cited research, adversarial self-review.
-
-Overlapping entries (TDD, debugging, code review): Matt's are terser and seam/spec-focused; Addy's are more thorough checklists. Pick by depth needed.
+- **Matt (`mattpocock/skills`):** Requirements clarification, domain modeling, codebase architecture, issue-driven development, cross-session planning, and debugging.
+- **Addy (`addyosmani/agent-skills`):** General development workflows, security, performance, CI/CD, migration, release, frontend, observability, source-cited research, and adversarial self-review.
+- **Overlapping methods:** Choose Matt for concise, seam- and spec-focused guidance; Addy for comprehensive checklists.
 
 ## Matt index — `mattpocock/skills`
 
