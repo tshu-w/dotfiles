@@ -456,7 +456,7 @@ function registerEditor(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
-function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
+export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
@@ -481,7 +481,7 @@ function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): void {
           const u = entry.type === "message"
             && (entry.message?.role === "assistant" || entry.message?.role === "toolResult")
             ? entry.message.usage
-            : (entry.type === "compaction" || entry.type === "branch_summary")
+            : (entry.type === "compaction" || entry.type === "branch_summary" || entry.type === "usage")
               ? entry.usage
               : undefined;
           if (!u) continue;

@@ -1,5 +1,7 @@
 # Pi-custom integration tests
 
+The footer regression runs with `node tests/footer.test.cjs` against the installed Pi. It verifies totals across assistant/tool responses, summaries, cache warming, and other usage entries.
+
 Run the tape/Codex suite against the installed Pi and local pi-tape checkout:
 
 ```sh
