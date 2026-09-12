@@ -1,6 +1,4 @@
-tap "ampcode/tap", trusted: true
 tap "d12frosted/emacs-plus", trusted: true
-tap "daviderestivo/emacs-head", trusted: true
 tap "deb-sig/tap", trusted: true
 tap "felixkratz/formulae", trusted: true
 tap "specstoryai/tap", trusted: true
@@ -46,8 +44,6 @@ brew "gnu-tar"
 brew "grep"
 # Easy plain text accounting with command-line, terminal and web UIs
 brew "hledger"
-# macOS Big Sur Adaptive Icon Generator
-brew "iconsur"
 # Synchronize a maildir with an IMAP server
 brew "isync"
 # Git-compatible distributed version control system
@@ -136,7 +132,6 @@ cask "betterdisplay"
 cask "claude-code"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
-# Create and run Linux containers using lightweight virtual machines
 cask "container"
 # Brings the power of Copilot coding agent directly to your terminal
 cask "copilot-cli"
@@ -219,6 +214,7 @@ cask "tencent-meeting"
 cask "tor-browser"
 # Messaging and calling application
 cask "wechatwork"
+mas "Amphetamine", id: 937984704
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
 mas "Keynote", id: 409183694
