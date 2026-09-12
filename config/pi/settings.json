@@ -1,6 +1,6 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-sol",
+  "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "medium",
   "followUpMode": "all",
   "steeringMode": "all",
@@ -72,11 +72,12 @@
       "maxRetries": 5
     }
   },
-  "hideThinkingBlock": true,
   "terminal": {
     "showTerminalProgress": true
   },
   "showCacheMissNotices": true,
   "quietStartup": true,
-  "defaultProjectTrust": "always"
+  "enabledModels": [
+    "openai-codex/gpt-6-astra"
+  ]
 }
