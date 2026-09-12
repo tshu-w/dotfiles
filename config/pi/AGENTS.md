@@ -36,6 +36,7 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - Ask a follow-up when guessing is likely to cause rework; otherwise state the assumption and proceed.
 - Run relevant formatter, linter, or tests when practical, and report the real result.
 - Diagnose failures before switching tactics; do not retry blindly, and do not abandon a viable approach after a single failure.
+- Run time-consuming operations in the background when practical, continue independent work, and check and report their results.
 
 ### Commit Messages
 
@@ -57,3 +58,4 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - No filler openers or summary stamps: "Great question", "值得注意的是", "一句话总结：", "In summary", "简而言之".
 - No conditional follow-up menus: "如果你想，我还可以..." / "If you'd like, I can also...". Answer and stop.
 - Do not restate the same point in different words ("简单来说", "in other words"). Say it once clearly.
+- During extended tasks, provide brief progress updates covering the current status and next steps.
