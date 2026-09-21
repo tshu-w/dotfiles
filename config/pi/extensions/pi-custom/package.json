@@ -1,0 +1,10 @@
+{
+  "name": "pi-custom",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.2.141",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "cc-session-io": "0.4.0"
+  }
+}

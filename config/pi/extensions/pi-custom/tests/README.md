@@ -19,3 +19,9 @@ Reload coverage emits shutdown/start events and reloads factories through the re
 The GC regression runs first and starts a fresh Node process with `--expose-gc` when needed. It checks that a shutdown runtime can be collected while a second session remains live. Cleanup hooks deliberately do not retain the observed runner. The default command above includes this check.
 
 Bridge behavior is covered here through real runners and provider requests rather than duplicate one-sided bridge mocks.
+
+## Claude Code provider
+
+Run `node --test tests/claude.test.cjs` for offline Claude bridge coverage. It exercises streamed text/thinking and usage, parallel MCP tool results and schemas, steering, cancellation, retries, history rebuilds, session restoration, concurrent requests, payload hooks, prompt constraint preservation and MCP tool references, and production-loader registration/lifecycle through Pi's model registry. SDK transport is stubbed; the MCP client/server and session-file importer are real. Test sessions are written under a temporary directory, with no live model calls.
+
+See [Claude provider usage](../claude/README.md) for authentication and model selection.

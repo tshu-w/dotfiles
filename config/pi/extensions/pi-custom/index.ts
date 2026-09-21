@@ -27,6 +27,7 @@ import {
   type CustomSetting,
 } from "./custom-settings.ts";
 import { type CodexControl, registerCodex } from "./codex.ts";
+import { registerClaude } from "./claude.ts";
 import {
   installTranscriptHistory,
   type TranscriptHistoryControl,
@@ -857,6 +858,7 @@ export default async function piCustom(pi: ExtensionAPI) {
     fast: initial.fast.value,
     compaction: initial.codexCompaction.value,
   });
+  registerClaude(pi);
   registerReroll(pi);
   const applyPreferences = () => {
     const settings = preferences.get();

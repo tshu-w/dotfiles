@@ -29,7 +29,7 @@ const auth = { ok: true, apiKey: `e30.${account}.sig` };
 const artifact = { type: "compaction", encrypted_content: "test-artifact" };
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
-let core, loader, prepareCompaction;
+let core, loader, prepareCompaction, builtinStreamSimple;
 let requests = [];
 let rejectRemote = false;
 
@@ -37,6 +37,7 @@ before(async () => {
 	core = await import(pathToFileURL(join(PI_PACKAGE, "dist/index.js")).href);
 	loader = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/extensions/loader.js")).href);
 	({ prepareCompaction } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/compaction/compaction.js")).href));
+	({ streamSimple: builtinStreamSimple } = await import(pathToFileURL(join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js")).href));
 	globalThis.WebSocket = undefined;
 	globalThis.fetch = async (url, options) => {
 		assert.equal(String(url), "https://codex.test/codex/responses");
@@ -69,6 +70,9 @@ async function start(t, paths, { session = core.SessionManager.inMemory(agentDir
 	assert.deepEqual(loaded.errors, []);
 	const runner = new core.ExtensionRunner(loaded.extensions, loaded.runtime, agentDir, session, {
 		getApiKeyAndHeaders: authenticate,
+		streamSimple: (...args) => builtinStreamSimple(...args),
+		registerProvider() {},
+		unregisterProvider() {},
 	});
 	const errors = [];
 	runner.onError((error) => errors.push(error));
