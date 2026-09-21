@@ -29,7 +29,7 @@ import type {
   SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 import { compact, convertToLlm } from "@earendil-works/pi-coding-agent";
-import { calculateCost, type Tool, type Usage } from "@earendil-works/pi-ai";
+import { calculateCost, type ProviderHeaders, type Tool, type Usage } from "@earendil-works/pi-ai";
 
 type Model = NonNullable<ExtensionContext["model"]>;
 type SessionEntry = SessionBeforeCompactEvent["branchEntries"][number];
@@ -416,11 +416,14 @@ export function withCompactionFeature(configured: string | null): string {
 function buildCompactionHeaders(
   model: Model,
   apiKey: string,
-  extraHeaders: Record<string, string> | undefined,
+  extraHeaders: ProviderHeaders | undefined,
   sessionId: string,
 ): Headers {
   const headers = new Headers(model.headers);
-  for (const [key, value] of Object.entries(extraHeaders ?? {})) headers.set(key, value);
+  for (const [key, value] of Object.entries(extraHeaders ?? {})) {
+    if (value === null) headers.delete(key);
+    else headers.set(key, value);
+  }
   headers.set("Authorization", `Bearer ${apiKey}`);
   headers.set("chatgpt-account-id", extractAccountId(apiKey));
   headers.set("originator", "pi");
@@ -722,7 +725,8 @@ export async function registerCodex(
         preparation,
         compactionModel,
         auth.apiKey,
-        auth.headers,
+        // compact forwards headers unchanged; its SDK type omits supported null values.
+        auth.headers as Record<string, string> | undefined,
         event.customInstructions,
         event.signal,
         pi.getThinkingLevel(),

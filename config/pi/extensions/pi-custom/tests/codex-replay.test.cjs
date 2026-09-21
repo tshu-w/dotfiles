@@ -220,6 +220,41 @@ for (const authBaseUrl of [undefined, "https://auth.test", "https://auth.test/co
 	});
 }
 
+test("compaction matches native null deletion, case-insensitive overrides and mandatory auth headers", async (t) => {
+	const runtime = await start(t, "gpt-5.6-sol", (model) => {
+		model.headers = { "X-Remove": "old", "X-Override": "old", Authorization: "stale" };
+		return {
+			getApiKeyAndHeaders: async () => ({ ok: true, apiKey, headers: {
+				"x-remove": null, "x-missing": null, "x-override": "new",
+				authorization: null, "chatgpt-account-id": null,
+			} }),
+			streamSimple: (...args) => streamSimple(...args),
+			registerProvider() {}, unregisterProvider() {},
+		};
+	});
+	const first = runtime.session.appendMessage(user("summarize this history"));
+	const result = await runtime.runner.emit({
+		type: "session_before_compact", branchEntries: runtime.session.getBranch(), reason: "manual", willRetry: false,
+		signal: new AbortController().signal,
+		preparation: {
+			firstKeptEntryId: first, messagesToSummarize: runtime.session.buildSessionContext().messages,
+			turnPrefixMessages: [], isSplitTurn: false, tokensBefore: 100,
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { reserveTokens: 1024, keepRecentTokens: 10 },
+		},
+	});
+	assert.deepEqual(requests.map(({ remote }) => remote).sort(), [false, true]);
+	for (const { headers } of requests) {
+		assert.equal(headers.has("X-Remove"), false);
+		assert.equal(headers.has("x-missing"), false);
+		assert.equal(headers.get("X-Override"), "new");
+		assert.equal(headers.get("authorization"), `Bearer ${apiKey}`);
+		assert.equal(headers.get("chatgpt-account-id"), "offline");
+		assert.ok([...headers.values()].every((value) => value !== "null"));
+	}
+	assert.equal(result.compaction.usage.totalTokens, 88);
+});
+
 for (const [local, remote, expected, split = false] of [
 	["success", "success", { input: 52, output: 8, cacheRead: 22, cacheWrite: 6, total: 88, reasoning: 3, cost: 158 }],
 	["fail", "success", { input: 45, output: 7, cacheRead: 20, cacheWrite: 5, total: 77, reasoning: 2, cost: 139 }],
