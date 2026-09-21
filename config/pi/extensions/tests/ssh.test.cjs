@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
-const { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } = require("node:fs");
+const { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 
@@ -19,6 +19,8 @@ async function waitFor(predicate, timeoutMs = 1000) {
 
 async function main() {
 	const root = mkdtempSync(join(tmpdir(), "pi-ssh-smoke-"));
+	const localRoot = join(root, "local");
+	mkdirSync(localRoot);
 	const fakeSsh = join(root, "ssh");
 	const signalLog = join(root, "signals.log");
 	writeFileSync(fakeSsh, `#!/usr/bin/env node
@@ -66,7 +68,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 	process.env.PATH = `${root}:${process.env.PATH}`;
 	process.env.PI_SSH_REMOTE = "fake-host";
 	process.env.PI_SSH_REMOTE_CWD = "/remote";
-	process.env.PI_SSH_LOCAL_CWD = EXTENSIONS_DIR;
+	process.env.PI_SSH_LOCAL_CWD = localRoot;
 	process.env.PI_SSH_SMOKE_LOG = signalLog;
 
 	try {
@@ -77,7 +79,14 @@ if (mode === "execute" || mode === "execute-truncated") {
 				"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 			},
 		});
-		const { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
+		const { createWriteToolDefinition, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
+		const { buildSystemPrompt } = await jiti.import(`${PI_PACKAGE}/dist/core/system-prompt.js`);
+		let nativeWritePath;
+		await createWriteToolDefinition("/unused-constructor-cwd", { operations: {
+			mkdir: async () => {},
+			writeFile: async (path) => { nativeWritePath = path; },
+		} }).execute("native-cwd", { path: "native.txt", content: "test" }, undefined, undefined, { cwd: localRoot });
+		assert.equal(nativeWritePath, join(localRoot, "native.txt"), "native tool definitions resolve paths against ctx.cwd");
 		const module = await jiti.import(join(EXTENSIONS_DIR, "ssh.ts"));
 		const tools = new Map();
 		const handlers = new Map();
@@ -95,7 +104,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 			sendMessage(message) { messages.push(message); },
 		});
 		const ctx = {
-			cwd: EXTENSIONS_DIR,
+			cwd: localRoot,
 			hasUI: true,
 			sessionManager: { getEntries: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
 			ui: {
@@ -142,7 +151,18 @@ if (mode === "execute" || mode === "execute-truncated") {
 		writeFileSync(existingPath, "original content");
 		chmodSync(existingPath, 0o640);
 
+		const promptOptions = { cwd: localRoot, sections: { other: "Keep this section" } };
+		const promptEvent = { systemPrompt: buildSystemPrompt(promptOptions), systemPromptOptions: promptOptions };
+		await handlers.get("before_agent_start")(promptEvent, ctx);
+		assert.equal(promptOptions.cwd, `${remoteRoot} (via SSH: fake-host)`);
+		assert.equal(promptOptions.sections.other, "Keep this section");
+		assert.ok(buildSystemPrompt(promptOptions).includes(`<cwd>\n${remoteRoot} (via SSH: fake-host)\n</cwd>`));
+
 		process.env.PI_SSH_SMOKE_MODE = "execute";
+		const remoteBash = await tools.get("bash").execute("remote-bash", { command: "pwd" }, undefined, undefined, ctx);
+		assert.equal(realpathSync(remoteBash.content[0].text.trim()), realpathSync(remoteRoot));
+		const remoteRead = await tools.get("read").execute("remote-read", { path: "atomic.txt" }, undefined, undefined, ctx);
+		assert.equal(remoteRead.content[0].text, "original content");
 		await tools.get("write").execute("write-atomic", { path: "atomic.txt", content: "complete replacement" }, undefined, undefined, ctx);
 		assert.equal(readFileSync(existingPath, "utf8"), "complete replacement");
 		assert.equal(statSync(existingPath).mode & 0o777, 0o640, "atomic replacement preserves existing permissions");
@@ -246,7 +266,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 		const bashOps = handlers.get("user_bash")().operations;
 		const timeoutStarted = Date.now();
 		await assert.rejects(
-			bashOps.exec("sleep forever", EXTENSIONS_DIR, { onData() {}, timeout: 0.2 }),
+			bashOps.exec("sleep forever", localRoot, { onData() {}, timeout: 0.2 }),
 			/timeout:0.2/,
 		);
 		assert.ok(Date.now() - timeoutStarted < 1500, "remote bash timeout has a hard settle bound");
@@ -254,7 +274,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 		const bashController = new AbortController();
 		const abortStarted = Date.now();
 		const readyCount = readFileSync(signalLog, "utf8").split("ready").length;
-		const bashPromise = bashOps.exec("sleep forever", EXTENSIONS_DIR, { onData() {}, signal: bashController.signal });
+		const bashPromise = bashOps.exec("sleep forever", localRoot, { onData() {}, signal: bashController.signal });
 		await waitFor(() => readFileSync(signalLog, "utf8").split("ready").length > readyCount);
 		bashController.abort();
 		await assert.rejects(bashPromise, /aborted/);
@@ -265,7 +285,10 @@ if (mode === "execute" || mode === "execute-truncated") {
 		assert.equal(notifications.length, startupNotificationCount, "disabling SSH does not duplicate the state message as a UI notification");
 		assert.equal(statusUpdates.at(-1).text, undefined);
 		assert.equal(messages.at(-1).display, false, "disabled state messages also stay hidden");
-		console.log("ssh: file-tool aborts and remote bash timeout/abort settle bounds passed");
+		const localPrompt = { systemPromptOptions: { cwd: localRoot, sections: {} } };
+		await handlers.get("before_agent_start")(localPrompt, ctx);
+		assert.equal(localPrompt.systemPromptOptions.cwd, localRoot);
+		console.log("ssh: native cwd compatibility, file-tool aborts and remote bash timeout/abort settle bounds passed");
 	} finally {
 		for (const [name, value] of Object.entries(savedEnv)) {
 			if (value === undefined) delete process.env[name];

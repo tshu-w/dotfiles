@@ -534,7 +534,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
+      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -544,7 +544,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
+      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -554,7 +554,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate, ctx);
+      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -564,7 +564,7 @@ export default function (pi: ExtensionAPI) {
       const ssh = getSsh();
       if (!ssh) return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate, ctx);
+      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -644,11 +644,6 @@ export default function (pi: ExtensionAPI) {
     if (!ssh) return;
 
     const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-    return {
-      systemPrompt: event.systemPrompt.replace(
-        `Current working directory: ${ctx.cwd}`,
-        `Current working directory: ${remoteCwd} (via SSH: ${ssh.remote})`,
-      ),
-    };
+    event.systemPromptOptions.cwd = `${remoteCwd} (via SSH: ${ssh.remote})`;
   });
 }
