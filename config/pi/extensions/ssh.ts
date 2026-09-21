@@ -6,7 +6,7 @@
  * - `/ssh` slash command to view/switch/disable SSH mode
  * - argument completions from ~/.ssh/config
  * - atomic remote writes that preserve existing file permissions
- * - subagent inheritance via environment variables
+ * - session-local SSH state restored from the current branch
  */
 
 import { spawn } from "node:child_process";
@@ -16,14 +16,13 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type BashOperations,
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
-  truncateHead,
   truncateTail,
   type EditOperations,
   type ReadOperations,
@@ -77,7 +76,7 @@ type SessionEntry = {
 
 type SessionRestoreContext = StatusContext & {
   sessionManager: {
-    getEntries: () => SessionEntry[];
+    getBranch: () => SessionEntry[];
   };
 };
 
@@ -134,8 +133,8 @@ function runSshProcess(
     };
     const onAbort = () => stop(new Error("aborted"));
 
-    child.stdout.on("data", options.onStdout ?? (() => {}));
-    child.stderr.on("data", options.onStderr ?? (() => {}));
+    child.stdout!.on("data", options.onStdout ?? (() => {}));
+    child.stderr!.on("data", options.onStderr ?? (() => {}));
     child.on("error", (error) => settle(stopError ?? error));
     child.on("close", (code) => settle(stopError, code));
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -156,42 +155,20 @@ function runSshProcess(
   });
 }
 
-function utf8Prefix(value: string, maxBytes: number): string {
-  const buffer = Buffer.from(value, "utf8");
-  if (buffer.length <= maxBytes) return value;
-  let end = maxBytes;
-  while (end > 0 && (buffer[end] & 0b1100_0000) === 0b1000_0000) end--;
-  return buffer.subarray(0, end).toString("utf8");
-}
-
-function boundHeadText(value: string, notice: string): string {
-  const full = truncateHead(value, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
-  if (!full.truncated) return value;
-
-  const content = full.content || utf8Prefix(value.split("\n")[0] ?? "", DEFAULT_MAX_BYTES);
-  return `${content}\n${notice}`;
-}
-
 function sshFailure(code: number | null, stderr: string): Error {
   const message = `SSH failed (${code}): ${stderr}`;
   const full = truncateTail(message, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
   if (!full.truncated) return new Error(message);
 
-  let fullOutputPath: string | undefined;
-  try {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ssh-error-"));
-    fullOutputPath = path.join(directory, "output.txt");
-    fs.writeFileSync(fullOutputPath, message, "utf8");
-  } catch {
-    fullOutputPath = undefined;
-  }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ssh-error-"));
+  const fullOutputPath = path.join(directory, "output.txt");
+  fs.writeFileSync(fullOutputPath, message, "utf8");
 
-  const notice = fullOutputPath
-    ? `\n\n[SSH error truncated: showing the last ${formatSize(full.outputBytes)} of ${formatSize(full.totalBytes)}.` +
-      ` Full error: ${fullOutputPath}. This is a temporary file; copy or move it if it should persist.]`
-    : `\n\n[SSH error truncated: showing the last ${formatSize(full.outputBytes)} of ${formatSize(full.totalBytes)}.` +
-      " Full error could not be saved to a temporary file; rerun the command only if safe.]";
-  return new Error(full.content + notice);
+  const range = full.lastLinePartial
+    ? `Showing last ${formatSize(full.outputBytes)} of line ${full.totalLines} (line is ${formatSize(Buffer.byteLength(message.slice(message.lastIndexOf("\n") + 1)))}).`
+    : `Showing lines ${full.totalLines - full.outputLines + 1}-${full.totalLines} of ${full.totalLines}${full.truncatedBy === "bytes" ? ` (${formatSize(full.maxBytes)} limit)` : ""}.`;
+  const notice = `Full output: ${fullOutputPath}`;
+  return new Error(`${full.content}\n\n[${range} ${notice}]`);
 }
 
 function sshExec(remote: string, command: string, signal?: AbortSignal, timeoutMs?: number, input?: string | Buffer): Promise<Buffer> {
@@ -388,20 +365,6 @@ function loadStateFromEnv(): SshState | null {
   };
 }
 
-function writeStateToEnv(state: SshState | null): void {
-  if (!state) {
-    delete process.env[ENV_REMOTE];
-    delete process.env[ENV_REMOTE_ROOT_CWD];
-    delete process.env[ENV_LOCAL_ROOT_CWD];
-    return;
-  }
-
-  process.env[ENV_REMOTE] = state.remote;
-  process.env[ENV_REMOTE_ROOT_CWD] = state.remoteRootCwd;
-  process.env[ENV_LOCAL_ROOT_CWD] = state.localRootCwd;
-}
-
-
 function readSshHostCompletions(): string[] {
   const sshConfigPath = path.join(os.homedir(), ".ssh", "config");
   if (!fs.existsSync(sshConfigPath)) return [];
@@ -455,7 +418,7 @@ function getCommandCompletions(currentState: SshState | null, prefix: string): A
 
 function findPersistedState(ctx: SessionRestoreContext): { found: boolean; state: SshState | null } {
   const entry = ctx.sessionManager
-    .getEntries()
+    .getBranch()
     .filter((item) => item.type === "custom" && item.customType === ENTRY_TYPE)
     .pop();
 
@@ -467,10 +430,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerFlag("ssh", { description: "SSH remote: user@host or user@host:/path", type: "string" });
 
   const initialCwd = process.cwd();
-  const baseRead = createReadTool(initialCwd);
-  const baseWrite = createWriteTool(initialCwd);
-  const baseEdit = createEditTool(initialCwd);
-  const baseBash = createBashTool(initialCwd);
+  const baseRead = createReadToolDefinition(initialCwd);
+  const baseWrite = createWriteToolDefinition(initialCwd);
+  const baseEdit = createEditToolDefinition(initialCwd);
+  const baseBash = createBashToolDefinition(initialCwd);
 
   let activeSsh: SshState | null = null;
 
@@ -494,7 +457,6 @@ export default function (pi: ExtensionAPI) {
     options?: { persist?: boolean; notify?: boolean },
   ) => {
     activeSsh = nextState;
-    writeStateToEnv(activeSsh);
     updateStatus(ctx);
 
     if (options?.persist) {
@@ -508,23 +470,11 @@ export default function (pi: ExtensionAPI) {
 
   const restoreState = (ctx: SessionRestoreContext) => {
     const persisted = findPersistedState(ctx);
-    if (persisted.found) {
-      activeSsh = persisted.state;
-    } else {
-      const envState = loadStateFromEnv();
-      if (envState) {
-        // Promote env-inherited SSH state to a persisted session entry, so a
-        // later pi process (resume) can recover it even when PI_SSH_* env is
-        // no longer set. Without this the tool silently falls back to local
-        // execution across process restarts.
-        activeSsh = envState;
-        pi.appendEntry(ENTRY_TYPE, serializeState(envState));
-      }
-      // No persisted entry and no env: keep activeSsh as-is. restoreState()
-      // also fires on session_tree; clobbering with null on a later refresh
-      // would silently drop SSH mode established earlier in this process.
+    activeSsh = persisted.found ? persisted.state : loadStateFromEnv();
+    if (!persisted.found) {
+      // Persist even "off" so restoration never re-imports another launch environment.
+      pi.appendEntry(ENTRY_TYPE, serializeState(activeSsh));
     }
-    writeStateToEnv(activeSsh);
     updateStatus(ctx);
   };
 
@@ -532,9 +482,9 @@ export default function (pi: ExtensionAPI) {
     ...baseRead,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
+      if (!ssh) return createReadToolDefinition(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createReadTool(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
+      return createReadToolDefinition(remoteCwd, { operations: createRemoteReadOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -542,19 +492,20 @@ export default function (pi: ExtensionAPI) {
     ...baseWrite,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
+      if (!ssh) return createWriteToolDefinition(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createWriteTool(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
+      return createWriteToolDefinition(remoteCwd, { operations: createRemoteWriteOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
   pi.registerTool({
     ...baseEdit,
+    renderShell: "self",
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
+      if (!ssh) return createEditToolDefinition(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createEditTool(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
+      return createEditToolDefinition(remoteCwd, { operations: createRemoteEditOps(getSsh, signal) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -562,9 +513,9 @@ export default function (pi: ExtensionAPI) {
     ...baseBash,
     async execute(id, params, signal, onUpdate, ctx) {
       const ssh = getSsh();
-      if (!ssh) return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
+      if (!ssh) return createBashToolDefinition(ctx.cwd).execute(id, params, signal, onUpdate, ctx);
       const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-      return createBashTool(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
+      return createBashToolDefinition(remoteCwd, { operations: createRemoteBashOps(getSsh) }).execute(id, params, signal, onUpdate, { ...ctx, cwd: remoteCwd });
     },
   });
 
@@ -600,7 +551,7 @@ export default function (pi: ExtensionAPI) {
         const content = `SSH mode enabled: ${nextState.remote}:${nextState.remoteRootCwd}\nAll tool calls (read, write, edit, bash) and user ! commands now execute on this remote host.\nTo return tools to local execution, run /ssh off.`;
         pi.sendMessage({
           customType: "ssh-state-change",
-          content: boundHeadText(content, "[SSH status truncated; full state remains stored in session metadata.]"),
+          content,
           display: false,
         }, { triggerTurn: false });
       } catch (error) {
@@ -644,6 +595,8 @@ export default function (pi: ExtensionAPI) {
     if (!ssh) return;
 
     const remoteCwd = mapCwdToRemote(ctx.cwd, ssh);
-    event.systemPromptOptions.cwd = `${remoteCwd} (via SSH: ${ssh.remote})`;
+    event.systemPromptOptions.cwd = remoteCwd;
+    event.systemPromptOptions.sections.ssh =
+      `SSH: ${ssh.remote}. read, write, edit, bash and user ! commands execute on the remote host.`;
   });
 }

@@ -79,7 +79,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 				"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 			},
 		});
-		const { createWriteToolDefinition, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
+		const { SessionManager, createWriteToolDefinition, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
 		const { buildSystemPrompt } = await jiti.import(`${PI_PACKAGE}/dist/core/system-prompt.js`);
 		let nativeWritePath;
 		await createWriteToolDefinition("/unused-constructor-cwd", { operations: {
@@ -106,7 +106,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 		const ctx = {
 			cwd: localRoot,
 			hasUI: true,
-			sessionManager: { getEntries: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
+			sessionManager: { getBranch: () => [], getSessionId: () => "session-test", getSessionFile: () => undefined },
 			ui: {
 				notify(message) { notifications.push(message); },
 				setStatus(key, text) { statusUpdates.push({ key, text }); },
@@ -120,16 +120,9 @@ if (mode === "execute" || mode === "execute-truncated") {
 		await handlers.get("session_start")({ reason: "startup" }, ctx);
 		const startupNotificationCount = notifications.length;
 
-		await commands.get("ssh").handler(`fake-host:/${"x".repeat(60 * 1024)}`, ctx);
-		assert.ok(messages.length > 0);
-		const statusMessage = messages.at(-1).content;
-		// The limits bound the content; the truncation notice sits on top of it.
-		const statusContent = statusMessage.split("\n[SSH status truncated")[0];
-		assert.ok(Buffer.byteLength(statusContent) <= DEFAULT_MAX_BYTES, "SSH status content stays within Pi's byte bound");
-		assert.ok(statusContent.split("\n").length <= DEFAULT_MAX_LINES, "SSH status content stays within Pi's line bound");
-		assert.match(statusMessage, /SSH status truncated/);
-		assert.equal(messages.at(-1).display, false, "state messages stay in model context");
 		await commands.get("ssh").handler("fake-host:/remote", ctx);
+		assert.ok(messages.length > 0);
+		assert.equal(messages.at(-1).display, false, "state messages stay in model context");
 		assert.equal(notifications.length, startupNotificationCount, "explicit mode changes do not duplicate the state message as UI notifications");
 		assert.match(statusUpdates.at(-1).text, /^SSH: fake-host:\/remote$/);
 
@@ -151,12 +144,12 @@ if (mode === "execute" || mode === "execute-truncated") {
 		writeFileSync(existingPath, "original content");
 		chmodSync(existingPath, 0o640);
 
-		const promptOptions = { cwd: localRoot, sections: { other: "Keep this section" } };
-		const promptEvent = { systemPrompt: buildSystemPrompt(promptOptions), systemPromptOptions: promptOptions };
-		await handlers.get("before_agent_start")(promptEvent, ctx);
-		assert.equal(promptOptions.cwd, `${remoteRoot} (via SSH: fake-host)`);
-		assert.equal(promptOptions.sections.other, "Keep this section");
-		assert.ok(buildSystemPrompt(promptOptions).includes(`<cwd>\n${remoteRoot} (via SSH: fake-host)\n</cwd>`));
+		const promptEvent = { systemPromptOptions: { cwd: localRoot, sections: { other: "Keep this section" } } };
+		assert.equal(await handlers.get("before_agent_start")(promptEvent, ctx), undefined);
+		assert.equal(promptEvent.systemPromptOptions.cwd, remoteRoot);
+		assert.equal(promptEvent.systemPromptOptions.sections.other, "Keep this section");
+		assert.ok(buildSystemPrompt(promptEvent.systemPromptOptions).includes(`<cwd>\n${remoteRoot}\n</cwd>`));
+		assert.equal(promptEvent.systemPromptOptions.sections.ssh, "SSH: fake-host. read, write, edit, bash and user ! commands execute on the remote host.");
 
 		process.env.PI_SSH_SMOKE_MODE = "execute";
 		const remoteBash = await tools.get("bash").execute("remote-bash", { command: "pwd" }, undefined, undefined, ctx);
@@ -240,12 +233,12 @@ if (mode === "execute" || mode === "execute-truncated") {
 			delete process.env.PI_SSH_SMOKE_MODE;
 			delete process.env.PI_SSH_SMOKE_LINES;
 			assert.ok(sshError instanceof Error);
-			const errorContent = sshError.message.split("\n\n[SSH error truncated:")[0];
+			const errorContent = sshError.message.split("\n\n[Showing ")[0];
 			assert.ok(Buffer.byteLength(errorContent) <= DEFAULT_MAX_BYTES, "remote stderr content stays within Pi's byte bound");
 			assert.ok(errorContent.split("\n").length <= DEFAULT_MAX_LINES, "remote stderr content stays within Pi's line bound");
-			assert.match(sshError.message, /SSH error truncated: showing the last/);
+			assert.match(sshError.message, lineMode ? /\[Showing lines / : /\[Showing last /);
 			if (!lineMode) assert.ok(sshError.message.includes("e".repeat(1000)), "single-line stderr keeps a useful tail preview");
-			const fullErrorPath = sshError.message.match(/Full error: (.+?\/output\.txt)\./)?.[1];
+			const fullErrorPath = sshError.message.match(/Full output: (.+?\/output\.txt)\]/)?.[1];
 			assert.ok(fullErrorPath, "truncated SSH errors retain a full-output path");
 			assert.ok(readFileSync(fullErrorPath, "utf8").length > 2000);
 			rmSync(dirname(fullErrorPath), { recursive: true, force: true });
@@ -259,9 +252,8 @@ if (mode === "execute" || mode === "execute-truncated") {
 		if (savedEnv.TMPDIR === undefined) delete process.env.TMPDIR;
 		else process.env.TMPDIR = savedEnv.TMPDIR;
 		assert.ok(unsavedError instanceof Error);
-		assert.match(unsavedError.message, /Full error could not be saved to a temporary file/);
-		assert.match(unsavedError.message, /rerun the command only if safe/);
-		assert.ok(Buffer.byteLength(unsavedError.message.split("\n\n[SSH error truncated:")[0]) <= DEFAULT_MAX_BYTES);
+		assert.equal(unsavedError.code, "ENOENT");
+		assert.doesNotMatch(unsavedError.message, /SSH failed|Full output|Rerun the command/);
 
 		const bashOps = handlers.get("user_bash")().operations;
 		const timeoutStarted = Date.now();
@@ -288,7 +280,83 @@ if (mode === "execute" || mode === "execute-truncated") {
 		const localPrompt = { systemPromptOptions: { cwd: localRoot, sections: {} } };
 		await handlers.get("before_agent_start")(localPrompt, ctx);
 		assert.equal(localPrompt.systemPromptOptions.cwd, localRoot);
-		console.log("ssh: native cwd compatibility, file-tool aborts and remote bash timeout/abort settle bounds passed");
+		assert.equal(localPrompt.systemPromptOptions.sections.ssh, undefined);
+		// Independent Sessions share process.env but restore their own branch state.
+		function createSshSession(manager = SessionManager.inMemory(localRoot), flag) {
+			const tools = new Map();
+			const handlers = new Map();
+			const commands = new Map();
+			module.default({
+				appendEntry: (customType, data) => manager.appendCustomEntry(customType, data),
+				getFlag() { return flag; }, registerFlag() {}, sendMessage() {},
+				on(name, handler) { handlers.set(name, handler); },
+				registerCommand(name, command) { commands.set(name, command); },
+				registerTool(tool) { tools.set(tool.name, tool); },
+			});
+			const context = { ...ctx, hasUI: false, sessionManager: manager };
+			return {
+				manager,
+				start: () => handlers.get("session_start")({ reason: "new" }, context),
+				restore: () => handlers.get("session_tree")({}, context),
+				ssh: target => commands.get("ssh").handler(target, context),
+				pwd: async () => (await tools.get("bash").execute("isolation-pwd", { command: "pwd" }, undefined, undefined, context)).content[0].text.trim(),
+			};
+		}
+		const restart = current => createSshSession(SessionManager.inMemory(localRoot, undefined,
+			JSON.parse(JSON.stringify([current.manager.getHeader(), ...current.manager.getEntries()]))));
+		for (const key of ["PI_SSH_REMOTE", "PI_SSH_REMOTE_CWD", "PI_SSH_LOCAL_CWD"]) delete process.env[key];
+		process.env.PI_SSH_SMOKE_MODE = "execute";
+		const first = createSshSession();
+		await first.start();
+		assert.deepEqual(first.manager.getBranch().at(-1).data, { enabled: false });
+		const offLeaf = first.manager.getLeafId();
+		await first.ssh("fake-host:" + remoteRoot);
+		const onLeaf = first.manager.getLeafId();
+		assert.deepEqual(first.manager.getBranch().at(-1).data,
+			{ enabled: true, remote: "fake-host", remoteRootCwd: remoteRoot, localRootCwd: localRoot });
+		const second = createSshSession();
+		await second.start();
+		assert.equal(realpathSync(await second.pwd()), realpathSync(localRoot), "one Session enabling SSH must not redirect another");
+		await second.restore();
+		assert.equal(realpathSync(await second.pwd()), realpathSync(localRoot));
+		assert.equal(await first.pwd(), remoteRoot);
+		const reopenedOn = restart(first);
+		await reopenedOn.start();
+		assert.equal(await reopenedOn.pwd(), remoteRoot, "restart restores persisted on");
+
+		await first.ssh("off");
+		const reopenedOff = restart(first);
+		await reopenedOff.start();
+		assert.equal(realpathSync(await reopenedOff.pwd()), realpathSync(localRoot), "restart restores persisted off");
+		first.manager.branch(onLeaf);
+		first.manager.appendCustomEntry("unrelated-state", { enabled: false });
+		await first.restore();
+		assert.equal(await first.pwd(), remoteRoot, "current branch on wins over a later off record on another branch and unrelated metadata");
+		first.manager.branch(offLeaf);
+		await first.restore();
+		assert.equal(realpathSync(await first.pwd()), realpathSync(localRoot), "current branch off wins over on records elsewhere");
+		for (const key of ["PI_SSH_REMOTE", "PI_SSH_REMOTE_CWD", "PI_SSH_LOCAL_CWD"]) {
+			assert.equal(process.env[key], undefined, "Session SSH changes must not mutate the shared environment");
+		}
+
+		process.env.PI_SSH_REMOTE = "env-host";
+		process.env.PI_SSH_REMOTE_CWD = remoteRoot;
+		process.env.PI_SSH_LOCAL_CWD = localRoot;
+		await reopenedOff.restore();
+		assert.equal(realpathSync(await reopenedOff.pwd()), realpathSync(localRoot), "persisted off overrides environment fallback");
+		const emptyBranch = createSshSession();
+		const emptyLeaf = emptyBranch.manager.appendCustomEntry("unrelated-state", { enabled: false });
+		emptyBranch.manager.appendCustomEntry("ssh-state", { enabled: false });
+		emptyBranch.manager.branch(emptyLeaf);
+		await emptyBranch.start();
+		assert.equal(await emptyBranch.pwd(), remoteRoot, "a branch without SSH state retains environment fallback");
+		assert.deepEqual(emptyBranch.manager.getBranch().at(-1).data,
+			{ enabled: true, remote: "env-host", remoteRootCwd: remoteRoot, localRootCwd: localRoot });
+		const flagged = createSshSession(reopenedOff.manager, "flag-host:" + remoteRoot);
+		await flagged.start();
+		assert.equal(await flagged.pwd(), remoteRoot, "--ssh still overrides persisted off");
+		assert.equal(flagged.manager.getBranch().at(-1).data.remote, "flag-host");
+		console.log("ssh: remote operations, cancellation, and Session isolation passed");
 	} finally {
 		for (const [name, value] of Object.entries(savedEnv)) {
 			if (value === undefined) delete process.env[name];
