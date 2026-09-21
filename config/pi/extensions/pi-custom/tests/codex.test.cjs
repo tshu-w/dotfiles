@@ -100,6 +100,7 @@ async function main() {
 		{
 			type: "compaction",
 			id: "c1",
+			parentId: null,
 			summary: "text summary",
 			details: {
 				remoteCompaction: {
@@ -112,7 +113,7 @@ async function main() {
 				},
 			},
 		},
-		{ type: "message", id: "m1", message: { role: "user", content: "after", timestamp: 1 } },
+		{ type: "message", id: "m1", parentId: "c1", message: { role: "user", content: "after", timestamp: 1 } },
 	];
 	const [patched] = await Promise.all(handlers.get("before_provider_request").map((handler) =>
 		handler(
@@ -185,7 +186,7 @@ async function main() {
 				},
 				sessionManager: {
 					getSessionId: () => "session",
-					buildSessionContext: () => ({ messages: [activeMessage] }),
+					buildSessionProjection: () => ({ messages: [activeMessage] }),
 				},
 			},
 		);
@@ -275,7 +276,7 @@ async function main() {
 				},
 				sessionManager: {
 					getSessionId: () => "session",
-					buildSessionContext: () => ({ messages: oversizedContext }),
+					buildSessionProjection: () => ({ messages: oversizedContext }),
 				},
 			},
 		);
@@ -329,7 +330,7 @@ async function main() {
 				},
 				sessionManager: {
 					getSessionId: () => "session",
-					buildSessionContext: () => ({ messages: oversizedMessages }),
+					buildSessionProjection: () => ({ messages: oversizedMessages }),
 				},
 			},
 		);
@@ -368,7 +369,7 @@ async function main() {
 				},
 				sessionManager: {
 					getSessionId: () => "session",
-					buildSessionContext: () => ({ messages: [activeMessage] }),
+					buildSessionProjection: () => ({ messages: [activeMessage] }),
 				},
 			},
 		);

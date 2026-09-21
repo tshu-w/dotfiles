@@ -298,3 +298,157 @@ for (const [local, remote, expected, split = false] of [
 		}
 	});
 }
+
+async function contextEditRegistry(model) {
+	const runtime = await core.ModelRuntime.create({
+		credentials: new ai.InMemoryCredentialStore(), modelsStore: new ai.InMemoryModelsStore(),
+		modelsPath: null, refreshOnCreate: false, allowModelNetwork: false,
+	});
+	runtime.registerNativeProvider(ai.createProvider({
+		id: "openai-codex", baseUrl: model.baseUrl, models: [model],
+		auth: { apiKey: { name: "Offline", resolve: async () => ({ auth: { apiKey } }) } },
+		api: { stream: (...args) => streamSimple(...args), streamSimple: (...args) => streamSimple(...args) },
+	}));
+	return new core.ModelRegistry(runtime);
+}
+
+async function generateArtifact(runtime, firstKeptEntryId) {
+	const result = await runtime.runner.emit({
+		type: "session_before_compact", branchEntries: runtime.session.getBranch(), reason: "manual", willRetry: false,
+		signal: new AbortController().signal,
+		preparation: {
+			firstKeptEntryId, messagesToSummarize: runtime.session.buildSessionProjection().messages,
+			turnPrefixMessages: [], isSplitTurn: false, tokensBefore: 100,
+			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+			settings: { reserveTokens: 1024, keepRecentTokens: 10 },
+		},
+	});
+	const compacted = result.compaction;
+	assert.ok(compacted.details.remoteCompaction);
+	runtime.session.appendCompaction(compacted.summary, firstKeptEntryId, 100, compacted.details, true, compacted.usage);
+	return compacted;
+}
+
+function assertContextEdit(input, replacement) {
+	assert.doesNotMatch(JSON.stringify(input), /EDIT_OLD_MARKER/);
+	if (replacement) assert.match(JSON.stringify(input), /EDIT_NEW_MARKER/);
+}
+
+for (const replacement of [null, { content: "EDIT_NEW_MARKER" }]) {
+	const kind = replacement ? "replacement" : "omission";
+	test(`context edit ${kind} without an artifact leaves native context unchanged`, async (t) => {
+		const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+		const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+		runtime.session.appendMessage(user("continue"));
+		runtime.session.appendContextEdit(id, replacement);
+		const original = await payload(runtime, false), replayed = await payload(runtime, true);
+		assertContextEdit(replayed.input, replacement);
+		assert.deepEqual(replayed.input, original.input);
+	});
+
+	test(`context edit ${kind} after an artifact uses projected tail for replay and recompaction`, async (t) => {
+		const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+		checkpoint(runtime);
+		const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+		runtime.session.appendMessage(user("continue"));
+		runtime.session.appendContextEdit(id, replacement);
+		assertContextEdit(runtime.session.buildSessionProjection().messages, replacement);
+		const replayed = await payload(runtime, true);
+		assertContextEdit(replayed.input, replacement);
+		assert.ok(replayed.input.some((item) => item.type === "compaction"), "tail edits need not invalidate the artifact");
+		assert.deepEqual(requests.at(-1).body.input, replayed.input);
+		requests = [];
+		await generateArtifact(runtime, id);
+		for (const request of requests) assertContextEdit(request.body.input, replacement);
+	});
+
+	test(`context edit ${kind} before first artifact creation is reflected in its retained users`, async (t) => {
+		const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+		const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+		runtime.session.appendMessage(user("continue"));
+		runtime.session.appendContextEdit(id, replacement);
+		await generateArtifact(runtime, id);
+		assertContextEdit(requests.find(({ remote }) => remote).body.input, replacement);
+		const replayed = await payload(runtime, true);
+		assertContextEdit(replayed.input, replacement);
+		assert.ok(replayed.input.some((item) => item.type === "compaction"));
+	});
+
+	test(`context edit ${kind} of pre-artifact content invalidates cached replay and recompaction`, async (t) => {
+		const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+		const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+		runtime.session.appendMessage(user("continue"));
+		const compacted = await generateArtifact(runtime, id);
+		assert.match(JSON.stringify(compacted.details.remoteCompaction.replacementHistory), /EDIT_OLD_MARKER/);
+		runtime.session.appendContextEdit(id, replacement);
+		const original = await payload(runtime, false), replayed = await payload(runtime, true);
+		assertContextEdit(replayed.input, replacement);
+		assert.deepEqual(replayed.input, original.input, "invalid artifact must leave the canonical provider payload intact");
+		requests = [];
+		await generateArtifact(runtime, id);
+		for (const request of requests) {
+			assertContextEdit(request.body.input, replacement);
+			assert.ok(!request.body.input.some((item) => item.type === "compaction"), "never feed the invalid artifact to another compaction");
+		}
+		const renewed = await payload(runtime, true);
+		assertContextEdit(renewed.input, replacement);
+		assert.ok(renewed.input.some((item) => item.type === "compaction"), "a freshly generated artifact remains usable");
+	});
+}
+
+for (const role of ["custom", "assistant"]) {
+	test(`context edit replacement preserves projected ${role} tail provenance`, async (t) => {
+		const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+		checkpoint(runtime);
+		const id = role === "custom"
+			? runtime.session.appendCustomMessageEntry("review", "EDIT_OLD_MARKER", false)
+			: runtime.session.appendMessage({
+				role: "assistant", content: [{ type: "text", text: "EDIT_OLD_MARKER" }],
+				api: runtime.model.api, provider: runtime.model.provider, model: runtime.model.id,
+				stopReason: "stop", timestamp: 1,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+			});
+		runtime.session.appendContextEdit(id, { content: "INTERMEDIATE_MARKER" });
+		runtime.session.appendContextEdit(id, { content: "EDIT_NEW_MARKER" });
+		runtime.session.appendMessage(user("continue"));
+		const replayed = await payload(runtime, true);
+		assertContextEdit(replayed.input, true);
+		assert.doesNotMatch(JSON.stringify(replayed.input), /INTERMEDIATE_MARKER|old history/);
+		assert.ok(replayed.input.some((item) => item.type === "compaction"));
+		requests = [];
+		await generateArtifact(runtime, id);
+		for (const request of requests) assertContextEdit(request.body.input, true);
+	});
+}
+
+test("context edit artifact invalidation is branch-local and leaves stored history intact", async (t) => {
+	const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+	const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+	const compacted = await generateArtifact(runtime, id);
+	const checkpointId = runtime.session.getLeafId();
+	const editId = runtime.session.appendContextEdit(id, null);
+	assert.ok(!(await payload(runtime, true)).input.some((item) => item.type === "compaction"));
+	runtime.session.branch(checkpointId);
+	const restored = await payload(runtime, true);
+	assert.ok(restored.input.some((item) => item.type === "compaction"));
+	assert.match(JSON.stringify(restored.input), /EDIT_OLD_MARKER/);
+	runtime.session.branch(editId);
+	const edited = await payload(runtime, true);
+	assertContextEdit(edited.input, null);
+	assert.ok(!edited.input.some((item) => item.type === "compaction"));
+	assert.equal(runtime.session.getEntry(id).message.content, "EDIT_OLD_MARKER");
+	assert.match(JSON.stringify(compacted.details.remoteCompaction.replacementHistory), /EDIT_OLD_MARKER/);
+});
+
+test("context edit of an already summarized source invalidates the artifact without rewriting the text summary", async (t) => {
+	const runtime = await start(t, "gpt-5.6-sol", contextEditRegistry);
+	const id = runtime.session.appendMessage(user("EDIT_OLD_MARKER"));
+	const firstKept = runtime.session.appendMessage(user("kept"));
+	const compacted = await generateArtifact(runtime, firstKept);
+	runtime.session.appendCompaction("Existing summary mentions EDIT_OLD_MARKER", firstKept, 100, compacted.details, true);
+	runtime.session.appendContextEdit(id, null);
+	const canonical = await payload(runtime, false), replayed = await payload(runtime, true);
+	assert.deepEqual(replayed.input, canonical.input);
+	assert.ok(!replayed.input.some((item) => item.type === "compaction"));
+	assert.match(JSON.stringify(replayed.input), /Existing summary mentions EDIT_OLD_MARKER/);
+});

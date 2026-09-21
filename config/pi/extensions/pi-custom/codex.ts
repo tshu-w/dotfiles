@@ -28,7 +28,7 @@ import type {
   ExtensionContext,
   SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
-import { compact, convertToLlm } from "@earendil-works/pi-coding-agent";
+import { buildSessionProjection, compact, convertToLlm } from "@earendil-works/pi-coding-agent";
 import { calculateCost, type ProviderHeaders, type Tool, type Usage } from "@earendil-works/pi-ai";
 
 type Model = NonNullable<ExtensionContext["model"]>;
@@ -218,18 +218,18 @@ function latestRemoteCompaction(
       details.modelKey === key &&
       Array.isArray(details.replacementHistory)
     ) {
+      // An opaque artifact and its retained copies cannot be patched in place.
+      // Conservatively invalidate when a later edit targets any earlier source.
+      const cachedIds = new Set(branch.slice(0, index).map((source) => source.id));
+      if (branch.slice(index + 1).some((later) => later.type === "context_edit" && cachedIds.has(later.targetId))) {
+        return undefined;
+      }
       return { index, details: details as unknown as RemoteCompactionDetails };
     }
     // The newest compaction carries no matching artifact; use Pi's summary path.
     return undefined;
   }
   return undefined;
-}
-
-function branchMessages(branch: SessionEntry[], fromIndex = 0): AgentMessage[] {
-  return branch
-    .slice(fromIndex)
-    .flatMap((entry) => (entry.type === "message" ? [entry.message as AgentMessage] : []));
 }
 
 function hasActiveTapeAnchor(branch: SessionEntry[]): boolean {
@@ -269,11 +269,15 @@ function reconstructInput(
   // Seed conversion with the checkpoint so the first post-compaction system
   // delta is not mistaken for the leading prompt carried in instructions.
   const checkpoint = entry?.type === "compaction" ? entry.systemMessage : undefined;
+  const tailIds = new Set(branch.slice(found.index + 1).map((source) => source.id));
+  const tailMessages = buildSessionProjection(branch).entries
+    .filter(({ sourceEntry }) => tailIds.has(sourceEntry.id))
+    .flatMap(({ messages }) => messages);
   return [
     ...found.details.replacementHistory,
     ...toResponseItems(internals, model, [
       checkpoint ?? { role: "system", content: "", timestamp: 0 },
-      ...branchMessages(branch, found.index + 1),
+      ...tailMessages,
     ], tools, replay),
   ];
 }
@@ -686,7 +690,7 @@ export async function registerCodex(
 
     const tools = activeTools(pi);
     const branch = event.branchEntries;
-    const activeMessages = projectedMessages ?? ctx.sessionManager.buildSessionContext().messages as AgentMessage[];
+    const activeMessages = projectedMessages ?? ctx.sessionManager.buildSessionProjection().messages;
     const input = projectedMessages
       ? toResponseItems(internals, compactionModel, activeMessages, tools)
       : reconstructInput(internals, compactionModel, branch, tools) ??
