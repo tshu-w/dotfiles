@@ -25,7 +25,7 @@ async function main() {
 	const entries = [
 		{ type: "message", message: { role: "assistant", usage } },
 		{ type: "message", message: { role: "toolResult", usage } },
-		{ type: "compaction", usage },
+		{ type: "compaction", usage, details: { remoteCompaction: { usage: { input_tokens: 7, output_tokens: 1 } } } },
 		{ type: "branch_summary", usage },
 	];
 	start({}, {

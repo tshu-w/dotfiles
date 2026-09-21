@@ -12,9 +12,11 @@ async function main() {
 		interopDefault: true,
 		alias: {
 			"@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js`,
+			"@earendil-works/pi-ai": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/index.js`,
 		},
 	});
 	const codex = await jiti.import("../codex.ts");
+	const { streamSimple } = await jiti.import(`${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/compat.js`);
 
 	// Endpoint resolution mirrors the built-in transport.
 	assert.equal(codex.resolveCodexUrl(undefined), "https://chatgpt.com/backend-api/codex/responses");
@@ -178,6 +180,7 @@ async function main() {
 				ui,
 				getSystemPrompt: () => "system",
 				modelRegistry: {
+					streamSimple,
 					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
 				},
 				sessionManager: {
@@ -267,6 +270,7 @@ async function main() {
 				ui,
 				getSystemPrompt: () => "system",
 				modelRegistry: {
+					streamSimple,
 					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
 				},
 				sessionManager: {
@@ -320,6 +324,7 @@ async function main() {
 				ui: { ...ui, notify: (message) => { limitWarning = message; } },
 				getSystemPrompt: () => "system",
 				modelRegistry: {
+					streamSimple,
 					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
 				},
 				sessionManager: {
@@ -358,6 +363,7 @@ async function main() {
 				ui: { ...ui, notify: (message) => { overflowWarning = message; } },
 				getSystemPrompt: () => "system",
 				modelRegistry: {
+					streamSimple,
 					getApiKeyAndHeaders: async () => ({ ok: true, apiKey: `e30.${accountPayload}.sig` }),
 				},
 				sessionManager: {

@@ -29,7 +29,7 @@ import type {
   SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 import { compact, convertToLlm } from "@earendil-works/pi-coding-agent";
-import type { Tool } from "@earendil-works/pi-ai";
+import { calculateCost, type Tool, type Usage } from "@earendil-works/pi-ai";
 
 type Model = NonNullable<ExtensionContext["model"]>;
 type SessionEntry = SessionBeforeCompactEvent["branchEntries"][number];
@@ -85,7 +85,7 @@ interface CodexAiInternals {
   clampOpenAIPromptCacheKey(key: string | undefined): string | undefined;
   convertResponsesMessages(
     model: Model,
-    context: { messages: ReturnType<typeof convertToLlm>; tools: Tool[] },
+    context: { messages: ReturnType<typeof convertToLlm> },
     allowedToolCallProviders: ReadonlySet<string>,
     options: Record<string, unknown>,
   ): unknown;
@@ -151,7 +151,13 @@ function isCodexModel(model: Model | undefined): model is Model {
 // ─── Message conversion (mirrors the built-in codex transport) ───────────────
 
 // The codex-responses compat flags are a subset of Model["compat"] union members.
-type CodexCompat = { supportsStrictMode?: boolean; supportsOpenAIGrammarTools?: boolean };
+type CodexCompat = {
+  supportsStrictMode?: boolean;
+  supportsOpenAIGrammarTools?: boolean;
+  supportsMidConvoSystemMessages?: boolean;
+  supportsAdditionalTools?: boolean;
+  supportsToolSearch?: boolean;
+};
 
 function toolConversionOptions(model: Model) {
   const compat = (model.compat ?? {}) as CodexCompat;
@@ -167,15 +173,21 @@ function toResponseItems(
   model: Model,
   messages: AgentMessage[],
   tools: ToolInfo[],
+  replay = false,
 ): ResponseItem[] {
   const aiTools = tools as unknown as Tool[];
+  const compat = (model.compat ?? {}) as CodexCompat;
   const options = toolConversionOptions(model);
   return internals.convertResponsesMessages(
     model,
-    { messages: convertToLlm(messages), tools: aiTools },
+    { messages: convertToLlm(messages) },
     CODEX_TOOL_CALL_PROVIDERS,
     {
       includeSystemPrompt: false,
+      supportsMidConvoSystemMessages: compat.supportsMidConvoSystemMessages ?? false,
+      // Replay keeps native in-place declarations; compaction sends active tools at the top level.
+      supportsAdditionalTools: replay && (compat.supportsAdditionalTools ?? false),
+      supportsToolSearch: replay && (compat.supportsToolSearch ?? false),
       grammarToolInputProperties: internals.createGrammarToolInputProperties(
         aiTools,
         options.supportsOpenAIGrammarTools,
@@ -249,12 +261,20 @@ function reconstructInput(
   model: Model,
   branch: SessionEntry[],
   tools: ToolInfo[],
+  replay = false,
 ): ResponseItem[] | undefined {
   const found = latestRemoteCompaction(branch, modelKey(model));
   if (!found) return undefined;
+  const entry = branch[found.index];
+  // Seed conversion with the checkpoint so the first post-compaction system
+  // delta is not mistaken for the leading prompt carried in instructions.
+  const checkpoint = entry?.type === "compaction" ? entry.systemMessage : undefined;
   return [
     ...found.details.replacementHistory,
-    ...toResponseItems(internals, model, branchMessages(branch, found.index + 1), tools),
+    ...toResponseItems(internals, model, [
+      checkpoint ?? { role: "system", content: "", timestamp: 0 },
+      ...branchMessages(branch, found.index + 1),
+    ], tools, replay),
   ];
 }
 
@@ -465,9 +485,45 @@ function parseSseEvents(text: string): unknown[] {
     });
 }
 
-export function extractCompactionResult(events: unknown[]): { item: ResponseItem; usage?: unknown } {
+interface ResponsesUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  output_tokens_details?: { reasoning_tokens?: number };
+}
+
+function compactionUsage(model: Model, remote: ResponsesUsage | undefined, local: Usage | undefined): Usage | undefined {
+  if (!remote) return local;
+  const cacheRead = remote.input_tokens_details?.cached_tokens ?? 0;
+  const cacheWrite = remote.input_tokens_details?.cache_write_tokens ?? 0;
+  const usage: Usage = {
+    input: Math.max(0, (remote.input_tokens ?? 0) - cacheRead - cacheWrite),
+    output: remote.output_tokens ?? 0,
+    cacheRead,
+    cacheWrite,
+    reasoning: remote.output_tokens_details?.reasoning_tokens ?? 0,
+    totalTokens: remote.total_tokens ?? (remote.input_tokens ?? 0) + (remote.output_tokens ?? 0),
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  // Price each request separately before combining, preserving model cost tiers.
+  calculateCost(model, usage);
+  if (local) {
+    for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
+      usage[key] += local[key];
+    }
+    usage.reasoning = (usage.reasoning ?? 0) + (local.reasoning ?? 0);
+    if (local.cacheWrite1h !== undefined) usage.cacheWrite1h = local.cacheWrite1h;
+    for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) {
+      usage.cost[key] += local.cost[key];
+    }
+  }
+  return usage;
+}
+
+export function extractCompactionResult(events: unknown[]): { item: ResponseItem; usage?: ResponsesUsage } {
   let completed = false;
-  let usage: unknown;
+  let usage: ResponsesUsage | undefined;
   const items: ResponseItem[] = [];
   for (const event of events) {
     if (!isRecord(event)) continue;
@@ -486,7 +542,7 @@ export function extractCompactionResult(events: unknown[]): { item: ResponseItem
     }
     if (event.type === "response.completed") {
       completed = true;
-      usage = isRecord(event.response) ? event.response.usage : undefined;
+      usage = isRecord(event.response) ? event.response.usage as ResponsesUsage | undefined : undefined;
     }
   }
   if (!completed) throw new Error("Codex compaction stream ended before completion.");
@@ -501,7 +557,7 @@ async function requestRemoteCompaction(params: {
   headers: Headers;
   body: Record<string, unknown>;
   signal: AbortSignal;
-}): Promise<{ item: ResponseItem; usage?: unknown }> {
+}): Promise<{ item: ResponseItem; usage?: ResponsesUsage }> {
   const response = await fetch(params.url, {
     method: "POST",
     headers: params.headers,
@@ -578,7 +634,7 @@ export async function registerCodex(
       try {
         const branch = ctx.sessionManager.getBranch();
         if (!hasActiveTapeAnchor(branch) && latestRemoteCompaction(branch, modelKey(model))) {
-          const input = reconstructInput(await getInternals(), model, branch, activeTools(pi));
+          const input = reconstructInput(await getInternals(), model, branch, activeTools(pi), true);
           if (input) {
             payload = { ...payload, input };
             patched = true;
@@ -643,7 +699,7 @@ export async function registerCodex(
     // non-JWT token in extractAccountId) must not orphan an already-started
     // compact() whose later rejection would be unhandled.
     const remoteRequest = {
-      url: resolveCodexUrl(compactionModel.baseUrl),
+      url: resolveCodexUrl(auth.baseUrl ?? compactionModel.baseUrl),
       headers: buildCompactionHeaders(compactionModel, auth.apiKey, auth.headers, sessionId),
       body: buildCompactionBody(internals, {
         model: compactionModel,
@@ -670,7 +726,7 @@ export async function registerCodex(
         event.customInstructions,
         event.signal,
         pi.getThinkingLevel(),
-        undefined,
+        ctx.modelRegistry.streamSimple.bind(ctx.modelRegistry),
         auth.env,
       ),
       remotePromise,
@@ -704,6 +760,7 @@ export async function registerCodex(
       ...(remote.value.usage !== undefined ? { usage: remote.value.usage } : {}),
     };
     const localResult = local.status === "fulfilled" ? local.value : undefined;
+    const usage = compactionUsage(compactionModel, remote.value.usage, localResult?.usage);
     return {
       compaction: {
         summary:
@@ -711,7 +768,7 @@ export async function registerCodex(
           `Conversation compacted into an opaque ${compactionModel.id} artifact; no portable text summary is available.`,
         firstKeptEntryId: preparation.firstKeptEntryId,
         tokensBefore: preparation.tokensBefore,
-        ...(localResult?.usage ? { usage: localResult.usage } : {}),
+        ...(usage ? { usage } : {}),
         details: {
           ...(isRecord(localResult?.details) ? localResult.details : {}),
           remoteCompaction: remoteDetails,
