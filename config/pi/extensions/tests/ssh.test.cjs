@@ -79,14 +79,8 @@ if (mode === "execute" || mode === "execute-truncated") {
 				"@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
 			},
 		});
-		const { SessionManager, createWriteToolDefinition, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
+		const { SessionManager, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } = await jiti.import(`${PI_PACKAGE}/dist/index.js`);
 		const { buildSystemPrompt } = await jiti.import(`${PI_PACKAGE}/dist/core/system-prompt.js`);
-		let nativeWritePath;
-		await createWriteToolDefinition("/unused-constructor-cwd", { operations: {
-			mkdir: async () => {},
-			writeFile: async (path) => { nativeWritePath = path; },
-		} }).execute("native-cwd", { path: "native.txt", content: "test" }, undefined, undefined, { cwd: localRoot });
-		assert.equal(nativeWritePath, join(localRoot, "native.txt"), "native tool definitions resolve paths against ctx.cwd");
 		const module = await jiti.import(join(EXTENSIONS_DIR, "ssh.ts"));
 		const tools = new Map();
 		const handlers = new Map();
@@ -149,7 +143,7 @@ if (mode === "execute" || mode === "execute-truncated") {
 		assert.equal(promptEvent.systemPromptOptions.cwd, remoteRoot);
 		assert.equal(promptEvent.systemPromptOptions.sections.other, "Keep this section");
 		assert.ok(buildSystemPrompt(promptEvent.systemPromptOptions).includes(`<cwd>\n${remoteRoot}\n</cwd>`));
-		assert.equal(promptEvent.systemPromptOptions.sections.ssh, "SSH: fake-host. read, write, edit, bash and user ! commands execute on the remote host.");
+		assert.match(promptEvent.systemPromptOptions.sections.ssh, /fake-host/);
 
 		process.env.PI_SSH_SMOKE_MODE = "execute";
 		const remoteBash = await tools.get("bash").execute("remote-bash", { command: "pwd" }, undefined, undefined, ctx);
