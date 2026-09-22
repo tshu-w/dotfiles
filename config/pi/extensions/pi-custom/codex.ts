@@ -743,7 +743,7 @@ export async function registerCodex(
     if (remote.status !== "fulfilled") {
       const message = remote.reason instanceof Error ? remote.reason.message : String(remote.reason);
       if (!event.signal.aborted && ctx.hasUI) {
-        ctx.ui.notify(`Codex remote compaction failed; keeping text summary only. ${message}`, "warning");
+        ctx.ui.notify(`Codex remote compaction failed; falling back to text compaction. ${message}`, "warning");
       }
       if (local.status !== "fulfilled") return undefined;
       return {

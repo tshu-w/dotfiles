@@ -83,7 +83,7 @@ export function registerRenderPerf(pi: ExtensionAPI, initiallyEnabled = true): R
       restoreAll();
       activeTui = tui;
       if (!installMemoPatch(tui)) {
-        ctx.ui.notify("render-perf: line memo disabled (unsupported pi TUI structure)", "warning");
+        ctx.ui.notify("Transcript rendering optimization unavailable with this Pi version.", "warning");
       }
       return emptyWidget;
     });

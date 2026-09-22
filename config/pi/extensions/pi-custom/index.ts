@@ -362,7 +362,7 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         lastError: code === 0 ? undefined : `${failedCommand ?? "update"} failed: ${output.trim() || `exit ${code}`}`,
       });
       releasePackageUpdateLock(lockPath, lockToken);
-      const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (ext skipped: dirty)" : "pkg updated";
+      const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (extensions skipped)" : "pkg updated";
       safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText));
       setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     })().catch((error: unknown) => {
@@ -604,7 +604,7 @@ export class PreferencesPanel implements Component {
       field: "codexCompaction",
       group: "Codex",
       label: "Codex compaction",
-      description: "Codex-style remote compaction for the openai-codex provider.",
+      description: "Use remote context compaction with the openai-codex provider.",
     },
     {
       field: "transcriptOptimization",
@@ -616,7 +616,7 @@ export class PreferencesPanel implements Component {
       field: "transcriptHistory",
       group: "Transcript",
       label: "History",
-      description: "Load older compaction intervals into the TUI without changing model context.",
+      description: "Show older conversation history without changing model context.",
     },
   ];
   private readonly listTheme = getSettingsListTheme();
@@ -806,7 +806,7 @@ function registerCustomSettings(
 // exits normally — resume manually with `pi -c`.
 function registerRestart(pi: ExtensionAPI): void {
   pi.registerCommand("restart", {
-    description: "Restart pi process; optional text is submitted after restart",
+    description: "Restart pi, optionally sending a message after restart",
     handler: async (rawArgs, ctx) => {
       if (ctx.mode !== "tui") {
         ctx.ui.notify("/restart is only available in TUI mode", "error");
