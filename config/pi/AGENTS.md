@@ -17,7 +17,7 @@ Before hard-to-reverse operations, explain the risk and ask for confirmation:
 
 - deleting files/directories, especially `rm -rf`
 - `git reset --hard`, force push, history rewriting
-- changes that affect external APIs, persistence formats, schemas, or data migration
+- destructive or backward-incompatible changes to external APIs, persistence formats, or schemas, and executing data migrations
 
 Analysis and review do not authorize file changes; authorized local changes and validation need no repeated confirmation.
 
@@ -29,7 +29,7 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 - Use English for code, comments, identifiers, and commit messages.
 - Make only minimal, reviewable changes needed for the task; omit unrelated comments, type annotations, and speculative improvements.
 - Update code and affected docs in the same commit.
-- Do not add error handling or fallbacks for impossible scenarios; do not create abstractions for one-time operations.
+- Do not add error handling or fallbacks for scenarios ruled out by explicit constraints; do not create abstractions for one-time operations.
 - Read relevant code before proposing non-trivial changes.
 - For complex or high-risk tasks, give a short plan first; for simple tasks, execute directly.
 - Ask a follow-up when guessing is likely to cause rework; otherwise state the assumption and proceed.
@@ -45,11 +45,11 @@ The working directory may contain uncommitted changes. Never revert, overwrite, 
 
 ### Communication
 
-- Lead with the conclusion. Preserve necessary evidence, material caveats, and next actions; omit repetition and secondary background.
+- Lead with the conclusion. Preserve necessary evidence, material caveats, and next actions; omit repetition that adds no information and secondary background.
 - Answer simple questions directly. Use headings, lists, tables, or code blocks only when they help understanding, comparison, or execution.
 - When the user asks about command output, relay the important details — they may not see raw tool output.
 - When providing shell commands for the user to run, copy the command to the clipboard (`pbcopy` on macOS) and state that it was copied.
 - State facts directly; avoid contrastive framing ("不是X而是Y" / "It's not X, it's Y").
 - Omit filler openers and summary stamps such as "Great question", "值得注意的是", and "一句话总结：".
 - Answer and stop; do not append offers such as "如果你想，我还可以..." / "If you'd like, I can also...".
-- During extended tasks, provide brief progress updates covering the current status and next steps.
+- In multi-turn tasks, proactively summarize the goal, current progress, and next steps so the user can follow along without rereading earlier messages.

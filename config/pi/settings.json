@@ -58,7 +58,6 @@
     {
       "source": "git:github.com/tshu-w/pi-tape"
     },
-    "npm:pi-claude-bridge",
     {
       "source": "git:github.com/mattpocock/skills",
       "skills": []
@@ -69,9 +68,7 @@
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
   "retry": {
-    "provider": {
-      "maxRetries": 5
-    }
+    "maxRetries": 5
   },
   "terminal": {
     "showTerminalProgress": true
@@ -87,5 +84,10 @@
       "extensions/ssh.ts",
       "extensions/secret-guard/index.ts"
     ]
+  },
+  "pi-custom": {
+    "fast": false,
+    "codexCompaction": true,
+    "transcriptOptimization": true
   }
 }
