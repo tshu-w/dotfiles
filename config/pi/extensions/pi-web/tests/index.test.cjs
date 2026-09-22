@@ -218,6 +218,20 @@ async function main() {
 	assert.ok(callStyles.some(([color, text]) => color === "muted" && /more lines,.*to expand/.test(text)));
 
 	const truncationNotice = "[Showing lines 1-20 of 100. Full output: /tmp/web.txt]";
+	const continuation = '\n\nScope: 100 fetched characters; 2 matching excerpts in fetched content only.\n\n[1 more results. Use web_fetch(url="https://example.com", pattern="test", offset=1) to continue.]';
+	for (const prefix of ["body\n\n", ""]) {
+		callStyles.length = 0;
+		const text = `${prefix}${truncationNotice}${continuation}`;
+		const result = { content: [{ type: "text", text }], details: { title: "Example", truncation: { truncated: true } } };
+		const original = structuredClone(result);
+		const rendered = fetchTool.renderResult(result, { expanded: true, isPartial: false }, callTheme, { args: fetchArgs, isError: false })
+			.render(1000).map((line) => line.trimEnd()).join("\n");
+		assert.equal(rendered, text);
+		assert.deepEqual(result, original);
+		assert.ok(callStyles.some(([color, value]) => color === "warning" && value === truncationNotice));
+		assert.ok(callStyles.some(([color, value]) => color === "toolOutput" && value.includes(continuation)));
+		assert.equal(callStyles.some(([color, value]) => color === "warning" && /Scope:|to continue/.test(value)), false);
+	}
 	callStyles.length = 0;
 	search.renderResult(
 		{ content: [{ type: "text", text: `[Output truncated: quoted page text]\nbody\n\n${truncationNotice}` }], details: { count: 1, truncation: { truncated: true } } },
