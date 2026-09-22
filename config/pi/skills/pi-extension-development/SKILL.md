@@ -33,7 +33,7 @@ description: Development and review guidelines for Pi extensions (plugins) and c
 
 11. Save complete output to a temporary file when it is too large. When stable pagination can recover everything omitted, provide a continuation offset instead of a temporary file.
 
-12. After complete output is saved, report `fullOutputPath` in both the text and `details`; never report a path that was not written. If saving fails, fail the tool when the result is cheap to rerun; when rerunning is expensive or unsafe, return the truncated result with a bounded notice. When bounding error output, preserve the original error semantics and do not let a save failure replace the original error. Do not add fallbacks for cases that cannot occur.
+12. After complete output is saved, report `fullOutputPath` in both the text and `details`; never report a path that was not written. Let temporary-file creation and write failures propagate as tool errors, including when saving error output.
 
 ## Pagination
 
