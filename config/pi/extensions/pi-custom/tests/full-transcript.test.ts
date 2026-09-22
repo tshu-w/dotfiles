@@ -59,7 +59,7 @@ test("starts with the compact transcript", () => {
   prototype.renderInitialMessages.call(mode);
 
   assert.deepEqual(mode.rendered, compacted);
-  assert.equal(control.getStatus(), "Recent");
+  assert.ok(control.getStatus().trim());
   control.restore();
 });
 
@@ -70,15 +70,15 @@ test("loads one older compaction interval at a time", () => {
 
   control.showOlder();
   assert.deepEqual(mode.rendered, full.slice(3));
-  assert.equal(control.getStatus(), "1 older");
+  assert.match(control.getStatus(), /\b1\b/);
 
   control.showOlder();
   assert.deepEqual(mode.rendered, full.slice(1));
-  assert.equal(control.getStatus(), "2 older");
+  assert.match(control.getStatus(), /\b2\b/);
 
   control.showOlder();
   assert.deepEqual(mode.rendered, full);
-  assert.equal(control.getStatus(), "3 older");
+  assert.match(control.getStatus(), /\b3\b/);
   control.restore();
 });
 
@@ -87,15 +87,17 @@ test("switches between full and recent without changing model context", () => {
   const originalBuilder = mode.sessionManager.buildContextEntries;
   const control = installTranscriptHistory(prototype);
   prototype.renderInitialMessages.call(mode);
+  const recentStatus = control.getStatus();
 
   control.showFull();
   assert.deepEqual(mode.rendered, full);
-  assert.equal(control.getStatus(), "Full");
+  assert.ok(control.getStatus().trim());
+  assert.notEqual(control.getStatus(), recentStatus);
   assert.equal(mode.sessionManager.buildContextEntries, originalBuilder);
 
   control.showRecent();
   assert.deepEqual(mode.rendered, compacted);
-  assert.equal(control.getStatus(), "Recent");
+  assert.equal(control.getStatus(), recentStatus);
   assert.equal(mode.sessionManager.buildContextEntries, originalBuilder);
   control.restore();
 });

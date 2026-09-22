@@ -26,7 +26,6 @@ const emptyWidget: Component = {
 };
 
 export interface RenderPerfControl {
-  isEnabled(): boolean;
   setEnabled(value: boolean): void;
 }
 
@@ -95,7 +94,6 @@ export function registerRenderPerf(pi: ExtensionAPI, initiallyEnabled = true): R
   });
 
   return {
-    isEnabled: () => enabled,
     setEnabled: (value) => {
       enabled = value;
       activeTui?.requestRender();

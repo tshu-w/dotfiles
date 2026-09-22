@@ -12,7 +12,7 @@ import {
   readGlobalSettings,
   resolveCustomSettings,
   restoreSessionSettings,
-} from "./custom-settings.ts";
+} from "../custom-settings.ts";
 
 test("session settings override global defaults per field", () => {
   assert.deepEqual(

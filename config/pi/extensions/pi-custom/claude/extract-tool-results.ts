@@ -23,17 +23,3 @@ export function toolResultToMcpContent(
 	}
 	return blocks.length ? blocks : [{ type: "text", text: "" }];
 }
-
-export function extractAllToolResults(
-	messages: Array<{ role: string; content?: unknown; toolCallId?: string; isError?: boolean; [key: string]: unknown }>,
-): { results: McpResult[]; stopIdx: number } {
-	const results: McpResult[] = [];
-	let stopIdx = -1;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg.role === "toolResult") {
-			results.unshift({ content: toolResultToMcpContent(msg.content as string | Array<{ type: string; text?: string; data?: string; mimeType?: string }>), isError: msg.isError, toolCallId: msg.toolCallId });
-		} else if (msg.role === "assistant") { stopIdx = i; break; }
-	}
-	return { results, stopIdx };
-}

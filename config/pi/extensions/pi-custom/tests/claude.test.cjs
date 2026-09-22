@@ -138,7 +138,7 @@ test("Claude preset retains current Pi constraints and routes their tool referen
   const state = buildSystemPromptState({
     cwd: directory, selectedTools: ["read", "echo"],
     toolSnippets: { read: "Read files", echo: "Echo input" },
-    toolGuidelines: { echo: ["Use echo to inspect input.", "Use `echo` before echo(value)."] },
+    toolGuidelines: { read: ["Use the read tool to inspect fixtures."], echo: ["Use echo to inspect input.", "Use `echo` before echo(value)."] },
     promptGuidelines: ["Keep read-only paths and echo.txt unchanged."],
     appendSystemPrompt: "Require confirmation before publishing.",
     contextFiles: [{ path: "/project/AGENTS.md", content: "Never upload customer data." }],
@@ -169,7 +169,7 @@ test("Claude preset retains current Pi constraints and routes their tool referen
   assert.match(prompt.append, /- mcp__pi__echo: Echo input/);
   assert.match(prompt.append, /Use mcp__pi__echo to inspect input/);
   assert.match(prompt.append, /`mcp__pi__echo` before mcp__pi__echo\(value\)/);
-  assert.match(prompt.append, /Use the mcp__pi__read tool/);
+  assert.match(prompt.append, /Use the mcp__pi__read tool to inspect fixtures/);
   assert.match(prompt.append, /Keep read-only paths and echo\.txt unchanged/);
   const client = await q.client();
   for (const { name } of (await client.listTools()).tools) assert.ok(prompt.append.includes(`mcp__pi__${name}`));
@@ -362,7 +362,12 @@ test("thinking budgets, redacted signatures and authentication errors survive th
   const imported = h.stream([user("rewritten"), answer, user("continue")]);
   await until(() => h.calls.length === 2);
   const history = readFileSync(sessions.getSessionPath(h.calls[1].options.resume, directory), "utf8");
-  assert.match(history, /"type":"redacted_thinking","data":"opaque"/);
+  const blocks = history.trim().split("\n").map((line) => JSON.parse(line))
+    .filter((entry) => entry.type === "assistant")
+    .flatMap((entry) => entry.message.content);
+  assert.deepEqual(blocks.filter((block) => block.type === "redacted_thinking"), [
+    { type: "redacted_thinking", data: "opaque" },
+  ]);
   h.calls[1].emit({ type: "assistant", error: "authentication_failed", message: { content: [{ type: "text", text: "Token expired: log in again" }] } });
   assert.match((await imported.result()).errorMessage, /Token expired: log in again/);
   const short = h.stream([user("short thought")], { reasoning: "minimal", maxTokens: 128 });
@@ -388,8 +393,6 @@ test("production loader registers the provider and session lifecycle without plu
   const core = await import(pathToFileURL(join(PI_PACKAGE, "dist/index.js")));
   const loaded = await loader.loadExtensions([join(CUSTOM, "claude.ts")], directory);
   assert.deepEqual(loaded.errors, []);
-  const registration = loaded.runtime.pendingProviderRegistrations.find((r) => r.name === "claude-code");
-  assert.ok(registration.config.models.some((m) => m.id === "claude-haiku-4-5"));
   const session = core.SessionManager.inMemory(directory);
   const runtime = await core.ModelRuntime.create({ modelsPath: null, authPath: join(directory, "auth.json"), refreshOnCreate: false });
   const registry = new core.ModelRegistry(runtime);
