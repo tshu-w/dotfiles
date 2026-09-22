@@ -670,7 +670,7 @@ export default function (pi: ExtensionAPI) {
 			url: Type.String({ minLength: 1, pattern: "\\S", description: "URL to fetch." }),
 			pattern: Type.Optional(Type.String({ minLength: 1, pattern: "\\S", description: "Case-insensitive literal substring to find in fetched content. Returns matching excerpts with surrounding context." })),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "Maximum matching excerpts (default: 10, max: 100). Requires pattern." })),
-			offset: Type.Optional(Type.Integer({ minimum: 0, description: "Matching excerpts to skip (default: 0). Requires pattern. Continue with the same url and pattern; beyond the total returns an empty page." })),
+			offset: Type.Optional(Type.Integer({ minimum: 0, description: "Matching excerpts to skip (default: 0). Requires pattern." })),
 		}, { additionalProperties: false }),
 
 		async execute(_id, params, signal, onUpdate, ctx) {
