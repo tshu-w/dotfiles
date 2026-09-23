@@ -178,6 +178,28 @@ test("Claude preset retains current Pi constraints and routes their tool referen
   assert.equal((await stream.result()).stopReason, "stop");
 });
 
+test("old Pi install paths do not leak the default docs into Claude", { timeout: 10000 }, async (t) => {
+  const { buildSystemPromptState } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/system-prompt.js")));
+  const native = buildSystemPromptState({ cwd: directory });
+  const staleDocs = native.sections.docs.replace(
+    /^(- (?:Main documentation|Additional docs|Examples): )\S+?(?=\/@earendil-works\/pi-coding-agent\/)/gm,
+    "$1/opt/homebrew/Cellar/pi-coding-agent/0.85.1/libexec/lib/node_modules",
+  );
+  assert.notEqual(staleDocs, native.sections.docs);
+  const h = harness(t);
+  for (const [i, docs] of [staleDocs, staleDocs.replace("</docs>", "Extra user instructions.\n</docs>")].entries()) {
+    const stream = h.bridge.streamSimple(model, { messages: [
+      { role: "system", ...native, sections: { ...native.sections, docs }, toolsAdded: [tool], timestamp: 0 }, user("check"),
+    ] }, { sessionId: "pi-main" });
+    await until(() => h.calls.length === i + 1);
+    const prompt = h.calls[i].options.systemPrompt;
+    assert.equal(prompt.preset, "claude_code");
+    assert.equal(prompt.append.includes(docs), i === 1);
+    h.calls[i].text("done"); h.calls[i].finish();
+    assert.equal((await stream.result()).stopReason, "stop");
+  }
+});
+
 test("custom sections survive projection and full prompt overrides remain exact", { timeout: 10000 }, async (t) => {
   const { buildSystemPromptState } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/system-prompt.js")));
   const native = buildSystemPromptState({ cwd: directory });

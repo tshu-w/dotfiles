@@ -18,6 +18,13 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 </docs>`;
 }
 
+function normalizeDocsInstallPaths(text: string): string {
+  return text.replace(
+    /^(- (?:Main documentation|Additional docs|Examples): )\S+?(?=\/@earendil-works\/pi-coding-agent\/)/gm,
+    "$1<install>",
+  );
+}
+
 function rewriteToolReferences(text: string, names: Map<string, string>): string {
   for (const [mcpName, piName] of names) {
     const name = piName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -36,7 +43,7 @@ export function buildClaudeSystemPrompt(message: SystemMessage | undefined, name
   if (!message?.sections) return message ? getSystemMessageText(message) : "";
   const sections = { ...message.sections };
   if (sections.preamble === DEFAULT_PREAMBLE) delete sections.preamble;
-  if (sections.docs === defaultDocs()) delete sections.docs;
+  if (sections.docs && normalizeDocsInstallPaths(sections.docs) === normalizeDocsInstallPaths(defaultDocs())) delete sections.docs;
   for (const name of ["tools", "rules", "skills"]) {
     if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
   }
