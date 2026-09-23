@@ -1,8 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-export const MAX_EMPTY_REROLLS = 3;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -45,13 +43,12 @@ function asError(message: AssistantMessage, errorMessage: string): AssistantMess
 export function classifyAssistantMessage(
   message: AssistantMessage,
   wasOutputClamped: boolean,
-  emptyRerolls: number,
 ) {
   if (message.stopReason === "error" || message.stopReason === "aborted") {
-    return { message, emptyRerolls };
+    return { message };
   }
   if (hasStructuredToolCall(message)) {
-    return { message, emptyRerolls: 0 };
+    return { message };
   }
   if (message.stopReason === "length" && wasOutputClamped) {
     return {
@@ -59,11 +56,10 @@ export function classifyAssistantMessage(
         message,
         "context_length_exceeded: output budget was clamped before a length-limited response",
       ),
-      emptyRerolls: 0,
     };
   }
   if (hasVisibleText(message)) {
-    return { message, emptyRerolls: 0 };
+    return { message };
   }
   if (wasOutputClamped) {
     return {
@@ -71,24 +67,13 @@ export function classifyAssistantMessage(
         message,
         "context_length_exceeded: output budget was clamped before an empty assistant response",
       ),
-      emptyRerolls: 0,
     };
   }
-  if (emptyRerolls >= MAX_EMPTY_REROLLS) {
-    return { message, emptyRerolls };
-  }
-  return {
-    message: asError(
-      message,
-      "stream ended before a terminal response event: empty assistant response",
-    ),
-    emptyRerolls: emptyRerolls + 1,
-  };
+  return { message };
 }
 
 export function registerReroll(pi: ExtensionAPI): void {
   let pendingOutputWasClamped = false;
-  let emptyRerolls = 0;
 
   pi.on("before_provider_request", (event, ctx) => {
     pendingOutputWasClamped = outputWasClamped(event.payload, ctx.model?.maxTokens);
@@ -97,7 +82,6 @@ export function registerReroll(pi: ExtensionAPI): void {
   pi.on("message_end", (event) => {
     if (event.message.role === "user") {
       pendingOutputWasClamped = false;
-      emptyRerolls = 0;
       return;
     }
     if (event.message.role !== "assistant") return;
@@ -107,9 +91,7 @@ export function registerReroll(pi: ExtensionAPI): void {
     const result = classifyAssistantMessage(
       event.message,
       wasOutputClamped,
-      emptyRerolls,
     );
-    emptyRerolls = result.emptyRerolls;
     if (result.message !== event.message) return { message: result.message };
   });
 }

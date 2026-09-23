@@ -40,7 +40,6 @@ async function main() {
 	const length = reroll.classifyAssistantMessage(
 		assistant({ content: [{ type: "text", text: "partial" }], stopReason: "length" }),
 		true,
-		0,
 	);
 	assert.equal(length.message.stopReason, "error");
 	assert.match(length.message.errorMessage, /^context_length_exceeded:/);
@@ -50,27 +49,20 @@ async function main() {
 		content: [{ type: "toolCall", name: "read", arguments: { path: "a" } }],
 		stopReason: "length",
 	});
-	const preserved = reroll.classifyAssistantMessage(toolCall, true, 2);
+	const preserved = reroll.classifyAssistantMessage(toolCall, true);
 	assert.equal(preserved.message, toolCall);
-	assert.equal(preserved.emptyRerolls, 0);
 
 	const thinkingOnly = assistant({ content: [{ type: "thinking", thinking: "private" }] });
-	let rerolls = 0;
-	for (let attempt = 1; attempt <= reroll.MAX_EMPTY_REROLLS; attempt++) {
-		const result = reroll.classifyAssistantMessage(thinkingOnly, false, rerolls);
-		assert.equal(result.message.stopReason, "error");
-		assert.match(result.message.errorMessage, /stream ended before a terminal response event/);
-		assert.equal(isRetryableAssistantError(result.message), true);
-		rerolls = result.emptyRerolls;
+	for (const message of [thinkingOnly, assistant({ content: [] }), assistant({ content: [{ type: "text", text: " " }] })]) {
+		const result = reroll.classifyAssistantMessage(message, false);
+		assert.equal(result.message, message);
+		assert.equal(isRetryableAssistantError(result.message), false);
 	}
-	const exhausted = reroll.classifyAssistantMessage(thinkingOnly, false, rerolls);
-	assert.equal(exhausted.message, thinkingOnly);
 
-	const clampedEmpty = reroll.classifyAssistantMessage(thinkingOnly, true, 2);
+	const clampedEmpty = reroll.classifyAssistantMessage(thinkingOnly, true);
 	assert.equal(clampedEmpty.message.stopReason, "error");
 	assert.match(clampedEmpty.message.errorMessage, /^context_length_exceeded:/);
 	assert.equal(isContextOverflow(clampedEmpty.message, 8192), true);
-	assert.equal(clampedEmpty.emptyRerolls, 0);
 
 	const handlers = new Map();
 	reroll.registerReroll({
@@ -85,8 +77,12 @@ async function main() {
 	assert.match(recovered.message.errorMessage, /^context_length_exceeded:/);
 
 	handlers.get("message_end")({ message: { role: "user", content: "next" } });
-	const rerolled = handlers.get("message_end")({ message: thinkingOnly });
-	assert.equal(rerolled.message.stopReason, "error");
+	assert.equal(handlers.get("message_end")({ message: thinkingOnly }), undefined);
+	assert.equal(handlers.get("message_end")({ message: assistant({ content: [] }) }), undefined);
+
+	const failed = { ...assistant(), stopReason: "error", errorMessage: "503 service unavailable" };
+	assert.equal(reroll.classifyAssistantMessage(failed, false).message, failed);
+	assert.equal(isRetryableAssistantError(failed), true);
 
 	console.log("pi-custom: reroll verified");
 }
