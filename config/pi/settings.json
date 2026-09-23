@@ -1,6 +1,6 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-6-astra",
+  "defaultModel": "gpt-6-sol",
   "defaultThinkingLevel": "medium",
   "followUpMode": "all",
   "steeringMode": "all",
@@ -63,7 +63,7 @@
       "skills": []
     }
   ],
-  "lastChangelogVersion": "0.87.0",
+  "lastChangelogVersion": "0.87.1",
   "theme": "light",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -75,9 +75,6 @@
   },
   "showCacheMissNotices": true,
   "quietStartup": true,
-  "enabledModels": [
-    "openai-codex/gpt-6-astra"
-  ],
   "pi-agent-calculus": {
     "agentExtensions": [
       "extensions/pi-web/index.ts",
@@ -85,6 +82,11 @@
       "extensions/secret-guard/index.ts"
     ]
   },
+  "enabledModels": [
+    "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-6-sol",
+    "claude-code/claude-opus-5-5"
+  ],
   "pi-custom": {
     "fast": false,
     "codexCompaction": true,
