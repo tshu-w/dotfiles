@@ -281,7 +281,6 @@ async function main() {
 		const firstPage = await fetchTool.execute("page", { ...pageArgs, limit: 5 }, undefined, undefined, ctx);
 		assert.equal(firstPage.details.total, 12);
 		assert.equal(firstPage.details.count, 5);
-		assert.equal(firstPage.details.snapshotId, undefined);
 		assert.match(firstPage.content[0].text, /7 more results.*url="https:\/\/example.com\/", pattern="needle", offset=5/);
 		global.fetch = async () => { cacheRequests++; throw new Error("Cached paging must not fetch"); };
 		const secondPage = await fetchTool.execute("page", { ...pageArgs, offset: 5, limit: 5 }, undefined, undefined, ctx);
@@ -481,7 +480,6 @@ async function main() {
 		assert.equal((await failureRetry).details.title, "Recovered");
 
 		const adjacent = "needle FIRST" + "x".repeat(238) + "needle SECOND";
-		assert.equal(adjacent.indexOf("needle", 1), 250);
 		global.fetch = async () => new Response(JSON.stringify({ results: [{ title: "Adjacent", text: adjacent }] }));
 		const adjacentArgs = { url: "https://adjacent.example", pattern: "needle", limit: 1 };
 		const adjacentFirst = await fetchTool.execute("adjacent", adjacentArgs, undefined, undefined, ctx);

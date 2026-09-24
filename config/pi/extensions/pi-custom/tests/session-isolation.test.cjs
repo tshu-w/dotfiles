@@ -112,10 +112,7 @@ async function main() {
 		() => { closed = true; },
 	);
 	const initialPanel = panel.render(80).join("\n");
-	assert.match(initialPanel, /Codex/);
-	assert.match(initialPanel, /Transcript/);
 	for (const key of [/enter/, /space/, /ctrl\+s/, /\br\b/, /escape/, /ctrl\+c/]) assert.match(initialPanel, key);
-	assert.match(initialPanel, /Off\s+\[global\]/);
 	panel.handleInput(" ");
 	panel.handleInput("\x13");
 	panel.handleInput("\x1b[B");

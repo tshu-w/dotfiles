@@ -183,7 +183,7 @@ test("old Pi install paths do not leak the default docs into Claude", { timeout:
   const native = buildSystemPromptState({ cwd: directory });
   const staleDocs = native.sections.docs.replace(
     /^(- (?:Main documentation|Additional docs|Examples): )\S+?(?=\/@earendil-works\/pi-coding-agent\/)/gm,
-    "$1/opt/homebrew/Cellar/pi-coding-agent/0.85.1/libexec/lib/node_modules",
+    "$1/previous-pi-install",
   );
   assert.notEqual(staleDocs, native.sections.docs);
   const h = harness(t);
