@@ -513,7 +513,11 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
         const fg = (color: "dim" | "warning" | "error", s: string) => theme.fg(color, s);
         const subUsage = statuses.get("sub-status:usage");
         const subBar = sanitize(statuses.get("sub-bar") ?? "");
-        const subStr = subUsage ? formatSubscriptionStatus(subUsage, fg) : subBar ? dim(subBar) : "";
+        const showSubscriptionStatus = model?.provider === "claude-code"
+          || (usingSubscription && (model?.provider === "openai-codex" || model?.provider === "anthropic"));
+        const subStr = !showSubscriptionStatus ? ""
+          : subUsage ? formatSubscriptionStatus(subUsage, fg)
+          : subBar ? dim(subBar) : "";
         const consumedStatuses = new Set(["ssh", "preset", "sub-status:usage", "sub-bar"]);
         const extensionStatuses = [...statuses.entries()]
           .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
