@@ -92,7 +92,11 @@ export function createClaudeBridge(options: {
   function terminal(q: RunningQuery, reason: AssistantMessage["stopReason"], error?: string) {
     if (!q.stream) return;
     q.output.stopReason = reason;
-    if (error) q.output.errorMessage = error;
+    if (error) {
+      const reset = error.match(/·\s*resets[^\n]*/)?.[0];
+      q.output.errorMessage = reason === "error" && /you've hit your session limit/i.test(error)
+        ? `Claude Code quota exceeded${reset ? ` ${reset}` : ""}` : error;
+    }
     if (reason === "error" || reason === "aborted") {
       q.stream.push({ type: "error", reason, error: q.output });
     } else {

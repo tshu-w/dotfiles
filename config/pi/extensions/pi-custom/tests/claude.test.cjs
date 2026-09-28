@@ -349,6 +349,20 @@ test("SDK errors, early abort and malformed schemas terminate rather than hang",
   assert.equal(h.saved.length, 0);
 });
 
+test("session exhaustion preserves reset time without retries while throttling remains retryable", async (t) => {
+  const h = harness(t);
+  const exhausted = h.stream([user("quota")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text: "You've hit your session limit · resets 5am (Asia/Shanghai)" }] } });
+  const answer = await exhausted.result();
+  assert.equal(answer.errorMessage, "Claude Code quota exceeded · resets 5am (Asia/Shanghai)");
+  assert.equal(ai.isRetryableAssistantError(answer), false);
+  const transient = h.stream([user("throttled")]);
+  await until(() => h.calls.length === 2);
+  h.calls[1].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text: "Too many requests" }] } });
+  assert.equal(ai.isRetryableAssistantError(await transient.result()), true);
+});
+
 test("changed tool declarations rebuild a paused query and none suppresses all tools", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("tool")];
   const first = h.stream(history);
