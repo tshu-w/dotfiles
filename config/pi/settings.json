@@ -64,7 +64,7 @@
     }
   ],
   "lastChangelogVersion": "0.87.1",
-  "theme": "light",
+  "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
   "retry": {

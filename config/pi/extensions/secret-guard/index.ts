@@ -75,8 +75,17 @@ export default function (pi: ExtensionAPI) {
       return { ...part, text: scrubbed };
     });
 
-    if (!changed) return;
+    const containsSecret = (value: unknown): boolean => {
+      if (typeof value === "string") return scrubOutput(value, options) !== value;
+      if (!value || typeof value !== "object") return false;
+      return Object.values(value).some(containsSecret);
+    };
+    const structured = event.structuredContent;
+    const serialized = structured !== undefined && configLikeRead ? JSON.stringify(structured) : "";
+    if (!changed && !containsSecret(structured) && scrubOutput(serialized, options) === serialized) return;
 
+    // Returning content without structuredContent makes Pi drop the unsafe structured
+    // result. Scan raw strings too: JSON escaping hides multiline private-key blocks.
     // The notice follows the tool's own output, including any truncation footer it
     // appended. Built-in tools bound their body and add notices on top of it.
     return { content: [...content, { type: "text" as const, text: REDACTION_NOTICE }] };

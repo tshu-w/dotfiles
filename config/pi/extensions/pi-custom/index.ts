@@ -36,7 +36,6 @@ import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerReroll } from "./reroll.ts";
-import { registerSystemTheme } from "./system-theme.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
 
@@ -874,7 +873,6 @@ export default async function piCustom(pi: ExtensionAPI) {
   applyPreferences();
 
   registerRestart(pi);
-  registerSystemTheme(pi);
   registerNotify(pi);
   registerUvGuard(pi);
   registerJjGuard(pi);

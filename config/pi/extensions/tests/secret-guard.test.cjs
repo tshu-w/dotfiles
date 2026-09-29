@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const { realpathSync } = require("node:fs");
 const { dirname, join } = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const EXTENSIONS_DIR = dirname(__dirname);
 const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim())));
@@ -90,7 +91,40 @@ async function main() {
 	const shortResult = await toolResult("read", { path: "/tmp/app.yaml" }, "password: abcdef123456");
 	assert.deepEqual(shortResult.content.map((part) => part.text), ["password: [REDACTED]", REDACTION_NOTICE]);
 
-	console.log("secret-guard: path blocking, config-key redaction, and notice placement passed");
+	const { ExtensionRunner } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/extensions/runner.js")));
+	const runner = {
+		extensions: [{ path: "secret-guard", handlers: new Map([["tool_result", [handlers.tool_result]]]) }],
+		createContext: () => ({}),
+		emitError: (error) => { throw new Error(error.error); },
+	};
+	const cleanPreview = `Clean truncated preview\n\n${footer}`;
+	const details = { truncation: { truncated: true }, fullOutputPath: "/tmp/pi-bash-example/output.txt" };
+	const structuredCases = [
+		{ toolName: "bash", input: { command: "fixture" }, value: { output: `safe\nAPI_TOKEN=${"s".repeat(24)}`, truncated: false, exit_code: 0 } },
+		{ toolName: "bash", input: { command: "fixture" }, value: { nested: [null, 42, { text: `-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----` }] } },
+		{ toolName: "read", input: { path: "/tmp/config.json" }, value: { nested: { refresh_token: "abcdef123456" } } },
+	];
+	for (const fixture of structuredCases) {
+		const event = {
+			type: "tool_result", toolCallId: "structured", toolName: fixture.toolName, input: fixture.input,
+			isError: false, content: [{ type: "text", text: cleanPreview }], details,
+			structuredContent: fixture.value,
+		};
+		const before = structuredClone(event);
+		const result = await ExtensionRunner.prototype.emitToolResult.call(runner, event);
+		assert.ok(result, "secrets outside the text preview trigger redaction");
+		assert.equal(result.structuredContent, undefined, "Pi drops unsafe structured output");
+		assert.deepEqual(result.content.map((part) => part.text), [cleanPreview, REDACTION_NOTICE]);
+		assert.deepEqual(result.details, details, "truncation metadata survives");
+		assert.deepEqual(event, before, "the original result is not mutated");
+	}
+	const safeStructured = await handlers.tool_result({
+		toolName: "read", input: { path: "/tmp/source.ts" }, content: [{ type: "text", text: "safe" }],
+		structuredContent: { output: "const token = parseToken(input);", nested: [null, true, 42] },
+	});
+	assert.equal(safeStructured, undefined, "safe structured output passes through unchanged");
+
+	console.log("secret-guard: path blocking, text/structured redaction, and metadata preservation passed");
 }
 
 main().catch((error) => {
