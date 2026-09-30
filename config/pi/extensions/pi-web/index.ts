@@ -592,6 +592,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: searchToolName,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		label: "Web Search",
 		description: "Search the web and return relevant sources with titles, URLs, and snippets.",
 		promptSnippet: "Search the web and return sources with snippets",
@@ -663,6 +664,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_fetch",
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		label: "Web Fetch",
 		description: "Fetch readable content from a URL, optionally search and page through matching excerpts.",
 		promptSnippet: "Fetch readable content from a URL with optional in-page search",
