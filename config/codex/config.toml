@@ -10,8 +10,6 @@ network_access = true
 [features]
 apps = false
 shell_snapshot = true
-skills = true
-streamable_shell = true
 unified_exec = true
 steer = true
 multi_agent = true
@@ -19,10 +17,12 @@ prevent_idle_sleep = true
 
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-remaining", "five-hour-limit"]
+screen_reader_detection_done = true
 
 [tui.model_availability_nux]
 "gpt-5.5" = 4
 "gpt-5.6-sol" = 1
+"gpt-6.1-sol" = 1
 
 [plugins."github@openai-curated"]
 enabled = true
