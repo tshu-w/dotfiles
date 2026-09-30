@@ -129,7 +129,7 @@ cask "bartender"
 # Display management tool
 cask "betterdisplay"
 # Terminal-based AI coding assistant
-cask "claude-code"
+cask "claude-code@latest"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 cask "container"
