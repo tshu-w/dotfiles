@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-6-sol",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "medium",
   "followUpMode": "all",
   "steeringMode": "all",
@@ -63,7 +63,7 @@
       "skills": []
     }
   ],
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "0.99.1",
   "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -83,9 +83,9 @@
     ]
   },
   "enabledModels": [
-    "openai-codex/gpt-6-astra",
-    "openai-codex/gpt-6-sol",
-    "claude-code/claude-opus-5-5"
+    "claude-code/claude-opus-5-5",
+    "openai/gpt-6-astra",
+    "openai/gpt-6.1-sol"
   ],
   "pi-custom": {
     "fast": false,
