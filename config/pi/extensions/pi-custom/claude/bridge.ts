@@ -256,14 +256,14 @@ export function createClaudeBridge(options: {
     };
     const startedGeneration = generation;
     const effective = (await request.onPayload?.(payload, model) ?? payload) as typeof payload;
-    request.signal?.throwIfAborted();
-    if (disposed || generation !== startedGeneration) throw new Error("Pi session context changed before the request started");
     const { messages, reasoning, maxTokens } = effective;
     const tools = effective.tools.slice().sort((a, b) => a.name.localeCompare(b.name));
     const names = new Map(tools.map((tool) => [`mcp__pi__${tool.name}`, tool.name]));
     const systemPrompt = effective.systemPrompt === originalPrompt
-      ? buildClaudeSystemPrompt(system, names)
+      ? await buildClaudeSystemPrompt(system, names)
       : effective.systemPrompt;
+    request.signal?.throwIfAborted();
+    if (disposed || generation !== startedGeneration) throw new Error("Pi session context changed before the request started");
     const configuration = digest([model.id, systemPrompt, tools, reasoning, maxTokens, request.thinkingBudgets, request.env, request.headers, request.cacheRetention]);
     const incoming = hashes(messages);
     const resultIds = new Set(messages.filter((m) => m.role === "toolResult").map((m) => m.toolCallId));
