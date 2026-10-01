@@ -225,6 +225,5 @@ mas "QQ", id: 451108668
 mas "Surfingkeys", id: 1609752330
 mas "Userscripts", id: 1463298887
 mas "WeChat", id: 836500024
-uv "agentd[telegram]"
 npm "@browserbridge/bbx"
 npm "corepack"

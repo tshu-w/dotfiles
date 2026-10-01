@@ -1,9 +1,0 @@
-{
-  "fallbacks": [
-    { "provider": "openai-codex", "model": "gpt-5.5" },
-    { "provider": "anthropic", "model": "claude-opus-4-6" },
-    { "provider": "kimi-coding", "model": "k2p5" },
-    { "provider": "openrouter", "model": "auto" }
-  ],
-  "maxAttemptsPerPrompt": 2
-}

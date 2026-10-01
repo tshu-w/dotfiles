@@ -37,12 +37,6 @@
       "themes": []
     },
     {
-      "source": "git:github.com/tshu-w/agentd",
-      "skills": [
-        "scaffold/skills/agentd/**"
-      ]
-    },
-    {
       "source": "git:github.com/tshu-w/pi-control"
     },
     {

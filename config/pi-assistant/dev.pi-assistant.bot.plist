@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.pi-assistant.bot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/wangtianshu/.config/pi-assistant/startup.mjs</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/wangtianshu/.config/pi-assistant</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/wangtianshu</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/Users/wangtianshu/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>XDG_CONFIG_HOME</key><string>/Users/wangtianshu/.config</string>
+    <key>XDG_STATE_HOME</key><string>/Users/wangtianshu/.local/state</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ExitTimeOut</key><integer>60</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/wangtianshu/.local/state/pi-assistant/pi-assistant.log</string>
+  <key>StandardErrorPath</key><string>/Users/wangtianshu/.local/state/pi-assistant/pi-assistant.log</string>
+</dict>
+</plist>
