@@ -15,7 +15,6 @@ sudo scutil --set HostName "$COMPUTER_NAME"
 sudo scutil --set LocalHostName "$COMPUTER_NAME"
 
 # Disable the sound effects on boot
-sudo nvram SystemAudioVolume=" "
 sudo nvram StartupMute=%01
 
 # Prevent automatically turning on
@@ -95,12 +94,17 @@ defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad SecondClickThr
 defaults write NSGlobalDomain com.apple.trackpad.scaling -float 1.5
 
 # Trackpad: use three finger tap to Look up & data detectors
+defaults write NSGlobalDomain com.apple.trackpad.forceClick -bool false
 defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerTapGesture -int 2
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerTapGesture -int 2
 
-# Trackpad: enable three fingers drag
-defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -int 1
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -int 1
+# Trackpad: disable three-finger drag and use three-finger swipes
+defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool false
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool false
+defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerHorizSwipeGesture -int 2
+defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerVertSwipeGesture -int 2
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerHorizSwipeGesture -int 2
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerVertSwipeGesture -int 2
 
 # Trackpad: enable App Expose
 defaults write com.apple.dock showAppExposeGestureEnabled -int 1
@@ -117,7 +121,7 @@ defaults write com.apple.AppleMultitouchTrackpad TrackpadCornerSecondaryClick -i
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadCornerSecondaryClick -int 0
 
 # Mouse: disable mouse auto-acceleration
-defaults write NSGlobalDomain com.apple.mouse.scaling -int -1
+defaults write NSGlobalDomain com.apple.mouse.linear -bool true
 
 # Disable "natural" (Lion-style) scrolling
 # defaults write NSGlobalDomain com.apple.swipescrolldirection -bool false
@@ -144,13 +148,14 @@ defaults write NSGlobalDomain AppleMetricUnits -bool true
 defaults write NSGlobalDomain AppleTemperatureUnit -string "Celsius"
 
 # Stop iTunes from responding to the keyboard media keys
-launchctl unload -w /System/Library/LaunchAgents/com.apple.rcd.plist 2> /dev/null
+launchctl disable "gui/$UID/com.apple.rcd"
+launchctl bootout "gui/$UID/com.apple.rcd" 2> /dev/null || :
 
 ###############################################################################
 # Finder                                                                      #
 ###############################################################################
 
-# TODO: customize Finder sidebar items
+# TODO: customize Finder sidebar items manually
 
 # Finder: allow quitting via ⌘ + Q; doing so will also hide desktop icons
 defaults write com.apple.finder QuitMenuItem -bool true
@@ -324,12 +329,8 @@ defaults write com.apple.dock wvous-br-modifier -int 0
 # Security                                                                    #
 ###############################################################################
 
-# FIXME: Require password immediately after sleep or screen saver begins
-# Issue since macOS 10.13, see:
-# https://github.com/mathiasbynens/dotfiles/issues/809
-# https://blog.kolide.com/screensaver-security-on-macos-10-13-is-broken-a385726e2ae2
-# defaults write com.apple.screensaver askForPassword -int 1
-# defaults write com.apple.screensaver askForPasswordDelay -int 0
+# Require password immediately after sleep or screen saver begins
+sysadminctl -screenLock immediate -password -
 
 # Enable Firewall Service
 # sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
@@ -345,12 +346,10 @@ sudo defaults write /Library/Preferences/com.apple.loginwindow RetriesUntilHint 
 
 # Enable Remote Login
 sudo systemsetup -f -setremotelogin on &> /dev/null
-/bin/launchctl load -w /System/Library/LaunchDaemons/ssh.plist &> /dev/null
 
 # Disbale macOS Guest user account
 sudo defaults write /Library/Preferences/com.apple.loginwindow GuestEnabled -bool NO
 sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server AllowGuestAccess -bool NO
-sudo defaults write /Library/Preferences/com.apple.AppleFileServer guestAccess -bool NO
 
 ###############################################################################
 # Safari & WebKit                                                             #
@@ -363,7 +362,7 @@ defaults write com.apple.Safari "WebKitPreferences.defaultTextEncodingName" -str
 defaults write com.apple.Safari ShowStandaloneTabBar -bool false
 
 # Press Tab to highlight each item on a web page
-defaults write com.apple.Safari WebKitTabToLinksPreferenceKey -bool true
+defaults write com.apple.Safari WebKitPreferences.tabFocusesLinks -bool true
 
 # Show the full URL in the address bar (note: this still hides the scheme)
 defaults write com.apple.Safari ShowFullURLInSmartSearchField -bool true
@@ -374,9 +373,6 @@ defaults write com.apple.Safari AutoOpenSafeDownloads -bool false
 # Show Safari’s favorites bar
 defaults write com.apple.Safari ShowFavoritesBar-v2 -bool true
 
-# Hide Safari’s sidebar in Top Sites
-defaults write com.apple.Safari ShowSidebarInTopSites -bool false
-
 # Make Safari’s search banners default to Contains instead of Starts With
 defaults write com.apple.Safari FindOnPageMatchesWordStartsOnly -bool false
 
@@ -386,6 +382,8 @@ defaults write com.apple.Safari IncludeInternalDebugMenu -bool true
 # Enable Safari's develop menu and the web inspector
 defaults write com.apple.Safari IncludeDevelopMenu -bool true
 defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool true
+defaults write com.apple.Safari WebKitPreferences.developerExtrasEnabled -bool true
+defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
 
 # Add a context menu item for showing the web inspector in web views
 defaults write NSGlobalDomain WebKitDeveloperExtras -bool true
@@ -412,9 +410,6 @@ defaults write com.apple.Safari AutoFillPasswords -bool false
 # Prevent Time Machine from prompting to use new hard drives as backup volume
 defaults write com.apple.TimeMachine DoNotOfferNewDisksForBackup -bool true
 
-# Disable local Time Machine backups
-hash tmutil &> /dev/null && sudo tmutil disable local
-
 ###############################################################################
 # Others                                                                      #
 ###############################################################################
@@ -430,7 +425,7 @@ defaults write com.apple.TextEdit PlainTextEncoding -int 4
 defaults write com.apple.TextEdit PlainTextEncodingForWrite -int 4
 
 # Enable locate
-sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.locate.plist
+sudo launchctl enable system/com.apple.locate
 
 # Set Simplified Chinese as primary language in Maps
 defaults write com.apple.Maps AppleLanguages -array "zh-Hans" "en-US"
