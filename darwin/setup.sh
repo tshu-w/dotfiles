@@ -54,11 +54,6 @@ brew bundle -v || :
 [ -d "$HOME/Library/Rime" ] || git clone --recurse-submodules https://github.com/tshu-w/rime-conf "$HOME/Library/Rime"
 (cd ~/Library/Rime/plum && bash rime-install ../plum-package.conf)
 
-# Install info files
-# https://github.com/d12frosted/homebrew-emacs-plus/issues/437
-[ -d $HOMEBREW_PREFIX/share/info/emacs ] && \
-    (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
-
 EMACS_PREFIX="$(brew --prefix emacs-plus@31)"
 cp -R "$EMACS_PREFIX/Emacs.app" "$EMACS_PREFIX/Emacs Client.app" /Applications/
 mkdir -p $XDG_DATA_HOME
