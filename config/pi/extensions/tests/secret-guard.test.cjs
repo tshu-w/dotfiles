@@ -75,6 +75,25 @@ async function main() {
 	const untouched = await toolResult("read", { path: "src/app.ts" }, "const timeout = 30;");
 	assert.equal(untouched, undefined, "results without secrets pass through unchanged");
 
+	// Source output is also checked by bash and the outer Program result handler.
+	const sourceOutput = [
+		'const SETTINGS_DOCUMENT_KEY = "pi-custom";',
+		'let PACKAGE_UPDATE_STATUS_KEY = "pkg-update";',
+		"const API_KEY = process.env.API_KEY;",
+	].join("\n");
+	for (const toolName of ["read", "bash", "program"]) {
+		const input = toolName === "read" ? { path: "src/app.ts" } : {};
+		assert.equal(await toolResult(toolName, input, sourceOutput), undefined, `${toolName} preserves source declarations`);
+		assert.equal(await handlers.tool_result({
+			toolName, input, content: [{ type: "text", text: "Source preview" }],
+			structuredContent: { output: sourceOutput },
+		}), undefined, `${toolName} preserves safe structured source output`);
+	}
+	for (const toolName of ["bash", "program"]) {
+		const result = await toolResult(toolName, {}, 'export API_TOKEN="example-value"');
+		assert.deepEqual(result.content.map((part) => part.text), ['export API_TOKEN="[REDACTED]"', REDACTION_NOTICE]);
+	}
+
 	// Redaction never trims the tool's own output, so its truncation footer survives.
 	const footer = "[Showing lines 1-9 of 99. Full output: /tmp/pi-bash-example/output.txt]";
 	const bashResult = await toolResult(

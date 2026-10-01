@@ -17,6 +17,26 @@ const urlWithPassword = `postgres://alice:${"example-" + "password"}@example.com
 
 const fixtures = [
   {
+    name: "source constants remain intact in shell and program output",
+    actual: scrubOutput('const SETTINGS_DOCUMENT_KEY = "pi-custom";', envOptions),
+    expected: 'const SETTINGS_DOCUMENT_KEY = "pi-custom";',
+  },
+  {
+    name: "exported and indented shell assignments are redacted",
+    actual: scrubOutput('export API_TOKEN="example-value"\n  API_PASSWORD=example-password\nSAFE=visible', envOptions),
+    expected: 'export API_TOKEN="[REDACTED]"\n  API_PASSWORD=[REDACTED]\nSAFE=visible',
+  },
+  {
+    name: "shell environment references remain visible",
+    actual: scrubOutput('export API_TOKEN="${API_TOKEN}"', envOptions),
+    expected: 'export API_TOKEN="${API_TOKEN}"',
+  },
+  {
+    name: "empty assignments do not consume the next line",
+    actual: scrubOutput('API_TOKEN=\nconst PACKAGE_UPDATE_STATUS_KEY = "pkg-update";', envOptions),
+    expected: 'API_TOKEN=\nconst PACKAGE_UPDATE_STATUS_KEY = "pkg-update";',
+  },
+  {
     name: "known token prefix is always redacted",
     actual: scrubOutput(`token=${knownToken}`),
     expected: "token=[REDACTED]",
