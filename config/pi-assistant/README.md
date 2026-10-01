@@ -2,7 +2,7 @@
 
 Milo, a personal assistant powered by Pi.
 
-Node.js Telegram bridge for Pi: one persistent RPC process and session per chat.
+Node.js Telegram bridge for Pi: one Pi session per chat, run as one `pi --mode json` process per message.
 The bridge handles polling, authorization, queues, typing and editable tool progress.
 The agent replies, sends files and processes attachments through the Bot API
 (`.pi/skills/telegram`); stdout is not forwarded.
@@ -19,14 +19,16 @@ plist into `~/Library/LaunchAgents/`. Stop other pollers for the same bot before
 
 ## Commands and recovery
 
-- `/new`: new session after current work; no automatic idle reset.
-- `/stop`: abort current work and cancel queued messages, retaining the session.
+- `/new`: the next message starts a new session; no automatic idle reset.
+- `/stop`: terminate current work and cancel queued messages, retaining the session.
 - `/ping`, `/status`, `/help`, `/logs`: service information.
 - `/restart`: restart the bridge.
 
-State, sessions and logs live under `~/.local/state/pi-assistant/`. After restart,
-unstarted messages resume; interrupted work is reported but never automatically replayed.
-RPC dialogs are cancelled automatically, and the `questionnaire` tool is disabled.
+Sessions use Pi's default session directory for this workspace, named `telegram:<chat_id>`,
+so `pi -r` here lists them; avoid writing to a session while Telegram uses it. A session whose
+file is gone is replaced by a new one. State and logs live under `~/.local/state/pi-assistant/`.
+After restart, unstarted messages resume; interrupted work is reported but never automatically
+replayed. Runs are non-interactive, so extensions cannot prompt; the `questionnaire` tool is disabled.
 
 When a run still fails after Pi's retries, `.pi/extensions/model-fallback.ts` continues it
 with the next model in global `enabledModels`, then restores the default model.

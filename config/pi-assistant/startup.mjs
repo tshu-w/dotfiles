@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
-import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,120 +50,90 @@ function yamlFor(value, indent = 0) {
   }).join("");
 }
 
-export function piArgs(sessionDir, session) {
-  // --session adopts the saved cwd; --session-id retains the Assistant workspace.
-  return ["--mode", "rpc", "--approve", "--session-dir", session?.file ? path.dirname(session.file) : sessionDir,
-    "--exclude-tools", "questionnaire", ...(session?.id ? ["--session-id", session.id] : [])];
+export function piArgs(session) {
+  // Sessions live in Pi's default directory for the Assistant workspace; --session-id keeps that cwd.
+  return ["--mode", "json", "--approve", "--exclude-tools", "questionnaire",
+    ...(session?.id ? ["--session-id", session.id] : ["--name", `telegram:${session.chat}`])];
 }
 
-export class PiRpc extends EventEmitter {
-  constructor(child, timeoutMs = 30000, killTimeoutMs = 5000) {
-    super();
+// Pi stores sessions by working directory and --session-id resolves within the current one, so
+// prefer the copy whose header records this workspace.
+export function sessionFile(root, id, cwd) {
+  if (!existsSync(root)) return;
+  const suffix = `_${id}.jsonl`;
+  const candidates = readdirSync(root, { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
+    .map((entry) => path.join(entry.parentPath, entry.name));
+  return candidates.find((file) => {
+    try { return JSON.parse(readFileSync(file, "utf8").split("\n", 1)[0]).cwd === cwd; }
+    catch { return false; }
+  }) ?? candidates[0];
+}
+
+// One Pi process per message: the prompt goes to stdin and progress arrives as JSON events.
+export class PiRun {
+  constructor(child, onEvent = () => {}, killTimeoutMs = 5000) {
     this.child = child;
-    this.pending = new Map();
-    this.nextId = 0;
-    this.timeoutMs = timeoutMs;
     this.killTimeoutMs = killTimeoutMs;
-    this.exited = new Promise((resolve) => child.once("close", () => {
-      this.closed = true;
-      clearTimeout(this.killTimer);
-      resolve();
-    }));
-    this.buffer = "";
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      this.buffer += chunk;
-      let end;
-      while ((end = this.buffer.indexOf("\n")) >= 0) {
-        const line = this.buffer.slice(0, end).replace(/\r$/, "");
-        this.buffer = this.buffer.slice(end + 1);
-        if (!line) continue;
-        try { this.receive(JSON.parse(line)); }
-        catch { this.fail(new Error("Invalid Pi RPC record")); }
-      }
+    let buffer = "";
+    let finalError;
+    let settled = false;
+    let sessionStarted;
+    this.session = new Promise((resolve) => { sessionStarted = resolve; });
+    this.done = new Promise((resolve, reject) => {
+      const receive = (event) => {
+        if (event.type === "session") sessionStarted(event.id);
+        if (event.type === "message_end" && event.message?.role === "assistant") {
+          finalError = event.message.stopReason === "error" ? event.message.errorMessage || "Pi request failed" : undefined;
+        }
+        if (event.type === "agent_settled") {
+          settled = true;
+          if (finalError) reject(new Error(finalError));
+          else resolve();
+        }
+        onEvent(event);
+      };
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        buffer += chunk;
+        let end;
+        while ((end = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, end).replace(/\r$/, "");
+          buffer = buffer.slice(end + 1);
+          if (!line) continue;
+          try { receive(JSON.parse(line)); }
+          catch { reject(new Error("Invalid Pi JSON record")); this.stop(); }
+        }
+      });
+      child.stdin.on("error", (error) => { reject(error); this.stop(); });
+      child.on("error", reject);
+      child.once("close", (code, signal) => {
+        clearTimeout(this.killTimer);
+        sessionStarted(undefined);
+        if (this.stopped) resolve();
+        else if (!settled) reject(new Error(`Pi exited (${signal || code})`));
+      });
     });
-    child.stdin.on("error", (error) => this.fail(error));
-    child.on("error", (error) => this.fail(error));
-    child.on("close", (code, signal) => this.fail(new Error(`Pi exited (${signal || code})`)));
+    this.exited = new Promise((resolve) => child.once("close", resolve));
   }
-
-  receive(event) {
-    if (event.type === "response") {
-      const request = this.pending.get(event.id);
-      if (!request) return;
-      this.pending.delete(event.id);
-      clearTimeout(request.timer);
-      if (event.success) request.resolve(event.data);
-      else request.reject(new Error(event.error || `${event.command} failed`));
-    } else if (event.type === "extension_ui_request") {
-      if (["select", "confirm", "input", "editor"].includes(event.method)) {
-        this.child.stdin.write(`${JSON.stringify({ type: "extension_ui_response", id: event.id, cancelled: true })}\n`);
-      }
-    } else {
-      this.emit("event", event);
-    }
-  }
-
-  fail(error) {
-    if (this.failure) return;
-    this.failure = error;
-    for (const request of this.pending.values()) {
-      clearTimeout(request.timer);
-      request.reject(error);
-    }
-    this.pending.clear();
-    this.emit("failure", error);
-    if (!this.closed) {
+  stop() {
+    if (this.stopped) return this.exited;
+    this.stopped = true;
+    if (this.child.exitCode === null && this.child.signalCode === null) {
       this.killTimer = setTimeout(() => this.child.kill("SIGKILL"), this.killTimeoutMs);
       this.child.kill("SIGTERM");
     }
+    return this.exited;
   }
+}
 
-  command(type, args = {}) {
-    if (this.failure) return Promise.reject(this.failure);
-    const id = String(++this.nextId);
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.fail(new Error(`Pi RPC ${type} timed out`)), this.timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
-      this.child.stdin.write(`${JSON.stringify({ ...args, type, id })}\n`);
-    });
-  }
+const truncate = (text, max = 56) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
-  async run(message, onEvent = () => {}) {
-    let finalError;
-    let resolveDone;
-    let rejectDone;
-    const done = new Promise((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
-    // A child can exit before the prompt response; observe rejection immediately.
-    done.catch(() => {});
-    const receive = (event) => {
-      onEvent(event);
-      if (event.type === "message_end" && event.message?.role === "assistant") {
-        finalError = event.message.stopReason === "error" ? event.message.errorMessage || "Pi request failed" : undefined;
-      }
-      if (event.type === "agent_settled") {
-        if (finalError) rejectDone(new Error(finalError));
-        else resolveDone();
-      }
-    };
-    this.on("event", receive);
-    this.on("failure", rejectDone);
-    try {
-      const result = await this.command("prompt", { message });
-      if (result?.disposition === "handled") resolveDone();
-      await done;
-    } finally {
-      this.off("event", receive);
-      this.off("failure", rejectDone);
-    }
-  }
-
-  async close() {
-    if (this.closed) return;
-    if (!this.failure) this.child.stdin.end();
-    if (!this.killTimer) this.killTimer = setTimeout(() => this.child.kill("SIGKILL"), this.killTimeoutMs);
-    await this.exited;
-  }
+// Credentials are usually passed as key=value or long literal tokens.
+export function commandPreview(command) {
+  return truncate(String(command).replace(/\s+/g, " ").trim()
+    .replace(/(token|api[_-]?key|secret|password)\s*[=:]\s*\S+/gi, "$1=***")
+    .replace(/[A-Za-z0-9_-]{32,}/g, "***"));
 }
 
 export class ProgressState {
@@ -178,9 +147,9 @@ export class ProgressState {
       this.steps++;
       const name = event.toolName?.split(".").at(-1) || "tool";
       const args = event.args || {};
-      // Do not publish raw commands, which may contain credentials or user content.
-      this.detail = ["read", "edit", "write"].includes(name) && args.path
-        ? `${name}: ${String(args.path).slice(0, 56)}` : name;
+      if (["read", "edit", "write"].includes(name) && args.path) this.detail = `${name}: ${truncate(String(args.path))}`;
+      else if (name === "bash" && args.command) this.detail = `$ ${commandPreview(args.command)}`;
+      else this.detail = name;
     } else if (event.type === "tool_execution_end" && event.isError) {
       this.phase = "Tool failed";
     } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
@@ -226,16 +195,16 @@ export class ProgressReporter {
 }
 
 export class Assistant {
-  constructor({ stateFile, api, allowedUsers, createPi, log = console.error, progressDelay = 1000 }) {
+  constructor({ stateFile, api, allowedUsers, createPi, sessionExists, log = console.error, progressDelay = 1000 }) {
     this.stateFile = stateFile;
     this.api = api;
     this.allowedUsers = new Set(allowedUsers);
     this.createPi = createPi;
+    this.sessionExists = sessionExists;
     this.log = log;
     this.progressDelay = progressDelay;
     this.state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8"))
       : { offset: 0, sessions: {}, pending: [], running: {} };
-    this.clients = new Map();
     this.active = new Map();
     this.controls = new Set();
   }
@@ -290,66 +259,48 @@ export class Assistant {
       });
     }
   }
-  async client(chat) {
-    if (this.clients.has(chat)) {
-      const existing = await this.clients.get(chat);
-      if (!existing.failure) return existing;
-      await existing.close();
-      this.clients.delete(chat);
-    }
-    if (this.closing) throw new Error("Assistant is shutting down");
-    const client = this.createPi(chat, this.state.sessions[chat]);
-    this.clients.set(chat, client);
-    try {
-      const pi = await client;
-      const state = await pi.command("get_state");
-      this.state.sessions[chat] = { id: state.sessionId, file: state.sessionFile };
-      this.save();
-      return pi;
-    } catch (error) {
-      this.clients.delete(chat);
-      const pi = await client.catch(() => undefined);
-      await pi?.close();
-      throw error;
-    }
+  session(chat) {
+    const saved = this.state.sessions[chat];
+    if (saved?.id && this.sessionExists(saved.id)) return saved;
+    if (saved) this.log(`Session ${saved.id} for chat ${chat} is missing; starting a new one`);
+    return { chat };
   }
   async processChat(chat, active) {
     while (!this.closing && !active.stopped) {
       const index = this.state.pending.findIndex((message) => String(message.chat.id) === chat);
       if (index < 0) break;
       const [message] = this.state.pending.splice(index, 1);
+      if (this.command(message) === "/new") {
+        delete this.state.sessions[chat];
+        this.save();
+        await this.text(chat, "🆕 已开启新会话。后续消息会沿用它。").catch(this.log);
+        continue;
+      }
       this.state.running[chat] = message;
       this.save();
-      const fresh = this.command(message) === "/new";
-      const progress = new ProgressReporter(this.api, chat, this.log, fresh ? "✨ New session…" : "✨ Please wait…", this.progressDelay);
+      const progress = new ProgressReporter(this.api, chat, this.log, "✨ Please wait…", this.progressDelay);
       const typing = setInterval(() => this.api("sendChatAction", { chat_id: chat, action: "typing" }).catch(this.log), 4500);
       try {
         await this.api("sendChatAction", { chat_id: chat, action: "typing" }).catch(this.log);
         if (active.stopped || this.closing) break;
-        const pi = await this.client(chat);
-        if (active.stopped || this.closing) break;
-        if (fresh) {
-          const result = await pi.command("new_session");
-          if (result?.cancelled) throw new Error("Pi cancelled the new session");
-          const state = await pi.command("get_state");
-          this.state.sessions[chat] = { id: state.sessionId, file: state.sessionFile };
-          this.save();
-          await this.text(chat, "🆕 已开启新会话。后续消息会沿用它。");
-        } else {
-          const status = new ProgressState();
-          await pi.run(yamlFor(payloadFor(message)), (event) => {
-            const text = status.update(event);
-            if (text) progress.update(text);
-          });
-          // Assistant text is intentionally not forwarded. The agent sends replies through its skill.
-          const state = await pi.command("get_state");
-          this.state.sessions[chat] = { id: state.sessionId, file: state.sessionFile };
+        const status = new ProgressState();
+        const run = this.createPi(chat, this.session(chat), yamlFor(payloadFor(message)), (event) => {
+          const text = status.update(event);
+          if (text) progress.update(text);
+        });
+        active.run = run;
+        const id = await run.session;
+        if (id) {
+          this.state.sessions[chat] = { id };
           this.save();
         }
+        // Assistant text is intentionally not forwarded. The agent sends replies through its skill.
+        await run.done;
       } catch (error) {
         this.log(error);
         if (!this.closing && !active.stopped) await this.text(chat, "🔴 处理失败，不会自动重做。请重新发消息，或用 /logs 查看错误。").catch(this.log);
       } finally {
+        active.run = undefined;
         clearInterval(typing);
         await progress.finish();
         if (!this.closing) {
@@ -381,20 +332,12 @@ export class Assistant {
     if (active) active.stopped = true;
     this.state.pending = this.state.pending.filter((item) => String(item.chat.id) !== chat);
     this.save();
-    const pi = await this.clients.get(chat);
-    if (pi && !pi.failure) {
-      await pi.command("clear_queue");
-      await pi.command("abort");
-    }
+    await active?.run?.stop();
     await this.text(chat, "🛑 已停止当前任务，并取消排队消息。会话保留。");
   }
   async shutdown() {
     this.closing = true;
-    await Promise.allSettled([...this.clients.values()].map(async (client) => {
-      const pi = await client;
-      try { if (!pi.failure) { await pi.command("clear_queue"); await pi.command("abort"); } }
-      finally { await pi.close(); }
-    }));
+    await Promise.allSettled([...this.active.values()].map((active) => active.run?.stop()));
     await Promise.allSettled([...this.active.values()].map((active) => active.promise));
     await Promise.allSettled(this.controls);
   }
@@ -424,18 +367,18 @@ export async function main() {
     console.log(`Telegram bot @${bot.username}; ${allowedUsers.length} allowed user(s)`);
     return;
   }
+  const agentDir = path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "pi");
   const assistant = new Assistant({
     stateFile: path.join(stateDir, "state.json"), api, allowedUsers, log,
-    createPi: async (chat, session) => {
-      const sessionDir = path.join(stateDir, "sessions", chat);
-      mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
-      const args = piArgs(sessionDir, session);
-      const env = { ...process.env, PI_CODING_AGENT_DIR: path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "pi"), TELEGRAM_DEFAULT_CHAT_ID: chat };
+    sessionExists: (id) => sessionFile(path.join(agentDir, "sessions"), id, root) !== undefined,
+    createPi: (chat, session, message, onEvent) => {
+      const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir, TELEGRAM_DEFAULT_CHAT_ID: chat };
       for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
-      const child = spawn("pi", args, { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn("pi", piArgs(session), { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (text) => log(text.trim()));
-      return new PiRpc(child);
+      child.stdin.end(message);
+      return new PiRun(child, onEvent);
     },
   });
   for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { closing = true; polling.abort(); });
