@@ -5,6 +5,9 @@
 !**/gnupg/gpg-agent.conf
 !**/gnupg/public.asc
 
+### Node.js ###
+node_modules/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -29,6 +32,7 @@ __pycache__/
 **/pi/cache/**
 **/pi/sessions/**
 config/pi/models-store.json
+config/pi/npm/
 
 ### Env ###
 .env

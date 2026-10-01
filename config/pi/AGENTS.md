@@ -6,6 +6,7 @@ Scope: `~/.config/pi` (`dotfiles/config/pi`).
 
 - Manage upstream resources via `pi install` and `packages` filters in `settings.json`.
 - Preserve local custom extensions/skills unless explicitly requested.
+- Install local workspace dependencies with `npm ci` from the Pi config root; run checks with `npm test`. Keep Pi-managed `npm/` outside the workspace.
 - XDG layout:
   - Config: `~/.config/pi`
   - Data: `~/.local/share/pi` (symlinked from `~/.config/pi/git`)

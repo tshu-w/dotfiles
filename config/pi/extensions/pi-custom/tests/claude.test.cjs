@@ -33,9 +33,9 @@ async function until(predicate) {
 before(async () => {
   ({ createClaudeBridge } = await jiti.import(join(CUSTOM, "claude/bridge.ts")));
   ai = await jiti.import("@earendil-works/pi-ai");
-  sessions = await import(pathToFileURL(join(CUSTOM, "node_modules/cc-session-io/dist/index.js")));
-  ({ Client } = await import(pathToFileURL(join(CUSTOM, "node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js"))));
-  ({ InMemoryTransport } = await import(pathToFileURL(join(CUSTOM, "node_modules/@modelcontextprotocol/sdk/dist/esm/inMemory.js"))));
+  sessions = await import("cc-session-io");
+  ({ Client } = await import("@modelcontextprotocol/sdk/client/index.js"));
+  ({ InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js"));
   model = { ...ai.getModel("anthropic", "claude-haiku-4-5"), provider: "claude-code", api: "claude-code" };
 });
 
