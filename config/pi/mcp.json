@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "computer-use": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "exec node \"${PI_CODING_AGENT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pi}/mcp/chatgpt-computer-use/server.mjs\""
+      ],
+      "timeout": 130,
+      "exposure": "codemode",
+      "description": "Control macOS apps through official ChatGPT Computer Use"
+    }
+  }
+}
