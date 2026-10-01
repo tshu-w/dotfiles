@@ -17,17 +17,6 @@
   ],
   "packages": [
     {
-      "source": "git:github.com/mitsuhiko/agent-stuff",
-      "extensions": [
-        "extensions/goal.ts"
-      ],
-      "skills": [
-        "skills/uv/**"
-      ],
-      "prompts": [],
-      "themes": []
-    },
-    {
       "source": "git:github.com/anthropics/skills",
       "extensions": [],
       "skills": [

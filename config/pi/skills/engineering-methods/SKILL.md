@@ -64,7 +64,6 @@ Paths are `skills/<entry>/SKILL.md` under the resolved package dir.
 - `engineering/diagnosing-bugs` — Build a tight red feedback loop first, then reproduce→minimise→fix.
 - `engineering/code-review` — Two-axis review (Standards + Spec) of a diff since a fixed point, parallel sub-agents.
 - `engineering/triage` — Move incoming issues/external PRs through triage roles into agent-ready briefs.
-- `engineering/resolving-merge-conflicts` — Conflict resolution workflow.
 
 ## Addy index — `addyosmani/agent-skills`
 
