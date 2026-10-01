@@ -53,6 +53,8 @@ async function main() {
 		["anthropic", false, false],
 		["anthropic", true, true],
 		["openai-codex", true, true],
+		["openai", false, false],
+		["openai", true, true],
 		["claude-code", false, true],
 	]) {
 		ctx.model = { provider, contextWindow: 200000 };

@@ -513,7 +513,7 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
         const subUsage = statuses.get("sub-status:usage");
         const subBar = sanitize(statuses.get("sub-bar") ?? "");
         const showSubscriptionStatus = model?.provider === "claude-code"
-          || (usingSubscription && (model?.provider === "openai-codex" || model?.provider === "anthropic"));
+          || (usingSubscription && (model?.provider === "openai" || model?.provider === "openai-codex" || model?.provider === "anthropic"));
         const subStr = !showSubscriptionStatus ? ""
           : subUsage ? formatSubscriptionStatus(subUsage, fg)
           : subBar ? dim(subBar) : "";
