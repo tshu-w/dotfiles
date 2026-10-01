@@ -31,9 +31,6 @@ root ALL=(ALL) ALL
 EOF
 sudo chmod 0440 $SUDOERS_FILE
 
-# Check for Homebrew, install if we don't have it
-command -v brew >/dev/null || \
-    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash
 case `uname -m` in
 arm64)
     eval "$(/opt/homebrew/bin/brew shellenv)" ;;
@@ -62,7 +59,8 @@ brew bundle -v || :
 [ -d $HOMEBREW_PREFIX/share/info/emacs ] && \
     (cd $HOMEBREW_PREFIX/share/info/emacs && for file in * ; do install-info "$file" dir; done)
 
-ln -sf $HOMEBREW_PREFIX/opt/emacs-head@31/Emacs.app /Applications
+EMACS_PREFIX="$(brew --prefix emacs-plus@31)"
+cp -R "$EMACS_PREFIX/Emacs.app" "$EMACS_PREFIX/Emacs Client.app" /Applications/
 mkdir -p $XDG_DATA_HOME
 
 command -v wechattweak-cli && sudo wechattweak-cli install
@@ -88,7 +86,8 @@ mkdir -p ~/Developer
 
 # Unison restore
 UNISON_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Unison"
-[ -d $UNISON_DIR ] && UNISON=$XDG_CONFIG_HOME/unison unison -batch -force $UNISON_DIR
+mkdir -p "$XDG_CACHE_HOME/unison"
+[ -d "$UNISON_DIR" ] && UNISON="$XDG_CONFIG_HOME/unison" unison dotfile -batch -force "$UNISON_DIR"
 
 # Apply macoS system settings
 . "macOS.sh"

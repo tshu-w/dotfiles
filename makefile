@@ -15,7 +15,7 @@ else
 	export NPM_CONFIG_PREFIX := $(HOME)/.local
 endif
 
-.PHONY: darwin linux
+.PHONY: all bootstrap setup link unlink crontab packages python-packages node-packages darwin linux
 
 all: setup link crontab packages $(OS)
 	chmod 700 $(XDG_CONFIG_HOME)/gnupg
@@ -30,6 +30,18 @@ linux:
 
 setup:
 	cd $(DOTFILES_DIR)/$(OS) && . ./setup.sh
+
+ifeq ($(OS),darwin)
+setup: link
+link: bootstrap
+
+bootstrap:
+	cd $(DOTFILES_DIR)/darwin && . ./bootstrap.sh
+else
+link: setup
+endif
+
+crontab packages: setup link
 
 link:
 	for f in $$(ls -A $(DOTFILES_DIR)/runcom); do \
