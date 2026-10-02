@@ -35,4 +35,4 @@ with the next model in global `enabledModels`, then restores the default model.
 
 ## Tests
 
-`node --test` (YAML round-trip checks use macOS system Ruby).
+`node --test`

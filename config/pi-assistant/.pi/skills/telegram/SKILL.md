@@ -74,7 +74,7 @@ Other upload endpoints: `sendVideo`, `sendAudio`, `sendVoice`, `sendAnimation`. 
 
 ## Download and process attachments
 
-Select `file_id` from the current request's `attachments`, or from `reply_to.attachments` when processing quoted media.
+Select `file_id` from an `<attachment>` of the current request, or from one inside `<reply-to>` when processing quoted media.
 Call `getFile`, read `result.file_path`, and download the file to a local path you choose. Do not use inbound filenames as shell code or unrestricted destination paths. `getFile` only serves files up to 20 MB.
 
 ```bash

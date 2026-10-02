@@ -30,25 +30,26 @@ function messageFields(message) {
 
 export function payloadFor(message) {
   return {
-    channel: "telegram", chat_id: message.chat.id, ...messageFields(message),
+    chat_id: message.chat.id, ...messageFields(message),
     ...(message.reply_to_message ? { reply_to: messageFields(message.reply_to_message) } : {}),
   };
 }
 
-function yamlFor(value, indent = 0) {
-  const prefix = " ".repeat(indent);
-  return Object.entries(value).map(([key, item]) => {
-    if (Array.isArray(item)) return `${prefix}${key}:\n${item.map((entry) => `${prefix}  - ${yamlFor(entry, indent + 4).slice(indent + 4)}`).join("")}`;
-    if (item !== null && typeof item === "object") return `${prefix}${key}:\n${yamlFor(item, indent + 2)}`;
-    if (key === "text" && !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\ufffe\uffff]/.test(item)) {
-      const lines = item.replace(/\n$/, "").split("\n");
-      return `${prefix}${key}: |2${item.endsWith("\n") ? "+" : "-"}\n${lines.map((line) => `${prefix}  ${line}\n`).join("")}`;
-    }
-    const scalar = ["channel", "type"].includes(key) ? item : JSON.stringify(item)
-      .replace(/[\u007f-\u009f\u2028\u2029\ufffe\uffff]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
-    return `${prefix}${key}: ${scalar}\n`;
-  }).join("");
+const attributes = (fields) => Object.entries(fields).map(([key, value]) =>
+  ` ${key}="${String(value).replace(/[&"<\n]/g, (char) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", "\n": "&#10;" })[char])}"`).join("");
+
+// The message as the model reads it: sender, text, attachments, then the quoted message.
+function elementFor(name, { sender, text, attachments = [], reply_to, ...fields }) {
+  const lines = [`<${name}${attributes(fields)}>`];
+  if (sender) lines.push(`<sender${attributes(sender)}/>`);
+  if (text !== undefined) lines.push(text.replace(/\n+$/, ""));
+  lines.push(...attachments.map((attachment) => `<attachment${attributes(attachment)}/>`));
+  if (reply_to) lines.push(elementFor("reply-to", reply_to));
+  lines.push(`</${name}>`);
+  return lines.join("\n");
 }
+
+export const promptFor = (message) => elementFor("telegram-message", payloadFor(message));
 
 export function piArgs(session) {
   // Sessions live in Pi's default directory for the Assistant workspace; --session-id keeps that cwd.
@@ -284,7 +285,7 @@ export class Assistant {
         await this.api("sendChatAction", { chat_id: chat, action: "typing" }).catch(this.log);
         if (active.stopped || this.closing) break;
         const status = new ProgressState();
-        const run = this.createPi(chat, this.session(chat), yamlFor(payloadFor(message)), (event) => {
+        const run = this.createPi(chat, this.session(chat), promptFor(message), (event) => {
           const text = status.update(event);
           if (text) progress.update(text);
         });
