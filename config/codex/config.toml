@@ -1,62 +1,87 @@
 model = "gpt-6-astra"
 model_reasoning_effort = "medium"
 web_search = "live"
+
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
-allow_symlinked_codex_home = true
 
+allow_symlinked_codex_home = true
 notify = ["/Users/wangtianshu/dotfiles/config/codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
+
+[features]
+apps = false
+chronicle = true
+memories = true
+multi_agent = true
+prevent_idle_sleep = true
+shell_snapshot = true
+steer = true
+unified_exec = true
+workspace_dependencies = true
+
+[memories]
+generate_memories = true
+use_memories = true
 
 [sandbox_workspace_write]
 network_access = true
 
-[features]
-apps = false
-shell_snapshot = true
-unified_exec = true
-steer = true
-multi_agent = true
-prevent_idle_sleep = true
-memories = true
-chronicle = true
-
 [tui]
-status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-remaining", "five-hour-limit"]
 screen_reader_detection_done = true
+status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-remaining", "five-hour-limit"]
+
+[desktop]
+avatar-overlay-pet-visible = false
+confirm-before-close = "never"
+conversationDetailMode = "STEPS_COMMANDS"
+defaultTerminalLocation = "right"
+dock-icon-preference = "app-default"
+enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "persistent", "max"]
+external-agent-import-sync-enabled = true
+followUpQueueMode = "steer"
+git-pull-request-merge-method = "squash"
+keepRemoteControlAwakeWhilePluggedIn = true
+mac-menu-bar-enabled = false
+preventSleepWhileRunning = false
+projectlessWorkspaceRoot = "/Users/wangtianshu/Library/CloudStorage/Dropbox/Documents/Codex"
+usePointerCursors = false
 
 [projects."/Users/wangtianshu"]
 trust_level = "trusted"
 
-[desktop]
-followUpQueueMode = "steer"
-projectlessWorkspaceRoot = "/Users/wangtianshu/Library/CloudStorage/Dropbox/Documents/Codex"
-mac-menu-bar-enabled = true
-preventSleepWhileRunning = false
-external-agent-import-sync-enabled = true
-enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "persistent", "max"]
-avatar-overlay-pet-visible = false
-keepRemoteControlAwakeWhilePluggedIn = true
-git-pull-request-merge-method = "squash"
+[marketplaces.openai-bundled]
+source = "/Users/wangtianshu/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
+source_type = "local"
+
+[marketplaces.openai-primary-runtime]
+source = "/Users/wangtianshu/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+source_type = "local"
 
 [plugins."github@openai-curated"]
-enabled = true
-
-[plugins."codex-app-tools@openai-bundled"]
 enabled = true
 
 [plugins."browser@openai-bundled"]
 enabled = true
 
-[plugins."unified-computer-use@openai-bundled"]
+[plugins."chrome@openai-bundled"]
 enabled = true
 
 [plugins."code-review@openai-bundled"]
 enabled = true
 
-[plugins."visualize@openai-bundled"]
+[plugins."codex-app-tools@openai-bundled"]
+enabled = true
+
+[plugins."computer-history@openai-bundled"]
 enabled = true
 
 [plugins."computer-use@openai-bundled"]
+enabled = true
+
+[plugins."unified-computer-use@openai-bundled"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
 enabled = true
 
 [plugins."documents@openai-primary-runtime"]
@@ -65,32 +90,14 @@ enabled = true
 [plugins."pdf@openai-primary-runtime"]
 enabled = true
 
-[plugins."spreadsheets@openai-primary-runtime"]
+[plugins."presentations@openai-primary-runtime"]
 enabled = true
 
-[plugins."presentations@openai-primary-runtime"]
+[plugins."spreadsheets@openai-primary-runtime"]
 enabled = true
 
 [plugins."template-creator@openai-primary-runtime"]
 enabled = true
-
-[plugins."computer-history@openai-bundled"]
-enabled = true
-
-[plugins."chrome@openai-bundled"]
-enabled = true
-
-[marketplaces.openai-bundled]
-source_type = "local"
-source = "/Users/wangtianshu/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
-
-[marketplaces.openai-primary-runtime]
-source_type = "local"
-source = "/Users/wangtianshu/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
-
-[memories]
-generate_memories = true
-use_memories = true
 
 [mcp_servers.node_repl]
 args = []
@@ -98,18 +105,18 @@ command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
 startup_timeout_sec = 120
 
 [mcp_servers.node_repl.env]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab,mcpapps"
+BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
+BROWSER_USE_CODEX_APP_VERSION = "26.930.51102"
+BROWSER_USE_TINYSKY_ENABLED = "1"
+CODEX_CLI_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+CODEX_HOME = "/Users/wangtianshu/.config/codex"
+NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = ""
+NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = ""
+NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = ""
 NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "1000"
 NODE_REPL_NODE_MODULE_DIRS = "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
 NODE_REPL_NODE_PATH = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/wangtianshu/.config/codex:/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
-CODEX_HOME = "/Users/wangtianshu/.config/codex"
-BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab,mcpapps"
-BROWSER_USE_TINYSKY_ENABLED = "1"
-NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = ""
-NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = ""
-NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = ""
-BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.928.31416"
-NODE_REPL_TRUSTED_SERVICES = '{"browser":"/Users/wangtianshu/.config/codex/plugins/cache/openai-bundled/browser/26.928.31416/scripts/browser-service.mjs","sky":"@oai/sky/service"}'
+NODE_REPL_TRUSTED_SERVICES = '{"browser":"/Users/wangtianshu/.config/codex/plugins/cache/openai-bundled/browser/26.930.51102/scripts/browser-service.mjs","sky":"@oai/sky/service"}'
 SKY_CUA_SERVICE_PATH = "/Users/wangtianshu/.config/codex/computer-use/Codex Computer Use.app"
-CODEX_CLI_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
