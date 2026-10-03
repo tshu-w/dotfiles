@@ -351,7 +351,9 @@ export async function main() {
   if (!token || !allowedUsers.length || allowedUsers.some((id) => !Number.isSafeInteger(id))) throw new Error("Telegram token and allowed users must be configured");
   const stateDir = path.join(process.env.XDG_STATE_HOME || path.join(homedir(), ".local/state"), "pi-assistant");
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  const log = (error) => console.error(`[${new Date().toISOString()}] ${String(error?.message || error).replaceAll(token, "[REDACTED]")}`);
+  const encodedToken = encodeURIComponent(token);
+  const log = (error) => console.error(`[${new Date().toISOString()}] ${String(error?.message || error)
+    .replaceAll(token, "[REDACTED]").replaceAll(encodedToken, "[REDACTED]")}`);
   const polling = new AbortController();
   let closing = false;
   const api = async (method, payload) => {
@@ -375,6 +377,7 @@ export async function main() {
     createPi: (chat, session, message, onEvent) => {
       const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir, TELEGRAM_DEFAULT_CHAT_ID: chat };
       for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
+      delete env.TELEGRAM_BOT_TOKEN;
       const child = spawn("pi", piArgs(session), { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (text) => log(text.trim()));
