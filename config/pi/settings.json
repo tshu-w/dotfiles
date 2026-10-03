@@ -2,7 +2,7 @@
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "medium",
-  "followUpMode": "all",
+  "followUpMode": "one-at-a-time",
   "steeringMode": "all",
   "defaultTools": [
     "+program"
@@ -49,9 +49,10 @@
     {
       "source": "git:github.com/mattpocock/skills",
       "skills": []
-    }
+    },
+    "git:github.com/tshu-w/pi-codex-remote"
   ],
-  "lastChangelogVersion": "0.99.2",
+  "lastChangelogVersion": "1.0.0",
   "theme": "light/dark",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -62,7 +63,7 @@
     "showTerminalProgress": true
   },
   "showCacheMissNotices": true,
-  "quietStartup": true,
+  "quietStartup": "header",
   "pi-agents": {
     "extensions": [
       "extensions/pi-web/index.ts",
@@ -81,5 +82,8 @@
     "codexCompaction": true,
     "transcriptOptimization": true
   },
+  "defaultProjectTrust": "always",
+  "tuiMode": "regular",
+  "showHardwareCursor": true,
   "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1"
 }

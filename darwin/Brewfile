@@ -128,6 +128,8 @@ cask "arq"
 cask "bartender"
 # Display management tool
 cask "betterdisplay"
+# OpenAI's official ChatGPT desktop app
+cask "chatgpt"
 # Terminal-based AI coding assistant
 cask "claude-code@latest"
 # OpenAI's coding agent that runs in your terminal
