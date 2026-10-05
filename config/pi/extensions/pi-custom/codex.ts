@@ -559,12 +559,30 @@ export function extractCompactionResult(events: unknown[]): { item: ResponseItem
   return { item: items[0]!, usage };
 }
 
+const BLOCKED_COMPACTION_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254"]);
+
+function assertAllowedCompactionUrl(url: string): void {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") {
+    throw new Error(`Codex compaction URL must use https: ${url}`);
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  const isPrivateHost = BLOCKED_COMPACTION_HOSTS.has(hostname)
+    || hostname.endsWith(".local")
+    || /^(10|127|192\.168|169\.254)\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+  if (isPrivateHost) {
+    throw new Error(`Codex compaction URL points to a disallowed host: ${hostname}`);
+  }
+}
+
 async function requestRemoteCompaction(params: {
   url: string;
   headers: Headers;
   body: Record<string, unknown>;
   signal: AbortSignal;
 }): Promise<{ item: ResponseItem; usage?: ResponsesUsage }> {
+  assertAllowedCompactionUrl(params.url);
   const response = await fetch(params.url, {
     method: "POST",
     headers: params.headers,
