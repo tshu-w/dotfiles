@@ -6,6 +6,7 @@ export STOW_DIR = $(DOTFILES_DIR)
 export XDG_CONFIG_HOME = $(HOME)/.config
 export XDG_CACHE_HOME = $(HOME)/.cache
 export XDG_DATA_HOME = $(HOME)/.local/share
+export XDG_STATE_HOME = $(HOME)/.local/state
 
 ifeq ($(OS),darwin)
 	export PATH := /opt/homebrew/bin:$(PATH)
@@ -62,7 +63,7 @@ unlink:
 	for f in $$(ls -A $(DOTFILES_DIR)/runcom); do \
 		tf=$(HOME)/$${f//"dot-"/"."}; \
 		if [[ -f $$tf{.bak} ]]; then \
-			mv -v $tf{.bak,}; \
+			mv -v "$${tf}.bak" "$$tf"; \
 		fi \
 	done
 
@@ -74,3 +75,5 @@ packages: python-packages node-packages
 python-packages:
 
 node-packages:
+	npm ci --prefix $(XDG_CONFIG_HOME)/pi
+	pi update --extensions

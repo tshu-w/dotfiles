@@ -9,7 +9,8 @@ Scope: `~/.config/pi` (`dotfiles/config/pi`).
 - Install local workspace dependencies with `npm ci` from the Pi config root; run checks with `npm test`. Keep Pi-managed `npm/` outside the workspace.
 - XDG layout:
   - Config: `~/.config/pi`
-  - Data: `~/.local/share/pi` (symlinked from `~/.config/pi/git`)
+  - Data: `~/.local/share/pi` (`git/` and `npm/` symlinked from `~/.config/pi`)
+  - Cache: `~/.cache/pi` (symlinked from `~/.config/pi/cache`)
   - State: `~/.local/state/pi` (symlinked from `~/.config/pi/sessions`)
 
 ## Safety

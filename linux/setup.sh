@@ -7,6 +7,14 @@ set -euxo pipefail # -e=-o errexit, -u=-o nounset
 : ${XDG_STATE_HOME:=~/.local/state}
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
+# Initialize Pi data directories and links
+PI_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/pi" && pwd)"
+mkdir -p "$XDG_DATA_HOME"/pi/{git,npm} "$XDG_CACHE_HOME/pi" "$XDG_STATE_HOME"/pi/{sessions,tape}
+for dir in git npm; do ln -sfn "$XDG_DATA_HOME/pi/$dir" "$PI_CONFIG_DIR/$dir"; done
+ln -sfn "$XDG_CACHE_HOME/pi" "$PI_CONFIG_DIR/cache"
+for dir in sessions tape; do ln -sfn "$XDG_STATE_HOME/pi/$dir" "$PI_CONFIG_DIR/$dir"; done
+unset PI_CONFIG_DIR
+
 can_run_as_root() {
     [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null
 }

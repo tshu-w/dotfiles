@@ -7,6 +7,14 @@ set -euxo pipefail # -e=-o errexit, -u=-o nounset
 : ${XDG_STATE_HOME:=~/.local/state}
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
+# Initialize Pi data directories and links
+PI_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/pi" && pwd)"
+mkdir -p "$XDG_DATA_HOME"/pi/{git,npm} "$XDG_CACHE_HOME/pi" "$XDG_STATE_HOME"/pi/{sessions,tape}
+for dir in git npm; do ln -sfn "$XDG_DATA_HOME/pi/$dir" "$PI_CONFIG_DIR/$dir"; done
+ln -sfn "$XDG_CACHE_HOME/pi" "$PI_CONFIG_DIR/cache"
+for dir in sessions tape; do ln -sfn "$XDG_STATE_HOME/pi/$dir" "$PI_CONFIG_DIR/$dir"; done
+unset PI_CONFIG_DIR
+
 # Ask for the administrator password upfront
 sudo -n true 2>/dev/null || sudo -v
 # Keep-alive: update existing `sudo` time stamp until `init.sh` has finished
@@ -50,6 +58,10 @@ if [[ -n "${GITHUB_ACTION:-}" ]]; then
 fi
 brew bundle -v || :
 
+if [[ -x /Library/TeX/texbin/tlmgr ]]; then
+    sudo /Library/TeX/texbin/tlmgr install latexmk dvisvgm
+fi
+
 # Install Rime configuration
 [ -d "$HOME/Library/Rime" ] || git clone --recurse-submodules https://github.com/tshu-w/rime-conf "$HOME/Library/Rime"
 (cd ~/Library/Rime/plum && bash rime-install ../plum-package.conf)
@@ -61,10 +73,10 @@ mkdir -p $XDG_DATA_HOME
 command -v wechattweak-cli && sudo wechattweak-cli install
 
 # Init mu
-mu init -m $XDG_STATE_HOME/mail
 for dir in "fastmail" "iscas"; do
     mkdir -p $XDG_STATE_HOME/mail/$dir
 done
+mu init -m $XDG_STATE_HOME/mail
 
 # Add login item
 for app in "AlDente" "Bartender 6" "Dropbox" "Easydict" "Emacs" "FlashSpace" "Focus" "Input Source Pro" "iTerm" "LaunchBar" "LookAway" "Loop" "Surge"; do

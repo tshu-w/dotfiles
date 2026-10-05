@@ -1,9 +1,6 @@
 tap "d12frosted/emacs-plus", trusted: true
 tap "deb-sig/tap", trusted: true
-tap "felixkratz/formulae", trusted: true
-tap "specstoryai/tap", trusted: true
 tap "tshu-w/malt", trusted: true
-tap "zurawiki/brews", trusted: true
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
 # Secure and free password manager for all of your devices
@@ -66,8 +63,6 @@ brew "moreutils"
 brew "mu"
 # Swiss-army knife of markup format conversion
 brew "pandoc"
-# Modern Python package and dependency manager supporting the latest PEP standards
-brew "pdm"
 # AI agent toolkit
 brew "pi-coding-agent"
 # Pinentry for GPG on Mac
@@ -120,8 +115,6 @@ brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
 brew "deb-sig/tap/double-entry-generator"
 # Menu bar tool to limit maximum charging percentage
 cask "aldente"
-# Terminal interface for Antigravity agents
-cask "antigravity-cli"
 # Multi-cloud backup application
 cask "arq"
 # Menu bar icon organiser
@@ -135,8 +128,6 @@ cask "claude-code@latest"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 cask "container"
-# Brings the power of Copilot coding agent directly to your terminal
-cask "copilot-cli"
 # Voice and text chat software
 cask "discord"
 # Client for the Dropbox cloud storage service
@@ -184,8 +175,8 @@ cask "launchbar", args: { appdir: "/Applications" }
 cask "lookaway"
 # Window manager
 cask "loop"
-# Full TeX Live distribution without GUI applications
-cask "mactex-no-gui"
+# Compact TeX distribution
+cask "basictex"
 # Utility to open, create and modify archive files
 cask "maczip"
 # Provides updates to various Microsoft products
@@ -196,8 +187,6 @@ cask "microsoft-excel"
 cask "microsoft-powerpoint"
 # Word processor
 cask "microsoft-word"
-# Mouse control with the keyboard
-cask "mouseless"
 # Cloud storage client
 cask "onedrive"
 # Replacement for Docker Desktop
