@@ -453,3 +453,30 @@ test("production loader registers the provider and session lifecycle without plu
   runner.invalidate();
   assert.deepEqual(errors, []);
 });
+
+test("a Session sharing the model runtime keeps its provider state after another Session ends", async () => {
+  const loader = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/extensions/loader.js")));
+  const core = await import(pathToFileURL(join(PI_PACKAGE, "dist/index.js")));
+  const runtime = await core.ModelRuntime.create({ modelsPath: null, authPath: join(directory, "auth.json"), refreshOnCreate: false });
+  async function start() {
+    const loaded = await loader.loadExtensions([join(CUSTOM, "claude.ts")], directory);
+    const session = core.SessionManager.inMemory(directory);
+    const registry = new core.ModelRegistry(runtime);
+    const runner = new core.ExtensionRunner(loaded.extensions, loaded.runtime, directory, session, registry);
+    runner.bindCore({}, { getModel: () => undefined, getScopedModels: () => [], isIdle: () => true, isProjectTrusted: () => true, getSignal: () => undefined, hasPendingMessages: () => false });
+    await runner.emit({ type: "session_start", reason: "startup" });
+    return { session, registry, runner };
+  }
+  const main = await start();
+  const child = await start();
+  await child.runner.emit({ type: "session_shutdown", reason: "quit" });
+  child.runner.invalidate();
+  const registeredModel = main.registry.find("claude-code", "claude-haiku-4-5");
+  const reply = await main.registry.streamSimple(registeredModel,
+    { systemPrompt: "Pi prompt", messages: [user("do not send")], tools: [{ ...tool, parameters: { type: "string" } }] },
+    { sessionId: main.session.getSessionId() }).result();
+  // The invalid schema stops the request after Session state is read and before Claude Code starts.
+  assert.match(reply.errorMessage, /must be an object schema/);
+  await main.runner.emit({ type: "session_shutdown", reason: "quit" });
+  main.runner.invalidate();
+});

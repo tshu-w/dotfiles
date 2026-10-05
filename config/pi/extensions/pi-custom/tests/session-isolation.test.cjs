@@ -48,6 +48,7 @@ function context(provider) {
 			getBranch: () => [],
 			getEntries: () => [],
 			getSessionName: () => undefined,
+			getSessionId: () => "session",
 		},
 	};
 }
