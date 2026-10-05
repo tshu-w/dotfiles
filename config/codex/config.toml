@@ -50,8 +50,8 @@ usePointerCursors = false
 trust_level = "trusted"
 
 [marketplaces.openai-bundled]
-source = "/Users/wangtianshu/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 source_type = "local"
+source = "/Users/wangtianshu/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
 source = "/Users/wangtianshu/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
