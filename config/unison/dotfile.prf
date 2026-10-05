@@ -70,6 +70,9 @@ atomic = Name *.lbaction
 path = Library/Preferences/com.mysticalbits.lookaway.plist
 ## Loop
 path = Library/Preferences/com.MrKai77.Loop.plist
+## Pi
+path = .config/pi/sessions
+path = .config/pi/tape
 ## Quicklook
 path = Library/Quicklook
 atomic = Name *.qlgenerator
