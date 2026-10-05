@@ -387,7 +387,8 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
-class TopBorderEditor extends CustomEditor {
+export class TopBorderEditor extends CustomEditor {
+  private statusIndicator: Parameters<CustomEditor["setWorkingStatusIndicator"]>[0];
   private pi: ExtensionAPI;
   private ctx: ExtensionContext;
   private runtime: CustomRuntimeState;
@@ -400,21 +401,36 @@ class TopBorderEditor extends CustomEditor {
     theme: EditorTheme,
     kb: KeybindingsManager,
   ) {
-    super(tui, theme, kb);
+    super(tui, theme, kb, { embedWorkingStatus: true });
     runtime.activeTui = tui;
     this.pi = pi;
     this.ctx = ctx;
     this.runtime = runtime;
   }
 
-  render(width: number): string[] {
-    const lines = super.render(width);
-    if (lines.length === 0) return lines;
-    lines[0] = this.topBorder(width);
-    return lines;
+  setWorkingStatusIndicator(indicator: Parameters<CustomEditor["setWorkingStatusIndicator"]>[0]): void {
+    this.statusIndicator = indicator;
+    super.setWorkingStatusIndicator(indicator);
   }
 
-  private topBorder(width: number): string {
+  protected renderTopBorder(width: number, hiddenLineCount: number): string {
+    if (hiddenLineCount > 0) return super.renderTopBorder(width, hiddenLineCount);
+    if (width <= 0) return "";
+    if (this.statusIndicator) {
+      const status = this.statusIndicator.renderInBorder(width);
+      // fitBorder needs four border columns, three gap columns, and two status spaces.
+      const wraps = this.statusIndicator.render(width + 2).length > 2;
+      if (!wraps && visibleWidth(status) + 9 <= width) return this.topBorder(width, ` ${status} `);
+      const spinner = this.statusIndicator.renderSpinnerInBorder(width);
+      const remaining = Math.max(0, width - visibleWidth(spinner));
+      const prefix = Math.min(2, remaining);
+      return this.borderColor("─".repeat(prefix)) + spinner + this.borderColor("─".repeat(remaining - prefix));
+    }
+    if (width < 7) return super.renderTopBorder(width, hiddenLineCount);
+    return this.topBorder(width);
+  }
+
+  private topBorder(width: number, statusLeft?: string): string {
     const theme = this.ctx.ui.theme;
     const dim = (s: string) => theme.fg("dim", s);
     const accent = (s: string) => theme.fg("accent", s);
@@ -423,7 +439,7 @@ class TopBorderEditor extends CustomEditor {
     const location = this.runtime.sshLocation ?? formatCwd(this.ctx.cwd);
     const sessionName = this.ctx.sessionManager.getSessionName();
     const locationStr = sessionName ? `${location} — ${sessionName}` : location;
-    const left = ` ${dim(locationStr)} `;
+    const left = statusLeft ?? ` ${dim(locationStr)} `;
 
     const model = this.ctx.model;
     const thinking = this.pi.getThinkingLevel?.() ?? "off";
@@ -460,81 +476,113 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
-    ctx.ui.setFooter((_tui, theme, footerData) => ({
-      invalidate() {},
-      render(width: number): string[] {
-        const statuses = footerData.getExtensionStatuses();
+    ctx.ui.setFooter((tui, theme, footerData) => {
+      const unsubscribeBranch = footerData.onBranchChange(() => tui.requestRender());
+      let cached: {
+        manager: typeof ctx.sessionManager;
+        sessionId: string;
+        leafId: string | null;
+        totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheWrite: number; totalCost: number;
+        latestCacheHitRate: number | undefined;
+      } | undefined;
+      let contextCache: {
+        totals: typeof cached;
+        model: typeof ctx.model;
+        usage: ReturnType<typeof ctx.getContextUsage>;
+      } | undefined;
+      return {
+        invalidate() {},
+        dispose() { unsubscribeBranch(); },
+        render(width: number): string[] {
+          const statuses = footerData.getExtensionStatuses();
 
-        // Sync SSH location and preset label into shared state for the editor
-        const rawSsh = statuses.get("ssh");
-        const newSsh = rawSsh ? sanitize(stripAnsi(rawSsh)).replace(/^SSH:\s*/i, "ssh:") : undefined;
-        if (newSsh !== runtime.sshLocation) { runtime.sshLocation = newSsh; runtime.activeTui?.requestRender(); }
+          // Sync SSH location and preset label into shared state for the editor
+          const rawSsh = statuses.get("ssh");
+          const newSsh = rawSsh ? sanitize(stripAnsi(rawSsh)).replace(/^SSH:\s*/i, "ssh:") : undefined;
+          if (newSsh !== runtime.sshLocation) { runtime.sshLocation = newSsh; runtime.activeTui?.requestRender(); }
 
-        const rawPreset = statuses.get("preset");
-        const newPreset = rawPreset ? stripAnsi(sanitize(rawPreset)).replace(/^preset:/, "") : undefined;
-        if (newPreset !== runtime.presetLabel) { runtime.presetLabel = newPreset; runtime.activeTui?.requestRender(); }
+          const rawPreset = statuses.get("preset");
+          const newPreset = rawPreset ? stripAnsi(sanitize(rawPreset)).replace(/^preset:/, "") : undefined;
+          if (newPreset !== runtime.presetLabel) { runtime.presetLabel = newPreset; runtime.activeTui?.requestRender(); }
 
-        // Left: token stats + cost + context%
-        const dim = (s: string) => theme.fg("dim", s);
-        let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalCost = 0;
-        for (const entry of ctx.sessionManager.getEntries() as any[]) {
-          const u = entry.type === "message"
-            && (entry.message?.role === "assistant" || entry.message?.role === "toolResult")
-            ? entry.message.usage
-            : (entry.type === "compaction" || entry.type === "branch_summary" || entry.type === "usage")
-              ? entry.usage
-              : undefined;
-          if (!u) continue;
-          totalInput += u.input ?? 0;
-          totalOutput += u.output ?? 0;
-          totalCacheRead += u.cacheRead ?? 0;
-          totalCacheWrite += u.cacheWrite ?? 0;
-          totalCost += u.cost?.total ?? 0;
-        }
-        const model = ctx.model;
-        const usingSubscription = model ? ctx.modelRegistry.isUsingOAuth(model) : false;
+          // Left: token stats + cost + context%
+          const dim = (s: string) => theme.fg("dim", s);
+          const manager = ctx.sessionManager;
+          const sessionId = manager.getSessionId();
+          const leafId = manager.getLeafId();
+          // Entries are append-only and every append moves the leaf. Avoid copying/scanning on every frame.
+          if (!cached || cached.manager !== manager || cached.sessionId !== sessionId || cached.leafId !== leafId) {
+            let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalCost = 0;
+            let latestCacheHitRate: number | undefined;
+            for (const entry of manager.getEntries() as any[]) {
+              const u = entry.type === "message"
+                && (entry.message?.role === "assistant" || entry.message?.role === "toolResult")
+                ? entry.message.usage
+                : (entry.type === "compaction" || entry.type === "branch_summary" || entry.type === "usage")
+                  ? entry.usage
+                  : undefined;
+              if (entry.type === "message" && entry.message?.role === "assistant") {
+                const promptTokens = (u?.input ?? 0) + (u?.cacheRead ?? 0) + (u?.cacheWrite ?? 0);
+                latestCacheHitRate = promptTokens > 0 ? ((u?.cacheRead ?? 0) / promptTokens) * 100 : undefined;
+              }
+              if (!u) continue;
+              totalInput += u.input ?? 0;
+              totalOutput += u.output ?? 0;
+              totalCacheRead += u.cacheRead ?? 0;
+              totalCacheWrite += u.cacheWrite ?? 0;
+              totalCost += u.cost?.total ?? 0;
+            }
+            cached = { manager, sessionId, leafId, totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, latestCacheHitRate };
+          }
+          const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, latestCacheHitRate } = cached;
+          const model = ctx.model;
+          const usingSubscription = model ? ctx.modelRegistry.isUsingOAuth(model) : false;
 
-        const statParts: string[] = [];
-        if (totalInput) statParts.push(`↑${formatTokens(totalInput)}`);
-        if (totalOutput) statParts.push(`↓${formatTokens(totalOutput)}`);
-        if (totalCacheRead) statParts.push(`R${formatTokens(totalCacheRead)}`);
-        if (totalCacheWrite) statParts.push(`W${formatTokens(totalCacheWrite)}`);
-        if (totalCost || usingSubscription) statParts.push(`$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`);
+          const statParts: string[] = [];
+          if (totalInput) statParts.push(`↑${formatTokens(totalInput)}`);
+          if (totalOutput) statParts.push(`↓${formatTokens(totalOutput)}`);
+          if (totalCacheRead) statParts.push(`R${formatTokens(totalCacheRead)}`);
+          if (totalCacheWrite) statParts.push(`W${formatTokens(totalCacheWrite)}`);
+          if (totalCost || usingSubscription) statParts.push(`$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`);
 
-        const contextUsage = ctx.getContextUsage?.();
-        const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
-        const pct = contextUsage?.percent ?? 0;
-        const ctxStr = pct > 0 ? `${pct.toFixed(1)}%/${formatTokens(contextWindow)}` : `?/${formatTokens(contextWindow)}`;
-        const styledCtx = pct > 90 ? theme.fg("error", ctxStr) : pct > 70 ? theme.fg("warning", ctxStr) : dim(ctxStr);
-        const left = statParts.length > 0 ? dim(statParts.join(" ")) + " " + styledCtx : styledCtx;
+          if ((totalCacheRead || totalCacheWrite) && latestCacheHitRate !== undefined) statParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
+          const branch = footerData.getGitBranch();
+          if (branch) statParts.push(`(${sanitize(branch)})`);
 
-        // Right: unconsumed extension statuses + subscription status
-        const fg = (color: "dim" | "warning" | "error", s: string) => theme.fg(color, s);
-        const subUsage = statuses.get("sub-status:usage");
-        const subBar = sanitize(statuses.get("sub-bar") ?? "");
-        const showSubscriptionStatus = model?.provider === "claude-code"
-          || (usingSubscription && (model?.provider === "openai" || model?.provider === "openai-codex" || model?.provider === "anthropic"));
-        const subStr = !showSubscriptionStatus ? ""
-          : subUsage ? formatSubscriptionStatus(subUsage, fg)
-          : subBar ? dim(subBar) : "";
-        const consumedStatuses = new Set(["ssh", "preset", "sub-status:usage", "sub-bar"]);
-        const extensionStatuses = [...statuses.entries()]
-          .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
-          .map(([, value]) => dim(sanitize(value)));
-        const right = [...extensionStatuses, subStr].filter(Boolean).join(dim(" · "));
+          if (!contextCache || contextCache.totals !== cached || contextCache.model !== model) {
+            contextCache = { totals: cached, model, usage: ctx.getContextUsage() };
+          }
+          const contextUsage = contextCache.usage;
+          const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
+          const pct = contextUsage?.percent ?? 0;
+          const autoIndicator = (pi.getSettings().compaction?.enabled ?? true) ? " (auto)" : "";
+          const ctxStr = (pct > 0 ? `${pct.toFixed(1)}%/${formatTokens(contextWindow)}` : `?/${formatTokens(contextWindow)}`) + autoIndicator;
+          const styledCtx = pct > 90 ? theme.fg("error", ctxStr) : pct > 70 ? theme.fg("warning", ctxStr) : dim(ctxStr);
+          const left = statParts.length > 0 ? dim(statParts.join(" ")) + " " + styledCtx : styledCtx;
 
-        const lw = visibleWidth(left);
-        const rw = visibleWidth(right);
-        if (lw + rw + 1 <= width) return [left + " ".repeat(width - lw - rw) + right];
-        const fittedLeft = truncateToWidth(left, width, dim("…"));
-        const fittedLeftWidth = visibleWidth(fittedLeft);
-        const availableRight = width - fittedLeftWidth - 1;
-        if (availableRight <= 0 || rw === 0) return [fittedLeft];
-        const fittedRight = truncateToWidth(right, availableRight, dim("…"));
-        const fittedRightWidth = visibleWidth(fittedRight);
-        return [fittedLeft + " ".repeat(width - fittedLeftWidth - fittedRightWidth) + fittedRight];
-      },
-    }));
+          // Right: unconsumed extension statuses + subscription status
+          const fg = (color: "dim" | "warning" | "error", s: string) => theme.fg(color, s);
+          const subUsage = statuses.get("sub-status:usage");
+          const subBar = sanitize(statuses.get("sub-bar") ?? "");
+          const showSubscriptionStatus = model?.provider === "claude-code"
+            || (usingSubscription && (model?.provider === "openai" || model?.provider === "openai-codex" || model?.provider === "anthropic"));
+          const subStr = !showSubscriptionStatus ? ""
+            : subUsage ? formatSubscriptionStatus(subUsage, fg)
+            : subBar ? dim(subBar) : "";
+          const consumedStatuses = new Set(["ssh", "preset", "sub-status:usage", "sub-bar"]);
+          const extensionStatuses = [...statuses.entries()]
+            .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
+            .map(([, value]) => dim(sanitize(value)));
+          const right = [...extensionStatuses, subStr].filter(Boolean).join(dim(" · "));
+
+          const lw = visibleWidth(left);
+          const rw = visibleWidth(right);
+          if (lw + rw + 1 <= width) return [left + " ".repeat(width - lw - rw) + right];
+          const fittedLeft = truncateToWidth(left, width, dim("…"));
+          return right ? [fittedLeft, truncateToWidth(right, width, dim("…"))] : [fittedLeft];
+        },
+      };
+    });
   });
 }
 
