@@ -35,14 +35,7 @@
       "source": "git:github.com/addyosmani/agent-skills",
       "skills": []
     },
-    {
-      "source": "npm:@marckrenn/pi-sub-status",
-      "extensions": [
-        "index.ts",
-        "-../pi-sub-core/index.ts",
-        "-node_modules/@marckrenn/pi-sub-core/index.ts"
-      ]
-    },
+    "npm:@marckrenn/pi-sub-status",
     {
       "source": "git:github.com/tshu-w/pi-tape"
     },
