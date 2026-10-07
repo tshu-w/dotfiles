@@ -1,3 +1,5 @@
+scan_timeout = 50
+
 format = """
 ($username$hostname )\
 $all\
