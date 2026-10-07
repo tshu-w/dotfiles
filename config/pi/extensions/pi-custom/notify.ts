@@ -28,8 +28,8 @@ function notify(title: string, body: string): void {
 }
 
 export function registerNotify(pi: ExtensionAPI): void {
-  pi.on("agent_settled", (_event, ctx) => {
-    if (ctx.mode !== "tui") return;
+  pi.on("agent_settled", (event, ctx) => {
+    if (ctx.mode !== "tui" || event.aborted) return;
     notify("Pi", "Ready for input");
   });
 }
