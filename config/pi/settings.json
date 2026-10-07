@@ -52,7 +52,7 @@
     },
     "git:github.com/tshu-w/pi-codex-remote"
   ],
-  "lastChangelogVersion": "1.0.1",
+  "lastChangelogVersion": "1.0.3",
   "theme": "light/dark",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
