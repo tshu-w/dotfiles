@@ -175,8 +175,6 @@ cask "launchbar", args: { appdir: "/Applications" }
 cask "lookaway"
 # Window manager
 cask "loop"
-# Compact TeX distribution
-cask "basictex"
 # Utility to open, create and modify archive files
 cask "maczip"
 # Provides updates to various Microsoft products
