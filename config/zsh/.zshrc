@@ -74,6 +74,10 @@ znap source marlonrichert/zsh-edit
 
 # iterm2 shell integration
 if [ "${LC_TERMINAL-}" = "iTerm2" ]; then
+    # ssh forwards LC_TERMINAL but not COLORTERM; iTerm2 supports 24-bit color
+    export COLORTERM=${COLORTERM:-truecolor}
+    # nor ITERM_SESSION_ID, which Pi checks before showing inline images
+    export PI_IMAGE_PROTOCOL=${PI_IMAGE_PROTOCOL:-iterm2}
     export PATH=$PATH:$HOME/.local/bin/iterm2
     znap eval iterm2 'curl -fsSL https://iterm2.com/shell_integration/zsh'
 fi
@@ -132,6 +136,7 @@ alias mv='mv -i'
 alias paths='echo -e ${PATH//:/\\n}'
 alias pip='python -m pip'
 alias pdb='python -m pdb -c "c" -c "q"'
+alias pa='pd agents'
 alias rm='echo "This is not the command you are looking for."; false'
 alias rcp='rsync --archive --compress --verbose --human-readable --partial --progress'
 alias rmv='rcp --remove-source-files'

@@ -79,7 +79,7 @@
     "transcriptOptimization": true
   },
   "defaultProjectTrust": "always",
-  "tuiMode": "regular",
+  "tuiMode": "fullscreen",
   "showHardwareCursor": true,
   "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1"
 }
