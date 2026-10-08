@@ -126,7 +126,7 @@ function fitBorder(
 
 interface CustomRuntimeState {
   activeTui?: TUI;
-  sshLocation?: string;
+  envLocation?: string;
   presetLabel?: string;
 }
 
@@ -436,7 +436,7 @@ export class TopBorderEditor extends CustomEditor {
     const accent = (s: string) => theme.fg("accent", s);
     const border = (s: string) => this.borderColor(s);
 
-    const location = this.runtime.sshLocation ?? formatCwd(this.ctx.cwd);
+    const location = this.runtime.envLocation ?? formatCwd(this.ctx.cwd);
     const sessionName = this.ctx.sessionManager.getSessionName();
     const locationStr = sessionName ? `${location} — ${sessionName}` : location;
     const left = statusLeft ?? ` ${dim(locationStr)} `;
@@ -496,10 +496,10 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
         render(width: number): string[] {
           const statuses = footerData.getExtensionStatuses();
 
-          // Sync SSH location and preset label into shared state for the editor
-          const rawSsh = statuses.get("ssh");
-          const newSsh = rawSsh ? sanitize(stripAnsi(rawSsh)).replace(/^SSH:\s*/i, "ssh:") : undefined;
-          if (newSsh !== runtime.sshLocation) { runtime.sshLocation = newSsh; runtime.activeTui?.requestRender(); }
+          // Sync the pi-env location and preset label into shared state for the editor
+          const rawEnv = statuses.get("env");
+          const newEnv = rawEnv ? sanitize(stripAnsi(rawEnv)).replace(/^(SSH|Docker):\s*/i, (_, kind) => `${kind.toLowerCase()}:`) : undefined;
+          if (newEnv !== runtime.envLocation) { runtime.envLocation = newEnv; runtime.activeTui?.requestRender(); }
 
           const rawPreset = statuses.get("preset");
           const newPreset = rawPreset ? stripAnsi(sanitize(rawPreset)).replace(/^preset:/, "") : undefined;
@@ -569,7 +569,7 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
           const subStr = !showSubscriptionStatus ? ""
             : subUsage ? formatSubscriptionStatus(subUsage, fg)
             : subBar ? dim(subBar) : "";
-          const consumedStatuses = new Set(["ssh", "preset", "sub-status:usage", "sub-bar"]);
+          const consumedStatuses = new Set(["env", "preset", "sub-status:usage", "sub-bar"]);
           const extensionStatuses = [...statuses.entries()]
             .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
             .map(([, value]) => dim(sanitize(value)));

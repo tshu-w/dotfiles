@@ -43,9 +43,12 @@
       "source": "git:github.com/mattpocock/skills",
       "skills": []
     },
-    "git:github.com/tshu-w/pi-codex-remote"
+    "git:github.com/tshu-w/pi-codex-remote",
+    {
+      "source": "git:github.com/tshu-w/pi-env"
+    }
   ],
-  "lastChangelogVersion": "1.0.4",
+  "lastChangelogVersion": "1.1.0",
   "theme": "light/dark",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -60,7 +63,7 @@
   "pi-agents": {
     "extensions": [
       "extensions/pi-web/index.ts",
-      "extensions/ssh.ts",
+      "git/github.com/tshu-w/pi-env/src/index.ts",
       "extensions/secret-guard/index.ts",
       "extensions/pi-custom/index.ts"
     ]
