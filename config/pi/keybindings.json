@@ -1,8 +1,9 @@
 {
-  "tui.altScreen.top": "alt+k",
-  "tui.altScreen.bottom": "alt+j",
-  "tui.altScreen.pageUp": "alt+u",
-  "tui.altScreen.pageDown": "alt+n",
-  "tui.select.pageUp": "alt+u",
-  "tui.select.pageDown": "alt+n"
+  "tui.altScreen.top": ["alt+[", "ctrl+home"],
+  "tui.altScreen.bottom": ["alt+]", "ctrl+end"],
+  "tui.altScreen.pageUp": ["alt+u", "pageUp"],
+  "tui.altScreen.pageDown": ["alt+d", "pageDown"],
+  "tui.select.pageUp": ["alt+u", "pageUp"],
+  "tui.select.pageDown": ["alt+d", "pageDown"],
+  "tui.editor.deleteWordForward": "alt+delete"
 }
