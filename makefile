@@ -77,3 +77,4 @@ python-packages:
 node-packages:
 	npm ci --prefix $(XDG_CONFIG_HOME)/pi
 	pi update --extensions
+	npm install -g $(XDG_CONFIG_HOME)/pi/git/github.com/tshu-w/pi-agents
