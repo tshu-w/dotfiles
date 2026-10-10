@@ -54,6 +54,8 @@ znap source zsh-users/zsh-syntax-highlighting
 # dir_colors
 (( $+commands[dircolors] )) && znap eval dircolors 'dircolors -b $ZDOTDIR/dir_colors'
 
+# Avoid zsh-autocomplete's failed-autoload stub when loading cached zasync.
+fpath=( "$XDG_CACHE_HOME/zsh/zasync" $fpath )
 znap source marlonrichert/zsh-autocomplete
 zstyle ':completion:*' file-sort date
 zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
