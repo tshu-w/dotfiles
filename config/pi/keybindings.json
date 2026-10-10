@@ -1,0 +1,8 @@
+{
+  "tui.altScreen.top": "alt+k",
+  "tui.altScreen.bottom": "alt+j",
+  "tui.altScreen.pageUp": "alt+u",
+  "tui.altScreen.pageDown": "alt+n",
+  "tui.select.pageUp": "alt+u",
+  "tui.select.pageDown": "alt+n"
+}
