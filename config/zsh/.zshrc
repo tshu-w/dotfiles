@@ -32,7 +32,7 @@ unset ZNAP_HOME
 ### Secrets - refresh authinfo cache; re-export via .zshenv helper
 if [[ -f ~/.authinfo.gpg ]]; then
     _AUTHINFO_DIR="${XDG_RUNTIME_DIR:-$XDG_CACHE_HOME/authinfo}"
-    if [[ ! -f "$_AUTHINFO_CACHE" || -n $(find "$_AUTHINFO_CACHE" -mtime +1 2>/dev/null) ]]; then
+    if [[ ! -f "$_AUTHINFO_CACHE" || ~/.authinfo.gpg -nt "$_AUTHINFO_CACHE" || -n $(find "$_AUTHINFO_CACHE" -mtime +1 2>/dev/null) ]]; then
         mkdir -p -m 700 "$_AUTHINFO_DIR"
         gpg -qd ~/.authinfo.gpg > "$_AUTHINFO_CACHE.$$" 2>/dev/null && \
             chmod 600 "$_AUTHINFO_CACHE.$$" && \

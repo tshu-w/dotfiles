@@ -115,6 +115,7 @@ _authinfo_export() {
     local var pat
     local -A entries=(
         GH_TOKEN             '^machine github[.]com.*login tshu-w password '
+        NPM_TOKEN            '^machine registry[.]npmjs[.]org[[:space:]]'
         OPENROUTER_API_KEY   '^machine openrouter[.]ai'
         EXA_API_KEY          '^machine api[.]exa[.]ai'
         TAVILY_API_KEY       '^machine api[.]tavily[.]com'
