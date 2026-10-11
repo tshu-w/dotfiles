@@ -33,7 +33,7 @@ export function registerClaude(pi: ExtensionAPI) {
       compat: model.compat,
       input: model.input,
       cost: model.cost,
-      contextWindow: Math.min(model.contextWindow, 200_000),
+      contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
     })),
     streamSimple: (model, transcript, request) =>
