@@ -36,6 +36,7 @@ import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerReroll } from "./reroll.ts";
+import { installTranscriptDisplay } from "./transcript-display.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
 
@@ -594,13 +595,20 @@ type TranscriptHistoryPanelControl = Pick<TranscriptHistoryControl, "getStatus" 
 
 function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryPanelControl {
   let runtimeControl: TranscriptHistoryControl | undefined;
+  let restoreDisplay: (() => void) | undefined;
 
   pi.on("session_start", (_event, ctx) => {
+    restoreDisplay?.();
+    restoreDisplay = undefined;
     runtimeControl?.restore();
     runtimeControl = undefined;
     if (ctx.mode !== "tui") return;
     runtimeControl = installTranscriptHistory(
       InteractiveMode.prototype as unknown as Parameters<typeof installTranscriptHistory>[0],
+    );
+    restoreDisplay = installTranscriptDisplay(
+      InteractiveMode.prototype as unknown as Parameters<typeof installTranscriptDisplay>[0],
+      () => ctx.ui.theme,
     );
   });
 
@@ -609,6 +617,8 @@ function registerTranscriptHistory(pi: ExtensionAPI): TranscriptHistoryPanelCont
   });
 
   pi.on("session_shutdown", () => {
+    restoreDisplay?.();
+    restoreDisplay = undefined;
     runtimeControl?.restore();
     runtimeControl = undefined;
   });
