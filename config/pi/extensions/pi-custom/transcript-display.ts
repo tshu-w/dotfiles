@@ -1,6 +1,7 @@
 import {
   AssistantMessageComponent,
   ToolExecutionComponent,
+  keyText,
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
@@ -43,9 +44,13 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
     let tools: string[] = [];
     const fold = () => {
       if (!tools.length) return;
-      const label = `... (${tools.length} tool call${tools.length > 1 ? "s" : ""}: ${[...new Set(tools)].join(", ")})`;
+      const theme = getTheme();
+      const key = keyText("app.tools.expand");
+      const label = theme.fg("muted", `... (${tools.length} tool call${tools.length > 1 ? "s" : ""}: ${[...new Set(tools)].join(", ")}`)
+        + (key ? theme.fg("muted", ", ") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "")
+        + theme.fg("muted", ")");
       const padding = Math.min(mode.outputPad, Math.max(0, width));
-      projection.addChild(new Text(`\n${getTheme().fg("muted", truncateToWidth(" ".repeat(padding) + label, width))}`, 0, 0));
+      projection.addChild(new Text(`\n${truncateToWidth(" ".repeat(padding) + label, width)}`, 0, 0));
       tools = [];
     };
     for (const child of chat.children) {
@@ -106,17 +111,21 @@ export function installTranscriptDisplay(prototype: DisplayPrototype, getTheme: 
     return () => { if (prototype[name] === wrapped) prototype[name] = render; };
   });
   function toggle(this: DisplayMode) {
-    const restore = compact.get(this);
-    if (restore) {
-      restore();
-      compact.delete(this);
-      if (this.toolOutputExpanded) this.setToolsExpanded(false);
-      else this.showStatus("Tool output: collapsed");
-    } else if (this.toolOutputExpanded) {
-      compact.set(this, compactTranscript(this, getTheme));
-      this.showStatus("Tool output: compact");
-    } else {
-      original.call(this);
+    const showStatus = this.showStatus;
+    this.showStatus = () => {};
+    try {
+      const restore = compact.get(this);
+      if (restore) {
+        restore();
+        compact.delete(this);
+        this.setToolsExpanded(false);
+      } else if (this.toolOutputExpanded) {
+        compact.set(this, compactTranscript(this, getTheme));
+      } else {
+        original.call(this);
+      }
+    } finally {
+      this.showStatus = showStatus;
     }
     this.ui.requestRender(true);
   }
