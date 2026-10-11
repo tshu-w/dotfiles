@@ -57,6 +57,8 @@ brew "m-cli"
 brew "mas"
 # Mac command-line tool that automatically downloads macOS Firmwares / Installers
 brew "mist-cli"
+# Deep clean and optimize your Mac
+brew "mole"
 # Collection of tools that nobody wrote when UNIX was young
 brew "moreutils"
 # Tool for searching e-mail messages stored in the maildir-format
