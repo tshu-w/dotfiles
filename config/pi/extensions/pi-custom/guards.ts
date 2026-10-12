@@ -175,29 +175,30 @@ function walkUpFor(cwd: string, marker: string, cache: Map<string, boolean>): bo
   return false;
 }
 
-function colocatePrelude(cwd: string): string {
-  if (walkUpFor(cwd, ".git", gitRepoCache) && !walkUpFor(cwd, ".jj", jjRepoCache)) {
-    return "This repo is not yet a jj repo. Adopt jj first:\n  jj git init --colocate\n\nThen:\n";
-  }
-  return "";
+function jjNote(cwd: string): string {
+  const adopt = walkUpFor(cwd, ".git", gitRepoCache) && !walkUpFor(cwd, ".jj", jjRepoCache)
+    ? "This repo is not a jj repo yet; adopt jj with `jj git init --colocate`, then prefer"
+    : "Prefer";
+  return `\n\n[${adopt} jj commands over git. Run \`jj --help\` for available commands.]`;
 }
 
 function invokesGit(command: string): boolean {
   return splitShellSegments(command).some((seg) => getInvocation(seg)?.cmd === "git");
 }
 
+/** Lets a git command run and appends a note preferring jj to its output. */
 export function registerJjGuard(pi: ExtensionAPI): void {
   if (!isJjInstalled()) return;
 
-  let warned = false;
-  pi.on("session_start", () => { warned = false; });
-
-  pi.on("tool_call", async (event, ctx) => {
+  pi.on("tool_result", async (event, ctx) => {
     if (event.toolName !== "bash") return;
     const command = String((event.input as { command?: string })?.command ?? "");
     if (!command.trim() || !invokesGit(command)) return;
-    const prelude = colocatePrelude(ctx.cwd);
-    const message = `Prefer \`jj\` over \`git\`.\n\n${prelude}\`jj\` is installed — use it instead of \`git\`. Run \`jj --help\` for available commands.`;
-    if (ctx.hasUI && !warned) { warned = true; ctx.ui.notify(message, "warning"); }
+    const note = jjNote(ctx.cwd);
+    const last = event.content.findLastIndex((part) => part.type === "text");
+    const content = last < 0
+      ? [...event.content, { type: "text" as const, text: note.trimStart() }]
+      : event.content.map((part, index) => index === last && part.type === "text" ? { ...part, text: part.text.trimEnd() + note } : part);
+    return { content };
   });
 }
