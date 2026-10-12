@@ -375,9 +375,8 @@ export async function main() {
     stateFile: path.join(stateDir, "state.json"), api, allowedUsers, log,
     sessionExists: (id) => sessionFile(path.join(agentDir, "sessions"), id, root) !== undefined,
     createPi: (chat, session, message, onEvent) => {
-      const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir, TELEGRAM_DEFAULT_CHAT_ID: chat };
+      const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
       for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
-      delete env.TELEGRAM_BOT_TOKEN;
       const child = spawn("pi", piArgs(session), { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (text) => log(text.trim()));
