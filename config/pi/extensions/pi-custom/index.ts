@@ -16,7 +16,7 @@ import {
 import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -865,6 +865,18 @@ function registerCustomSettings(
 // Launch flags (--model, -e, ...) are not carried over; model and thinking
 // level are restored from the session itself. If execve throws, pi just
 // exits normally — resume manually with `pi -c`.
+
+/** The `pi` on PATH, which an update points at the new install; the running one may have been removed. */
+function piOnPath(): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    const candidate = join(dir, "pi");
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+}
+
 function registerRestart(pi: ExtensionAPI): void {
   pi.registerCommand("restart", {
     description: "Restart pi, optionally sending a message after restart",
@@ -875,13 +887,14 @@ function registerRestart(pi: ExtensionAPI): void {
       }
       const continuation = rawArgs.trim();
       const sessionFile = ctx.sessionManager.getSessionFile();
-      const args = [process.execPath, process.argv[1]];
+      const command = piOnPath();
+      const args = command ? [command] : [process.execPath, process.argv[1]];
       if (sessionFile) args.push("--session", sessionFile);
       if (continuation) args.push(continuation);
       const execve = process.execve;
       process.once("exit", () => {
         try {
-          execve?.(process.execPath, args, process.env as Record<string, string>);
+          execve?.(args[0], args, process.env as Record<string, string>);
         } catch {
           // fall through to a normal exit
         }
