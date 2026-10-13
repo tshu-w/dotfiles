@@ -186,7 +186,7 @@ function invokesGit(command: string): boolean {
   return splitShellSegments(command).some((seg) => getInvocation(seg)?.cmd === "git");
 }
 
-/** Lets a git command run and appends a note preferring jj to its output. */
+/** Lets a git command run and appends a note preferring jj to its output, unless the model's context already has it. */
 export function registerJjGuard(pi: ExtensionAPI): void {
   if (!isJjInstalled()) return;
 
@@ -195,6 +195,10 @@ export function registerJjGuard(pi: ExtensionAPI): void {
     const command = String((event.input as { command?: string })?.command ?? "");
     if (!command.trim() || !invokesGit(command)) return;
     const note = jjNote(ctx.cwd);
+    const seen = ctx.sessionManager.buildContextEntries().some((entry) =>
+      entry.type === "message" && entry.message.role === "toolResult"
+      && entry.message.content.some((part) => part.type === "text" && part.text.includes(note.trim())));
+    if (seen) return;
     const last = event.content.findLastIndex((part) => part.type === "text");
     const content = last < 0
       ? [...event.content, { type: "text" as const, text: note.trimStart() }]
