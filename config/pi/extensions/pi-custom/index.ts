@@ -235,8 +235,9 @@ const PACKAGE_UPDATE_COMMANDS = [
   { command: "npm", args: ["update", "-g", "@browserbridge/bbx"] },
 ] as const;
 
-// Skip `pi update --extensions` while any git package clone has local
-// changes, so the updater never clobbers uncommitted work.
+// Skip `pi update --extensions` while any git package clone has work that its
+// `git reset --hard` and `git clean -fdx` would lose: changes, untracked files,
+// unpushed commits, or a jj repo (`.jj` is deleted) not at its remote's head.
 async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
   const dirty: string[] = [];
   let hosts: string[];
@@ -264,18 +265,21 @@ async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
       for (const repo of repos) {
         const repoDir = join(ownerDir, repo);
         if (!existsSync(join(repoDir, ".git"))) continue;
-        const status = await new Promise<string | undefined>((resolvePorcelain) => {
-          execFile("git", ["-C", repoDir, "status", "--porcelain"], { encoding: "utf8" }, (error, stdout) => {
-            resolvePorcelain(error ? undefined : stdout);
+        const git = (...args: string[]) => new Promise<string | undefined>((resolveGit) => {
+          execFile("git", ["-C", repoDir, ...args], { encoding: "utf8", timeout: 30_000 }, (error, stdout) => {
+            resolveGit(error ? undefined : stdout.trim());
           });
         });
+        const status = await git("status", "--porcelain");
         if (status === undefined) continue;
-        // Only tracked modifications count; ignore untracked files and the
-        // package-lock.json churn from pi's own dependency install.
-        const changes = status
-          .split("\n")
-          .filter((line) => line.trim() && !line.startsWith("??") && !line.endsWith("package-lock.json"));
-        if (changes.length > 0) dirty.push(`${owner}/${repo}`);
+        // Ignore the package-lock.json churn from pi's own dependency install.
+        let unsafe = status.split("\n").some((line) => line.trim() && !line.endsWith("package-lock.json"))
+          || !!(await git("rev-list", "-n1", "HEAD", "--not", "--remotes"));
+        if (!unsafe && existsSync(join(repoDir, ".jj"))) {
+          const remote = await git("ls-remote", "origin", "HEAD");
+          unsafe = !remote || remote.split(/\s/)[0] !== await git("rev-parse", "HEAD");
+        }
+        if (unsafe) dirty.push(`${owner}/${repo}`);
       }
     }
   }
