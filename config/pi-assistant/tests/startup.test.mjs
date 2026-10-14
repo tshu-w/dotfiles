@@ -146,6 +146,7 @@ function fixture(t, run = async () => {}) {
       const id = session.id || `session-${runs.length}`;
       const pi = { session: Promise.resolve(id), stopped: false };
       pi.stop = async () => { pi.stopped = true; pi.finish?.(); };
+      pi.close = async () => {};
       prompts.push({ message, sessionId: id, name: session.id ? undefined : `telegram:${session.chat}` });
       pi.done = run(pi, message, onEvent);
       runs.push(pi);
@@ -251,6 +252,44 @@ test("stop terminates active work, cancels queued messages and retains the sessi
   assert.equal(prompts.length, 1);
   assert.equal(runs[0].stopped, true);
   assert.equal(assistant.state.sessions["123"].id, "session-0");
+});
+
+test("settled runs remain tracked until Pi exits, with a bounded cleanup wait", async (t) => {
+  for (const ending of ["exit", "timeout", "stop"]) {
+    await t.test(ending, async (t) => {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const { assistant } = fixture(t);
+      const child = mockChild();
+      const signals = [];
+      child.kill = (signal) => { signals.push(signal); if (signal === "SIGKILL") child.exit(null, signal); };
+      const run = new PiRun(child, () => {}, 5000);
+      assistant.createPi = () => run;
+      assistant.accept([update(1, "work"), update(2, "queued")]);
+      await new Promise(setImmediate);
+      child.emitJson({ type: "session", id: "s1" });
+      child.emitJson({ type: "agent_settled" });
+      await run.done;
+      await new Promise(setImmediate);
+      assert.equal(assistant.active.get("123")?.run, run);
+      assert.equal(assistant.state.pending.length, 1, "the next message waits for process exit");
+      assert.deepEqual(signals, []);
+
+      if (ending === "exit") {
+        child.exit(0);
+      } else {
+        if (ending === "stop") assistant.accept([update(3, "/stop")]);
+        else t.mock.timers.tick(5000);
+        assert.deepEqual(signals, ["SIGTERM"]);
+        assert.equal(assistant.active.get("123")?.run, run);
+        t.mock.timers.tick(5000);
+        assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+      }
+      assistant.state.pending = [];
+      await idle(assistant);
+      assert.equal(assistant.active.size, 0);
+      assert.deepEqual(assistant.state.running, {});
+    });
+  }
 });
 
 test("failed runs are reported once and the session is still remembered", async (t) => {

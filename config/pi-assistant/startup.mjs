@@ -117,6 +117,14 @@ export class PiRun {
     });
     this.exited = new Promise((resolve) => child.once("close", resolve));
   }
+  async close() {
+    const timer = setTimeout(() => this.stop(), this.killTimeoutMs);
+    try {
+      await this.exited;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   stop() {
     if (this.stopped) return this.exited;
     this.stopped = true;
@@ -301,6 +309,7 @@ export class Assistant {
         this.log(error);
         if (!this.closing && !active.stopped) await this.text(chat, "🔴 处理失败，不会自动重做。请重新发消息，或用 /logs 查看错误。").catch(this.log);
       } finally {
+        await active.run?.close();
         active.run = undefined;
         clearInterval(typing);
         await progress.finish();
