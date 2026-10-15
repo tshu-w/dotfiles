@@ -1,5 +1,7 @@
 import {
   AssistantMessageComponent,
+  BranchSummaryMessageComponent,
+  CompactionSummaryMessageComponent,
   CustomMessageComponent,
   ToolExecutionComponent,
   keyText,
@@ -63,13 +65,20 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         tools.push((child as unknown as { toolName: string }).toolName);
         continue;
       }
+      if (child instanceof BranchSummaryMessageComponent || child instanceof CompactionSummaryMessageComponent) {
+        fold();
+        summarize(child instanceof BranchSummaryMessageComponent ? "branch summary" : "compaction summary");
+        continue;
+      }
       if (child instanceof CustomMessageComponent) {
         const { customType, details } = (child as unknown as {
           message: { customType: string; details?: { user?: boolean; from?: { name?: string; id?: string } } };
         }).message;
+        // pi-agents marks the user's own input, which shows as a user message, and names the sender of the others.
         if (details?.user !== true) {
+          const from = customType === "pi-agents" ? details?.from?.name ?? details?.from?.id : undefined;
           fold();
-          summarize(`message from ${details?.from?.name ?? details?.from?.id ?? customType}`);
+          summarize(from ? `message from ${from}` : `${customType} message`);
           continue;
         }
       }
