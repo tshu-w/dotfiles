@@ -132,6 +132,56 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
   }
 });
 
+test("compact view summarizes custom messages but preserves user input across Ctrl+O modes", async () => {
+  const { mode, editor, restore, CustomMessageComponent, UserMessageComponent, ToolExecutionComponent, Text, visibleWidth, getMarkdownTheme } = await setup();
+  const report = { customType: "worker", content: "First observation\n\nHidden report detail", display: true, details: { from: { name: "reviewer", id: "reviewer-1" } } };
+  const original = structuredClone(report);
+  const renderReport = (message, { expanded }) => new Text(`${expanded ? "Expanded detail" : `[worker] from ${message.details.from.name}`}\n${message.content}`, 0, 0);
+  const input = { customType: "worker", content: "Forwarded user input\n\nKeep this instruction", display: true, details: { user: true } };
+  const renderInput = (message, { expanded, outputPad }) => expanded ? undefined : new UserMessageComponent(message.content, getMarkdownTheme(), outputPad);
+  try {
+    mode.chatContainer.addChild(new UserMessageComponent("Direct user input\n\nKeep this too", getMarkdownTheme()));
+    mode.chatContainer.addChild(new CustomMessageComponent(report, renderReport));
+    mode.chatContainer.addChild(new CustomMessageComponent(input, renderInput));
+    mode.chatContainer.addChild(new CustomMessageComponent({ customType: "notice", content: [{ type: "text", text: "Notice preview\n\nHidden notice detail" }], display: true }));
+    mode.chatContainer.addChild(new ToolExecutionComponent("read", "1", {}, {}, undefined, mode.ui, "/tmp"));
+    mode.renderInitialMessages();
+    const render = () => stripAnsi(mode.chatContainer.render(120).join("\n"));
+    const compact = render();
+    assert.match(compact, /\.\.\. \(message from reviewer, ctrl\+o to expand\)/);
+    assert.match(compact, /\.\.\. \(message from notice, ctrl\+o to expand\)/);
+    assert.match(compact, /\.\.\. \(1 tool call: read, ctrl\+o to expand\)/);
+    assert.doesNotMatch(compact, /First observation|Notice preview|Hidden report detail|Hidden notice detail|Expanded detail|reviewer-1/);
+    assert.match(compact, /Direct user input/);
+    assert.match(compact, /Keep this too/);
+    assert.match(compact, /Forwarded user input/);
+    assert.match(compact, /Keep this instruction/);
+    editor.handleInput("\x0f");
+    assert.match(render(), /Hidden report detail/);
+    assert.match(render(), /Hidden notice detail/);
+    assert.doesNotMatch(render(), /Expanded detail/);
+    editor.handleInput("\x0f");
+    assert.match(render(), /Expanded detail/);
+    editor.handleInput("\x0f");
+    assert.equal(render(), compact);
+    mode.rebuildChatFromMessages();
+    assert.doesNotMatch(render(), /Hidden report detail|Hidden notice detail/);
+    const children = mode.chatContainer.children;
+    mode.chatContainer.children = [children[1], children[3]];
+    for (const width of [1, 8, 40]) {
+      for (const line of mode.chatContainer.render(width)) {
+        assert.ok(visibleWidth(line) <= width, `width=${width}, line=${JSON.stringify(line)}`);
+      }
+    }
+    mode.chatContainer.children = children;
+    assert.deepEqual(report, original);
+    restore();
+    assert.match(render(), /Hidden report detail/);
+  } finally {
+    restore();
+  }
+});
+
 test("compact view keeps errors, supports rebuilt history, and restores on shutdown", async () => {
   const { mode, restore, AssistantMessageComponent, ToolExecutionComponent, Text } = await setup();
   const originalRender = mode.chatContainer.render;

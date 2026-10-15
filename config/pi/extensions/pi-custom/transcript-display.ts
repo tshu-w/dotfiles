@@ -1,5 +1,6 @@
 import {
   AssistantMessageComponent,
+  CustomMessageComponent,
   ToolExecutionComponent,
   keyText,
   type Theme,
@@ -32,6 +33,7 @@ type AssistantView = {
 };
 
 function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void {
+  mode.setToolsExpanded(false);
   const chat = mode.chatContainer;
   const render = chat.render;
   const handleMouse = chat.handleMouse;
@@ -42,21 +44,34 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
   chat.render = (width) => {
     projection.clear();
     let tools: string[] = [];
-    const fold = () => {
-      if (!tools.length) return;
+    const summarize = (summary: string) => {
       const theme = getTheme();
       const key = keyText("app.tools.expand");
-      const label = theme.fg("muted", `... (${tools.length} tool call${tools.length > 1 ? "s" : ""}: ${[...new Set(tools)].join(", ")}`)
+      const label = theme.fg("muted", `... (${summary}`)
         + (key ? theme.fg("muted", ", ") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "")
         + theme.fg("muted", ")");
       const padding = Math.min(mode.outputPad, Math.max(0, width));
       projection.addChild(new Text(`\n${truncateToWidth(" ".repeat(padding) + label, width)}`, 0, 0));
+    };
+    const fold = () => {
+      if (!tools.length) return;
+      summarize(`${tools.length} tool call${tools.length > 1 ? "s" : ""}: ${[...new Set(tools)].join(", ")}`);
       tools = [];
     };
     for (const child of chat.children) {
       if (child instanceof ToolExecutionComponent) {
         tools.push((child as unknown as { toolName: string }).toolName);
         continue;
+      }
+      if (child instanceof CustomMessageComponent) {
+        const { customType, details } = (child as unknown as {
+          message: { customType: string; details?: { user?: boolean; from?: { name?: string; id?: string } } };
+        }).message;
+        if (details?.user !== true) {
+          fold();
+          summarize(`message from ${details?.from?.name ?? details?.from?.id ?? customType}`);
+          continue;
+        }
       }
       if (child instanceof AssistantMessageComponent) {
         const source = child as unknown as AssistantView;
