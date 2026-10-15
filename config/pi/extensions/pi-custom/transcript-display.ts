@@ -72,11 +72,11 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
       }
       if (child instanceof CustomMessageComponent) {
         const { customType, details } = (child as unknown as {
-          message: { customType: string; details?: { user?: boolean; from?: { name?: string; id?: string } } };
+          message: { customType: string; details?: { user?: boolean; sender?: { name?: string; id?: string } } };
         }).message;
         // pi-agents marks the user's own input, which shows as a user message, and names the sender of the others.
         if (details?.user !== true) {
-          const from = customType === "pi-agents" ? details?.from?.name ?? details?.from?.id : undefined;
+          const from = customType === "pi-agents" ? details?.sender?.name ?? details?.sender?.id : undefined;
           fold();
           summarize(from ? `message from ${from}` : `${customType} message`);
           continue;

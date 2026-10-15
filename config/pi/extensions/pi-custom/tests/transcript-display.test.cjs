@@ -134,9 +134,9 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
 
 test("compact view summarizes custom messages but preserves user input across Ctrl+O modes", async () => {
   const { mode, editor, restore, BranchSummaryMessageComponent, CustomMessageComponent, UserMessageComponent, ToolExecutionComponent, Text, visibleWidth, getMarkdownTheme } = await setup();
-  const report = { customType: "pi-agents", content: "First observation\n\nHidden report detail", display: true, details: { from: { name: "reviewer", id: "reviewer-1" } } };
+  const report = { customType: "pi-agents", content: "First observation\n\nHidden report detail", display: true, details: { sender: { name: "reviewer", id: "reviewer-1" } } };
   const original = structuredClone(report);
-  const renderReport = (message, { expanded }) => new Text(`${expanded ? "Expanded detail" : `[worker] from ${message.details.from.name}`}\n${message.content}`, 0, 0);
+  const renderReport = (message, { expanded }) => new Text(`${expanded ? "Expanded detail" : `[worker] from ${message.details.sender.name}`}\n${message.content}`, 0, 0);
   const input = { customType: "worker", content: "Forwarded user input\n\nKeep this instruction", display: true, details: { user: true } };
   const renderInput = (message, { expanded, outputPad }) => expanded ? undefined : new UserMessageComponent(message.content, getMarkdownTheme(), outputPad);
   try {
@@ -160,6 +160,7 @@ test("compact view summarizes custom messages but preserves user input across Ct
     assert.match(compact, /Keep this instruction/);
     editor.handleInput("\x0f");
     assert.match(render(), /Hidden report detail/);
+    assert.match(render(), /\[worker\] from reviewer/);
     assert.match(render(), /Hidden notice detail/);
     assert.doesNotMatch(render(), /Expanded detail/);
     editor.handleInput("\x0f");
