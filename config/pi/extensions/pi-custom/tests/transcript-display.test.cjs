@@ -149,7 +149,7 @@ test("compact view summarizes custom messages but preserves user input across Ct
     mode.renderInitialMessages();
     const render = () => stripAnsi(mode.chatContainer.render(120).join("\n"));
     const compact = render();
-    assert.match(compact, /\.\.\. \(message from reviewer, ctrl\+o to expand\)/);
+    assert.match(compact, /\.\.\. \(pi-agents message, ctrl\+o to expand\)/);
     assert.match(compact, /\.\.\. \(notice message, ctrl\+o to expand\)/);
     assert.match(compact, /\.\.\. \(branch summary, ctrl\+o to expand\)/);
     assert.match(compact, /\.\.\. \(1 tool call: read, ctrl\+o to expand\)/);
