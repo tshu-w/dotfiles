@@ -133,7 +133,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
 });
 
 test("compact view summarizes custom messages but preserves user input across Ctrl+O modes", async () => {
-  const { mode, editor, restore, BranchSummaryMessageComponent, CustomMessageComponent, UserMessageComponent, ToolExecutionComponent, Text, visibleWidth, getMarkdownTheme } = await setup();
+  const { mode, editor, restore, BranchSummaryMessageComponent, CustomMessageComponent, UserMessageComponent, ToolExecutionComponent, Spacer, Text, visibleWidth, getMarkdownTheme } = await setup();
   const report = { customType: "pi-agents", content: "First observation\n\nHidden report detail", display: true, details: { sender: { name: "reviewer", id: "reviewer-1" } } };
   const original = structuredClone(report);
   const renderReport = (message, { expanded }) => new Text(`${expanded ? "Expanded detail" : `[worker] from ${message.details.sender.name}`}\n${message.content}`, 0, 0);
@@ -145,6 +145,7 @@ test("compact view summarizes custom messages but preserves user input across Ct
     mode.chatContainer.addChild(new CustomMessageComponent(input, renderInput));
     mode.chatContainer.addChild(new CustomMessageComponent({ customType: "notice", content: [{ type: "text", text: "Notice preview\n\nHidden notice detail" }], display: true }));
     mode.chatContainer.addChild(new ToolExecutionComponent("read", "1", {}, {}, undefined, mode.ui, "/tmp"));
+    mode.chatContainer.addChild(new Spacer(1));
     mode.chatContainer.addChild(new BranchSummaryMessageComponent({ role: "branchSummary", summary: "Hidden branch detail", fromId: "x", timestamp: 1 }));
     mode.renderInitialMessages();
     const render = () => stripAnsi(mode.chatContainer.render(120).join("\n"));
@@ -152,7 +153,7 @@ test("compact view summarizes custom messages but preserves user input across Ct
     assert.match(compact, /\.\.\. \(pi-agents message, ctrl\+o to expand\)/);
     assert.match(compact, /\.\.\. \(notice message, ctrl\+o to expand\)/);
     assert.match(compact, /\.\.\. \(branch summary, ctrl\+o to expand\)/);
-    assert.match(compact, /\.\.\. \(1 tool call: read, ctrl\+o to expand\)/);
+    assert.match(compact, /\.\.\. \(1 tool call: read, ctrl\+o to expand\) *\n *\n \.\.\. \(branch summary/);
     assert.doesNotMatch(compact, /First observation|Notice preview|Hidden report detail|Hidden notice detail|Expanded detail|reviewer-1|Hidden branch detail/);
     assert.match(compact, /Direct user input/);
     assert.match(compact, /Keep this too/);

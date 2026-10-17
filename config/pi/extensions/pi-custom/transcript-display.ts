@@ -7,7 +7,7 @@ import {
   keyText,
   type Theme,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { Container, Spacer, Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 // Scoped private-API patch: retain Pi's live components and project only their display.
@@ -53,7 +53,9 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         + (key ? theme.fg("muted", ", ") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "")
         + theme.fg("muted", ")");
       const padding = Math.min(mode.outputPad, Math.max(0, width));
-      projection.addChild(new Text(`\n${truncateToWidth(" ".repeat(padding) + label, width)}`, 0, 0));
+      // Pi puts a blank line before summaries already.
+      const gap = projection.children.at(-1) instanceof Spacer ? "" : "\n";
+      projection.addChild(new Text(`${gap}${truncateToWidth(" ".repeat(padding) + label, width)}`, 0, 0));
     };
     const fold = () => {
       if (!tools.length) return;
