@@ -20,6 +20,11 @@ const apiKey = `e30.${account}.sig`;
 const artifact = { type: "compaction", encrypted_content: "offline-artifact" };
 const read = { name: "read", description: "Read", parameters: { type: "object", properties: {} } };
 const extra = { name: "review_extra", description: "Extra", parameters: { type: "object", properties: {} } };
+// Compat of models that left the catalog in Pi 1.4.0, so their conversion paths stay covered.
+const retired = {
+	"gpt-5.5": { supportsOpenAIGrammarTools: true, supportsToolSearch: true, supportsMidConvoSystemMessages: true },
+	"gpt-5.3-codex-spark": { supportsOpenAIGrammarTools: true },
+};
 let core, loader, streamSimple, models, ai;
 let requests = [];
 let expectedUrl = "https://codex.test/codex/responses";
@@ -64,7 +69,8 @@ async function start(t, modelId = "gpt-5.6-sol", createRegistry) {
 	requests = [];
 	expectedUrl = "https://codex.test/codex/responses";
 	localMode = remoteMode = "success";
-	const model = { ...models[modelId], baseUrl: "https://codex.test", cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 } };
+	const listed = models[modelId] ?? { ...models["gpt-5.6-sol"], id: modelId, name: modelId, compat: retired[modelId] };
+	const model = { ...listed, baseUrl: "https://codex.test", cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 } };
 	const session = core.SessionManager.inMemory(agentDir);
 	const loaded = await loader.loadExtensions([join(__dirname, "../index.ts")], agentDir);
 	assert.deepEqual(loaded.errors, []);
@@ -156,7 +162,10 @@ for (const modelId of ["gpt-5.6-sol", "gpt-5.3-codex-spark"]) {
 		runtime.tools = [extra];
 		const original = await payload(runtime, false), replayed = await payload(runtime, true);
 		assert.deepEqual(replayed.tools, original.tools);
-		assert.deepEqual(replayed.tools.map((tool) => tool.name), ["review_extra"]);
+		// Since Pi 1.4.0, models with additional tools get their declarations in the input instead.
+		const additions = (body) => body.input.filter((item) => item.type === "additional_tools");
+		assert.deepEqual(additions(replayed), additions(original));
+		assert.deepEqual((original.tools ?? additions(original).at(-1).tools).map((tool) => tool.name), ["review_extra"]);
 		assert.equal(replayed.instructions, original.instructions);
 		assert.deepEqual(replayed.input.filter((item) => item.role === "developer"), original.input.filter((item) => item.role === "developer"));
 	});
