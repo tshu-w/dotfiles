@@ -47,7 +47,7 @@
       "source": "git:github.com/tshu-w/pi-env"
     }
   ],
-  "lastChangelogVersion": "1.1.0",
+  "lastChangelogVersion": "1.4.0",
   "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
