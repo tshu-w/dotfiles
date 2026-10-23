@@ -43,7 +43,6 @@
       "source": "git:github.com/mattpocock/skills",
       "skills": []
     },
-    "git:github.com/tshu-w/pi-codex-remote",
     {
       "source": "git:github.com/tshu-w/pi-env"
     }
