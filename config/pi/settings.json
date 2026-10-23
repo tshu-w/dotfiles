@@ -48,7 +48,7 @@
     }
   ],
   "lastChangelogVersion": "1.1.0",
-  "theme": "light/dark",
+  "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
   "retry": {
@@ -80,5 +80,6 @@
   "defaultProjectTrust": "always",
   "tuiMode": "fullscreen",
   "showHardwareCursor": true,
-  "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1"
+  "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1",
+  "hideThinkingBlock": true
 }
