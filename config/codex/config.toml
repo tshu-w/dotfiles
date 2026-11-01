@@ -43,7 +43,7 @@ git-pull-request-merge-method = "squash"
 keepRemoteControlAwakeWhilePluggedIn = true
 mac-menu-bar-enabled = false
 preventSleepWhileRunning = false
-projectlessWorkspaceRoot = "/Users/wangtianshu/Library/CloudStorage/Dropbox/Documents/Codex"
+projectlessWorkspaceRoot = "/Users/wangtianshu/Developer/Codex"
 usePointerCursors = false
 
 [projects."/Users/wangtianshu"]
