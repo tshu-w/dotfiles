@@ -45,6 +45,10 @@
     },
     {
       "source": "git:github.com/tshu-w/pi-env"
+    },
+    {
+      "source": "git:github.com/vercel-labs/agent-desktop",
+      "skills": ["skills/agent-desktop"]
     }
   ],
   "lastChangelogVersion": "1.4.0",
