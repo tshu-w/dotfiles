@@ -221,3 +221,4 @@ mas "WeChat", id: 836500024
 npm "@browserbridge/bbx"
 npm "agent-desktop"
 npm "corepack"
+npm "pi-agents"
