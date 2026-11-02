@@ -11,6 +11,7 @@ import { createToolServer } from "./mcp-server.js";
 import { makePromptStream, userMessage, type PromptStream } from "./prompt-stream.js";
 import { toolResultToMcpContent, type McpResult } from "./extract-tool-results.js";
 import { buildClaudeSystemPrompt } from "./system-prompt.js";
+import { normalizeClaudeError, subscriptionEnvironment, USAGE_CREDITS_ERROR } from "./subscription.js";
 
 export interface ClaudeSession {
   piSessionId: string;
@@ -88,15 +89,12 @@ export function createClaudeBridge(options: {
   let saved: ClaudeSession | undefined;
   let disposed = false;
   let generation = 0;
+  let billingError: string | undefined;
 
   function terminal(q: RunningQuery, reason: AssistantMessage["stopReason"], error?: string) {
     if (!q.stream) return;
     q.output.stopReason = reason;
-    if (error) {
-      const reset = error.match(/·\s*resets[^\n]*/)?.[0];
-      q.output.errorMessage = reason === "error" && /you've hit your session limit/i.test(error)
-        ? `Claude Code quota exceeded${reset ? ` ${reset}` : ""}` : error;
-    }
+    if (error) q.output.errorMessage = reason === "error" ? normalizeClaudeError(error) : error;
     if (reason === "error" || reason === "aborted") {
       q.stream.push({ type: "error", reason, error: q.output });
     } else {
@@ -208,6 +206,10 @@ export function createClaudeBridge(options: {
     try {
       for await (const message of q.query!) {
         if (q.stopped) return;
+        if (message.type === "rate_limit_event" && (message.rate_limit_info.isUsingOverage === true
+          || message.rate_limit_info.errorCode === "credits_required")) {
+          throw new Error(USAGE_CREDITS_ERROR);
+        }
         if (message.type === "system" && message.subtype === "init") q.sessionId = message.session_id;
         if (message.type === "assistant") {
           q.lastUuid = message.uuid;
@@ -237,13 +239,20 @@ export function createClaudeBridge(options: {
       }
       if (!q.stopped) throw new Error("Claude Code stream ended without a result");
     } catch (error) {
-      stop(q, error instanceof Error ? error : new Error(String(error)));
+      const message = normalizeClaudeError(error);
+      if (message.startsWith(USAGE_CREDITS_ERROR)) {
+        // A rate-limit event can arrive after toolUse ended the Pi stream.
+        // Block rebuilding that query on the next tool-result continuation.
+        billingError = message;
+        for (const active of [...running]) stop(active, new Error(message));
+      } else stop(q, new Error(message));
     }
   }
 
   async function start(model: Model<any>, context: TranscriptContext, request: SimpleStreamOptions, stream: AssistantMessageEventStream) {
     if (disposed) throw new Error("Claude Code provider has been shut down");
     request.signal?.throwIfAborted();
+    if (billingError) throw new Error(billingError);
     if (request.fetch) throw new Error("Claude Code uses an SDK subprocess and cannot accept a custom fetch");
     const system = getCurrentSystemMessage(context.messages);
     const originalPrompt = system ? getSystemMessageText(system) : "";
@@ -264,6 +273,8 @@ export function createClaudeBridge(options: {
       : effective.systemPrompt;
     request.signal?.throwIfAborted();
     if (disposed || generation !== startedGeneration) throw new Error("Pi session context changed before the request started");
+    if (billingError) throw new Error(billingError);
+    const env = subscriptionEnvironment(request);
     const configuration = digest([model.id, systemPrompt, tools, reasoning, maxTokens, request.thinkingBudgets, request.env, request.headers, request.cacheRetention]);
     const incoming = hashes(messages);
     const resultIds = new Set(messages.filter((m) => m.role === "toolResult").map((m) => m.toolCallId));
@@ -357,17 +368,15 @@ export function createClaudeBridge(options: {
         thinking = { type: "enabled", budgetTokens: Math.min(budget, Math.max(0, outputTokens - 1024)) };
       }
     }
-    const headers = Object.entries(request.headers ?? {}).filter(([, value]) => value !== null)
-      .map(([name, value]) => `${name}: ${value}`).join("\n");
     const sdkOptions: Options = {
       cwd, model: model.id, tools: [], mcpServers: tools.length ? { pi: server } : {},
       allowedTools: [...names.keys()], permissionMode: "dontAsk",
       systemPrompt, includePartialMessages: true,
       settingSources: [], skills: [], settings: { autoMemoryEnabled: false, claudeMdExcludes: ["**/CLAUDE.md", "**/.claude/rules/**"] },
-      env: { ...process.env, ...request.env,
+      env: { ...env,
+        CLAUDE_CODE_MAX_RETRIES: "0",
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", ENABLE_CLAUDEAI_MCP_SERVERS: "0",
         ENABLE_TOOL_SEARCH: "false", DISABLE_AUTO_COMPACT: "1", CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(outputTokens),
-        ...(headers ? { ANTHROPIC_CUSTOM_HEADERS: headers } : {}),
         ...(request.cacheRetention === "none" ? { DISABLE_PROMPT_CACHING: "1" } : {}),
       },
       extraArgs: { "strict-mcp-config": null },
@@ -377,6 +386,12 @@ export function createClaudeBridge(options: {
     };
     try {
       q.query = runQuery({ prompt: input.stream, options: sdkOptions });
+      const account = await q.query.accountInfo();
+      if (q.stopped) return;
+      if (account.apiProvider !== "firstParty" || !account.subscriptionType
+        || (account.apiKeySource && !["none", "oauth"].includes(account.apiKeySource))) {
+        throw new Error("Claude Code billing: this provider requires a first-party subscription login. Run `claude auth login` with your Claude subscription account.");
+      }
       void input.push(userMessage(prompt.length ? prompt as any : "Continue from the conversation and tool results above."))
         .catch((error) => { if (!q.stopped) stop(q, error); });
       void consume(q, names);
@@ -391,7 +406,7 @@ export function createClaudeBridge(options: {
         if (owner) { stop(owner, error instanceof Error ? error : new Error(String(error)), request.signal?.aborted); return; }
         const output = outputFor(model);
         output.stopReason = request.signal?.aborted ? "aborted" : "error";
-        output.errorMessage = error instanceof Error ? error.message : String(error);
+        output.errorMessage = normalizeClaudeError(error);
         stream.push({ type: "error", reason: output.stopReason, error: output });
         stream.end();
       });

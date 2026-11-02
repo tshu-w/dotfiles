@@ -27,7 +27,7 @@ export function registerClaude(pi: ExtensionAPI) {
     apiKey: "claude-code-managed",
     models: getModels("anthropic").filter((model) => !/-\d{8}$/.test(model.id)).map((model) => ({
       id: model.id,
-      name: `${model.name} (Claude Code)`,
+      name: model.name,
       reasoning: model.reasoning,
       thinkingLevelMap: model.thinkingLevelMap,
       compat: model.compat,

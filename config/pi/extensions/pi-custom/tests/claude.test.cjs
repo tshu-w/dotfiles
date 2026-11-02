@@ -39,7 +39,7 @@ before(async () => {
   model = { ...ai.getModel("anthropic", "claude-haiku-4-5"), provider: "claude-code", api: "claude-code" };
 });
 
-function harness(t) {
+function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subscriptionType: "max" })) {
   const calls = [], saved = [], traces = [];
   const query = ({ prompt, options }) => {
     const queue = [];
@@ -49,7 +49,7 @@ function harness(t) {
     const uuid = session.addAssistantMessage([{ type: "text", text: "fixture" }]);
     session.save();
     const call = {
-      options, prompts: [], sessionId: options.resume ?? session.sessionId, uuid,
+      options, accountInfo, prompts: [], sessionId: options.resume ?? session.sessionId, uuid,
       get closed() { return closed; },
       emit(message) { queue.push(message); wake?.(); wake = undefined; },
       event(event) { this.emit({ type: "stream_event", parent_tool_use_id: null, event }); },
@@ -105,6 +105,69 @@ function harness(t) {
 }
 
 const callTool = (client, id) => client.callTool({ name: "echo", arguments: { value: id }, _meta: { "claudecode/toolUseId": id } });
+
+test("subscription requests strip API keys without changing the parent environment", async (t) => {
+  const h = harness(t), original = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "parent-key";
+  t.after(() => { if (original === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = original; });
+  const stream = h.stream([user("hello")], { env: {
+    ANTHROPIC_API_KEY: "request-key", CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    HTTPS_PROXY: "http://127.0.0.1:7890", CLAUDE_CODE_USE_BEDROCK: "false",
+  } });
+  await until(() => h.calls.length === 1);
+  const env = h.calls[0].options.env;
+  assert.equal(env.ANTHROPIC_API_KEY, undefined);
+  assert.equal(process.env.ANTHROPIC_API_KEY, "parent-key");
+  assert.equal(env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
+  assert.equal(env.HTTPS_PROXY, "http://127.0.0.1:7890");
+  h.calls[0].text("hello"); h.calls[0].finish();
+  assert.equal((await stream.result()).stopReason, "stop");
+});
+
+test("subscription requests reject auth and backend overrides before launching the SDK", { timeout: 1000 }, async (t) => {
+  const h = harness(t);
+  for (const env of [
+    { ANTHROPIC_AUTH_TOKEN: "secret-value" },
+    { CLAUDE_CODE_USE_BEDROCK: "1" },
+    { ANTHROPIC_CUSTOM_HEADERS: "X-Test: allowed\nAuthorization: Bearer secret-value" },
+  ]) {
+    const answer = await h.stream([user("blocked")], { env }).result();
+    assert.match(answer.errorMessage, /Claude Code billing/);
+    assert.doesNotMatch(answer.errorMessage, /secret-value/);
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+  }
+  const answer = await h.stream([user("blocked")], { headers: { "x-api-key": "secret-value" } }).result();
+  assert.match(answer.errorMessage, /Claude Code billing/);
+  assert.equal(h.calls.length, 0);
+});
+
+test("account verification precedes prompts and refuses non-subscription logins", { timeout: 3000 }, async (t) => {
+  for (const account of [
+    {}, { apiProvider: "gateway", subscriptionType: "max" },
+    { apiProvider: "firstParty", subscriptionType: "max", apiKeySource: "apiKeyHelper" },
+  ]) {
+    const h = harness(t, async () => account);
+    const stream = h.stream([user("must not send")]);
+    await until(() => h.calls.length === 1);
+    await tick();
+    assert.equal(h.calls[0].prompts.length, 0);
+    const answer = await stream.result();
+    assert.match(answer.errorMessage, /subscription login/);
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+    assert.equal(h.calls[0].closed, true);
+  }
+  let resolve;
+  const h = harness(t, () => new Promise((done) => { resolve = done; }));
+  const controller = new AbortController();
+  const stream = h.stream([user("cancel before login check")], { signal: controller.signal });
+  await until(() => h.calls.length === 1);
+  controller.abort();
+  assert.equal((await stream.result()).stopReason, "aborted");
+  assert.equal(h.calls[0].closed, true);
+  resolve({ apiProvider: "firstParty", subscriptionType: "max" });
+  await tick();
+  assert.equal(h.calls[0].prompts.length, 0);
+});
 
 test("streams text, usage and payload edits; resumes and restores unchanged history", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
@@ -212,9 +275,11 @@ test("custom sections survive projection and full prompt overrides remain exact"
     ...native.sections, docs: native.sections.docs.replace("</docs>", "Extra user instructions.\n</docs>"),
   } };
   const forced = buildSystemPromptState({ cwd: directory, forceSystemPrompt: "<docs>Use echo exactly as written.</docs>" });
+  const explicitDefault = buildSystemPromptState({ cwd: directory, customPrompt: native.sections.preamble });
   const cases = [
     { state, retained: Object.values(state.sections) },
-    { state: withDocsAddition, retained: [withDocsAddition.sections.docs] },
+    { state: explicitDefault, retained: [native.sections.preamble] },
+    { state: withDocsAddition, retained: [withDocsAddition.sections.docs, native.sections.preamble] },
     { state: forced, exact: forced.content },
     { state: native, hook: (p) => { p.systemPrompt = "Exact payload-hook override."; }, exact: "Exact payload-hook override." },
   ];
@@ -361,6 +426,100 @@ test("session exhaustion preserves reset time without retries while throttling r
   await until(() => h.calls.length === 2);
   h.calls[1].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text: "Too many requests" }] } });
   assert.equal(ai.isRetryableAssistantError(await transient.result()), true);
+});
+
+test("context errors enable compaction instead of retrying unchanged history", async (t) => {
+  const h = harness(t), stream = h.stream([user("large")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["prompt is too long: 210000 tokens"] });
+  const answer = await stream.result();
+  assert.equal(ai.isContextOverflow(answer, model.contextWindow), true);
+  assert.equal(ai.isRetryableAssistantError(answer), false);
+});
+
+test("usage-credit rejections never retry or launch subsequent requests", async (t) => {
+  const h = harness(t), stream = h.stream([user("billing")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].emit({ type: "assistant", error: "rate_limit", message: {
+    content: [{ type: "text", text: "429: third-party apps now draw from your extra usage" }],
+  } });
+  const answer = await stream.result();
+  assert.equal(answer.stopReason, "error");
+  assert.equal(ai.isRetryableAssistantError(answer), false);
+  assert.equal((await h.stream([user("blocked retry")]).result()).stopReason, "error");
+  assert.equal(h.calls.length, 1);
+});
+
+test("usage-credit events stop generation and block later requests, including a tool-gap event", { timeout: 3000 }, async (t) => {
+  for (const gap of [false, true]) {
+    const h = harness(t), history = [user("credits")], stream = h.stream(history);
+    await until(() => h.calls.length === 1);
+    const q = h.calls[0];
+    let answer, pending;
+    if (gap) {
+      const client = await q.client();
+      q.tools(["call-a"]); answer = await stream.result();
+      pending = callTool(client, "call-a");
+      await tick();
+    }
+    q.emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed", isUsingOverage: true } });
+    await tick();
+    assert.equal(q.closed, true);
+    if (pending) assert.equal((await pending).isError, true);
+    else {
+      answer = await stream.result();
+      assert.equal(answer.stopReason, "error");
+      assert.equal(ai.isRetryableAssistantError(answer), false);
+    }
+    h.bridge.reset();
+    const next = await h.stream(gap ? [...history, answer, result("call-a", "done")] : history).result();
+    assert.match(next.errorMessage, /Claude Code billing/);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.saved.length, 0);
+  }
+});
+
+test("usage-credit stop closes concurrent initialization and pending MCP results", async (t) => {
+  let checks = 0, finishCheck;
+  const h = harness(t, () => ++checks === 2
+    ? new Promise((resolve) => { finishCheck = resolve; })
+    : Promise.resolve({ apiProvider: "firstParty", subscriptionType: "max", apiKeySource: "oauth" }));
+  const first = h.stream([user("active")]);
+  await until(() => h.calls.length === 1);
+  const initializing = h.stream([user("waiting for auth")], { sessionId: "auxiliary" });
+  await until(() => h.calls.length === 2);
+  assert.equal(h.calls[1].prompts.length, 0);
+  const toolStream = h.stream([user("pending tool")], { sessionId: "tool-session" });
+  await until(() => h.calls.length === 3);
+  const client = await h.calls[2].client();
+  h.calls[2].tools(["call-a"]); await toolStream.result();
+  const pending = callTool(client, "call-a"); await tick();
+  h.calls[0].emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed", isUsingOverage: true } });
+  assert.match((await first.result()).errorMessage, /Claude Code billing/);
+  assert.match((await initializing.result()).errorMessage, /Claude Code billing/);
+  assert.equal((await pending).isError, true);
+  assert.ok(h.calls.every((call) => call.closed));
+  finishCheck({ apiProvider: "firstParty", subscriptionType: "max" });
+  await tick();
+  assert.equal(h.calls[1].prompts.length, 0);
+});
+
+test("credits_required refuses generation without waiting for an overage charge", async (t) => {
+  const h = harness(t), stream = h.stream([user("credits required")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].emit({ type: "rate_limit_event", rate_limit_info: { status: "rejected", errorCode: "credits_required" } });
+  const answer = await stream.result();
+  assert.match(answer.errorMessage, /Claude Code billing/);
+  assert.equal(ai.isRetryableAssistantError(answer), false);
+  assert.equal(h.calls[0].closed, true);
+});
+
+test("ordinary subscription rate-limit events do not stop responses", async (t) => {
+  const h = harness(t), stream = h.stream([user("plan")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", isUsingOverage: false } });
+  h.calls[0].text("plan response"); h.calls[0].finish();
+  assert.equal((await stream.result()).stopReason, "stop");
 });
 
 test("changed tool declarations rebuild a paused query and none suppresses all tools", { timeout: 10000 }, async (t) => {

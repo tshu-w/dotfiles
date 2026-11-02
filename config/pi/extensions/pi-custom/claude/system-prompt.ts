@@ -4,12 +4,10 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { getSystemMessageText, type SystemMessage } from "@earendil-works/pi-ai";
 import { getPackageDir } from "@earendil-works/pi-coding-agent";
 
-const DEFAULT_PREAMBLE = "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
-
 // Pi does not publicly export this builder; integration tests track its internal API.
-async function defaultDocs(): Promise<string> {
+async function defaultSections(): Promise<Record<string, string>> {
   const { buildSystemPromptSections } = await import(pathToFileURL(join(getPackageDir(), "dist/core/system-prompt.js")).href);
-  return buildSystemPromptSections({ cwd: "" }).docs;
+  return buildSystemPromptSections({ cwd: "" });
 }
 
 function normalizeDocsInstallPaths(text: string): string {
@@ -36,8 +34,12 @@ export async function buildClaudeSystemPrompt(message: SystemMessage | undefined
   // Forced prompts and auxiliary requests are opaque, exact replacements.
   if (!message?.sections) return message ? getSystemMessageText(message) : "";
   const sections = { ...message.sections };
-  if (sections.preamble === DEFAULT_PREAMBLE) delete sections.preamble;
-  if (sections.docs && normalizeDocsInstallPaths(sections.docs) === normalizeDocsInstallPaths(await defaultDocs())) delete sections.docs;
+  const defaults = await defaultSections();
+  if (sections.docs && normalizeDocsInstallPaths(sections.docs) === normalizeDocsInstallPaths(defaults.docs)) {
+    // Custom prefixes omit the default docs; keep ambiguous/customized prompts intact.
+    if (sections.preamble === defaults.preamble) delete sections.preamble;
+    delete sections.docs;
+  }
   for (const name of ["tools", "rules", "skills"]) {
     if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
   }
