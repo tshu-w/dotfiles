@@ -61,7 +61,7 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
   const handleMouse = chat.handleMouse;
   const invalidate = chat.invalidate;
   const projection = new Container();
-  const assistants = new WeakMap<Component, { key: string; component: AssistantMessageComponent }>();
+  const assistants = new WeakMap<Component, { key: string; outputPad: number; component: AssistantMessageComponent }>();
 
   chat.render = (width) => {
     projection.clear();
@@ -127,9 +127,11 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         const key = JSON.stringify([content, shown.stopReason, shown.errorMessage, source.isStreaming, source.outputPad]);
         let cached = assistants.get(child);
         if (!cached || cached.key !== key) {
-          const component = new AssistantMessageComponent(undefined, true, source.markdownTheme, "", source.outputPad, source.markdownTransformers);
+          const component = cached?.outputPad === source.outputPad
+            ? cached.component
+            : new AssistantMessageComponent(undefined, true, source.markdownTheme, "", source.outputPad, source.markdownTransformers);
           component.updateContent(shown, source.isStreaming);
-          cached = { key, component };
+          cached = { key, outputPad: source.outputPad, component };
           assistants.set(child, cached);
         }
         projection.addChild(cached.component);

@@ -155,9 +155,9 @@ async function main() {
 		{ content: [{ type: "text", text: searchContent }], details: { count: 1 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: searchArgs, isError: false },
+		{ args: searchArgs, isError: false, keyText: () => "ctrl+y" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
-	assert.match(collapsedSearch, /^- Example — https:\/\/example\.com\n\.\.\. \(1 more lines,/);
+	assert.match(collapsedSearch, /^- Example — https:\/\/example\.com\n\.\.\. \(1 more lines, ctrl\+y to expand\)/);
 	assert.doesNotMatch(collapsedSearch, /Snippet:/);
 	const sourceOnly = search.renderResult(
 		{ content: [{ type: "text", text: "- Example" }], details: { count: 1 } },

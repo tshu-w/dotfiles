@@ -653,7 +653,7 @@ export default function (pi: ExtensionAPI) {
 					const lines = preview.render(width);
 					const hidden = full.render(width).length - lines.length;
 					const notices = [];
-					if (hidden > 0) notices.push(theme.fg("muted", `... (${hidden} more lines, ${keyText("app.tools.expand")} to expand)`));
+					if (hidden > 0) notices.push(theme.fg("muted", `... (${hidden} more lines, ${((context as { keyText?: typeof keyText }).keyText ?? keyText)("app.tools.expand")} to expand)`));
 					if (truncated) notices.push(theme.fg("warning", "output truncated"));
 					return [...lines, ...new Text(notices.join("\n"), 0, 0).render(width)];
 				},
@@ -766,7 +766,7 @@ export default function (pi: ExtensionAPI) {
 					const display = [...lines];
 					const hidden = full.render(width).length;
 					if (!noMatches && hidden > 0) {
-						display.push(theme.fg("muted", `... (${hidden} more lines, ${keyText("app.tools.expand")} to expand)`));
+						display.push(theme.fg("muted", `... (${hidden} more lines, ${((context as { keyText?: typeof keyText }).keyText ?? keyText)("app.tools.expand")} to expand)`));
 					}
 					if (details?.nextOffset !== undefined) {
 						display.push(theme.fg("dim", `[${details.total! - details.nextOffset} more results. Use offset=${details.nextOffset} with the same url and pattern to continue.]`));
