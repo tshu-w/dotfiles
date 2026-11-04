@@ -48,10 +48,12 @@
     },
     {
       "source": "git:github.com/vercel-labs/agent-desktop",
-      "skills": ["skills/agent-desktop"]
+      "skills": [
+        "skills/agent-desktop"
+      ]
     }
   ],
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.0",
   "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
@@ -71,6 +73,11 @@
       "extensions/pi-custom/index.ts"
     ]
   },
+  "pi-tape": {
+    "dream": {
+      "enabled": true
+    }
+  },
   "enabledModels": [
     "claude-code/claude-opus-5-5",
     "openai/gpt-6-astra",
@@ -85,5 +92,9 @@
   "tuiMode": "fullscreen",
   "showHardwareCursor": true,
   "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1",
-  "hideThinkingBlock": true
+  "hideThinkingBlock": true,
+  "extensionChangelogVersions": {
+    "{\"source\":\"git:github.com/tshu-w/pi-agents\",\"scope\":\"user\"}": "0.4.0",
+    "{\"source\":\"npm:@marckrenn/pi-sub-status\",\"scope\":\"user\"}": "1.5.0"
+  }
 }

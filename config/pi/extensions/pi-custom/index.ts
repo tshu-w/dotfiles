@@ -312,7 +312,7 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
   suppressPackageUpdateBanner();
 
   pi.on("session_start", (event, ctx) => {
-    if (event.reason !== "startup") return;
+    if (event.reason !== "startup" || ctx.mode !== "tui") return;
     if (packageUpdateStarted || process.env.PI_OFFLINE) return;
     packageUpdateStarted = true;
 
