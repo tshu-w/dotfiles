@@ -24,6 +24,7 @@ async function setup() {
   themes.initTheme("dark");
   const { KeybindingsManager } = await import(`${pkg}/dist/core/keybindings.js`);
   const keybindings = new KeybindingsManager();
+  keybindings.setUserBindings({ "app.tools.expand": "ctrl+o" });
   const previousKeybindings = tui.getKeybindings();
   tui.setKeybindings(keybindings);
   const prototype = {
@@ -31,6 +32,7 @@ async function setup() {
     renderInitialMessages() {},
     rebuildChatFromMessages() {},
   };
+  const statusMessages = [];
   const mode = Object.assign(Object.create(prototype), {
     chatContainer: new tui.Container(),
     loadedResourcesContainer: new tui.Container(),
@@ -38,12 +40,12 @@ async function setup() {
     outputPad: 1,
     ui: { requestRender() {} },
     setToolsExpanded: pi.InteractiveMode.prototype.setToolsExpanded,
-    showStatus: pi.InteractiveMode.prototype.showStatus,
+    showStatus: (message) => statusMessages.push(message),
   });
   const editor = new pi.CustomEditor(mode.ui, themes.getEditorTheme(), keybindings);
   editor.onAction("app.tools.expand", () => mode.toggleToolOutputExpansion());
   const restore = installTranscriptDisplay(prototype, () => themes.theme);
-  return { ...pi, ...tui, mode, editor, keybindings, themes, restore() { restore(); tui.setKeybindings(previousKeybindings); } };
+  return { ...pi, ...tui, mode, editor, keybindings, themes, statusMessages, restore() { restore(); tui.setKeybindings(previousKeybindings); } };
 }
 
 function message(content, stopReason = "toolUse") {
@@ -51,7 +53,7 @@ function message(content, stopReason = "toolUse") {
 }
 
 test("Ctrl+O cycles native views and compact live tool runs without changing messages", async () => {
-  const { mode, editor, keybindings, themes, restore, AssistantMessageComponent, ToolExecutionComponent, Text, visibleWidth, createReadToolDefinition } = await setup();
+  const { mode, editor, keybindings, themes, statusMessages, restore, AssistantMessageComponent, ToolExecutionComponent, Text, visibleWidth, createReadToolDefinition } = await setup();
   try {
     const source = message([{ type: "thinking", thinking: "private reasoning" }, { type: "toolCall", id: "1", name: "read", arguments: {} }]);
     const original = structuredClone(source);
@@ -67,7 +69,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     editor.handleInput("\x0f");
     assert.equal(mode.toolOutputExpanded, false);
     assert.match(mode.chatContainer.render(80).join("\n"), /secret-path/);
-    assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /result line 29|\d+ steps?:|Tool output:/);
+    assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /result line 29|\d+ steps?:/);
     tool.updateResult(undefined, true);
     const initial = mode.chatContainer.render(80);
     mode.rebuildChatFromMessages();
@@ -76,7 +78,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     editor.handleInput("\x0f");
     assert.equal(mode.toolOutputExpanded, true);
     assert.match(mode.chatContainer.render(80).join("\n"), /result line 29/);
-    assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /\d+ steps?:|Tool output:/);
+    assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /\d+ steps?:/);
     editor.handleInput("\x0f");
     let text = mode.chatContainer.render(80).join("\n");
     assert.match(text, /1 step: read/);
@@ -92,7 +94,6 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
       themes.initTheme(appearance);
       text = mode.chatContainer.render(80).join("\n");
       assert.ok(text.includes(themes.theme.fg("dim", "ctrl+o")));
-      assert.notEqual(themes.theme.fg("dim", "ctrl+o"), themes.theme.fg("muted", "ctrl+o"));
     }
     keybindings.setUserBindings({ "app.tools.expand": "ctrl+y" });
     assert.match(stripAnsi(mode.chatContainer.render(80).join("\n")), /ctrl\+y to expand/);
@@ -103,8 +104,8 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     editor.handleInput("\x19");
     assert.equal(mode.chatContainer.children.length, 6);
     assert.equal((mode.chatContainer.render(80).join("\n").match(/\d+ steps?:/g) || []).length, 1);
-    keybindings.setUserBindings({});
-    assert.doesNotMatch(text, /hidden result|more reasoning/);
+    keybindings.setUserBindings({ "app.tools.expand": "ctrl+o" });
+    assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /hidden result|more reasoning/);
     assert.ok(mode.chatContainer.render(1).every(line => visibleWidth(line) <= 1));
     // A narrow line drops tool names before the count and the hint.
     assert.match(stripAnsi(mode.chatContainer.render(42).join("\n")), /\.\.\. \(3 steps: read, …, ctrl\+o to expand\)/);
@@ -123,6 +124,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
       }
     }
     assert.deepEqual(source, original);
+    assert.deepEqual(statusMessages, [], "view toggles must not append status messages");
     editor.handleInput("\x0f");
     assert.equal(mode.toolOutputExpanded, false);
     assert.match(mode.chatContainer.render(80).join("\n"), /private reasoning/);

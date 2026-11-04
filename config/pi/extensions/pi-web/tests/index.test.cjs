@@ -32,7 +32,7 @@ async function main() {
 	const multiLine = Array.from({ length: MAX_LINES + 10 }, (_, i) => `line ${i}`).join("\n");
 	const multiLineResult = await boundToolOutput(multiLine);
 	assert.equal(multiLineResult.truncation.truncated, true);
-	assert.ok(multiLineResult.text.includes("[Showing lines 1-2000 of 2010."));
+	assert.ok(multiLineResult.text.includes(`[Showing lines 1-${MAX_LINES} of ${MAX_LINES + 10}.`));
 	assert.ok(multiLineResult.truncation.outputBytes <= MAX_BYTES);
 	assert.ok(multiLineResult.truncation.outputLines <= MAX_LINES);
 	assert.equal(readFileSync(multiLineResult.fullOutputPath, "utf8"), multiLine);
@@ -141,7 +141,6 @@ async function main() {
 		{ args: fetchArgs, isError: false },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(noMatchesFetch, "Example (4 chars, no matches)");
-	assert.doesNotMatch(noMatchesFetch, /expand/);
 	const expandedContent = "Title: Example\n\n# Body\n\nfull result";
 	const expandedFetch = fetchTool.renderResult(
 		{ content: [{ type: "text", text: expandedContent }], details: { title: "Example", chars: 18 } },
@@ -717,7 +716,6 @@ async function main() {
 		assert.deepEqual(searchResult.details, { count: 1 });
 		assert.equal(searchResult.content[0].text,
 			"- Example — https://example.com\n  Snippet: first second");
-		assert.doesNotMatch(searchResult.content[0].text, /provider-generated answer/);
 
 		process.env.EXA_API_KEY = "test-key";
 		process.env.JINA_API_KEY = "test-key";
