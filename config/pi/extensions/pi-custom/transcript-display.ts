@@ -117,22 +117,23 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
     const rule = (head: string, retry = "", names: string[] = []) => {
       const hint = key ? theme.fg("muted", head || retry ? ", " : "") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "";
       const label = (shown: string[]) => theme.fg("muted", head) + retry + theme.fg("muted", shown.length ? `: ${shown.join(", ")}` : "") + hint;
-      const room = Math.max(0, width - 4);
+      // The rule is indented like Pi's text.
+      const inner = Math.max(0, width - 2 * mode.outputPad);
+      const room = Math.max(0, inner - 8);
       let text = label(names);
       for (let count = names.length - 1; count >= 0 && visibleWidth(text) > room; count--) text = label([...names.slice(0, count), "…"]);
       text = truncateToWidth(text, room);
       // Pi puts a blank line before summaries already.
       const gap = projection.children.at(-1) instanceof Spacer ? "" : "\n";
-      const line = theme.fg("borderMuted", "─ ") + text + theme.fg("borderMuted", ` ${"─".repeat(Math.max(1, width - 3 - visibleWidth(text)))}`);
-      projection.addChild(new Text(`${gap}${truncateToWidth(line, width)}`, 0, 0));
+      const line = theme.fg("borderMuted", "─── ") + text + theme.fg("borderMuted", " ───");
+      projection.addChild(new Text(`${gap}${truncateToWidth(line, inner)}`, mode.outputPad, 0));
     };
     const fold = () => {
       if (!steps && !retries && !notes) return;
       let head = steps ? `${steps} step${steps > 1 ? "s" : ""}` : "";
-      // The first line of a turn tells how long it took, or has taken so far.
-      if (!timed && current.start !== undefined) {
-        const end = current === running ? Date.now() : current.end;
-        if (end !== undefined) head = [`${current === running ? "Working" : "Worked"} for ${elapsed(end - current.start)}`, head].filter(Boolean).join(", ");
+      // The first line of a finished turn tells how long it took; Pi shows a running turn's activity itself.
+      if (!timed && current !== running && current.start !== undefined && current.end !== undefined) {
+        head = [`Worked for ${elapsed(current.end - current.start)}`, head].filter(Boolean).join(", ");
       }
       timed = true;
       const names = [...new Set(tools), ...(messages ? ["messages"] : [])];
@@ -150,12 +151,6 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         timed = false;
       }
       if (child instanceof ToolExecutionComponent) {
-        // The running turn shows its unfinished tool calls as Pi renders them.
-        if (current === running && (child as unknown as { isPartial: boolean }).isPartial) {
-          fold();
-          projection.addChild(child);
-          continue;
-        }
         steps++;
         tools.push((child as unknown as { toolName: string }).toolName);
         continue;
