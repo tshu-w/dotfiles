@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,27 +51,13 @@ function elementFor(name, { sender, text, attachments = [], reply_to, ...fields 
 
 export const promptFor = (message) => elementFor("telegram-message", payloadFor(message));
 
-export function piArgs(session) {
-  // Sessions live in Pi's default directory for the Assistant workspace; --session-id keeps that cwd.
-  return ["--mode", "json", "--approve", "--exclude-tools", "questionnaire",
-    ...(session?.id ? ["--session-id", session.id] : ["--name", `telegram:${session.chat}`])];
-}
+// Each chat is the main Agent of pi-agents entry `telegram:<chat_id>`, in a host that keeps the options
+// of the client that started it. Milo runs in the home directory and loads its resources from here.
+export const piArgs = (chat) => ["main", "--name", `telegram:${chat}`, "--mode", "json", "--approve", "--exclude-tools", "questionnaire",
+  "--append-system-prompt", path.join(root, "milo.md"), "--skill", path.join(root, "skills/telegram"),
+  ...["env.ts", "model-fallback.ts"].flatMap((file) => ["--extension", path.join(root, "extensions", file)])];
 
-// Pi stores sessions by working directory and --session-id resolves within the current one, so
-// prefer the copy whose header records this workspace.
-export function sessionFile(root, id, cwd) {
-  if (!existsSync(root)) return;
-  const suffix = `_${id}.jsonl`;
-  const candidates = readdirSync(root, { withFileTypes: true, recursive: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
-    .map((entry) => path.join(entry.parentPath, entry.name));
-  return candidates.find((file) => {
-    try { return JSON.parse(readFileSync(file, "utf8").split("\n", 1)[0]).cwd === cwd; }
-    catch { return false; }
-  }) ?? candidates[0];
-}
-
-// One Pi process per message: the prompt goes to stdin and progress arrives as JSON events.
+// One `pd` client per message: the prompt goes to stdin and progress arrives as JSON events.
 export class PiRun {
   constructor(child, onEvent = () => {}, killTimeoutMs = 5000) {
     this.child = child;
@@ -79,11 +65,8 @@ export class PiRun {
     let buffer = "";
     let finalError;
     let settled = false;
-    let sessionStarted;
-    this.session = new Promise((resolve) => { sessionStarted = resolve; });
     this.done = new Promise((resolve, reject) => {
       const receive = (event) => {
-        if (event.type === "session") sessionStarted(event.id);
         if (event.type === "message_end" && event.message?.role === "assistant") {
           finalError = event.message.stopReason === "error" ? event.message.errorMessage || "Pi request failed" : undefined;
         }
@@ -110,7 +93,6 @@ export class PiRun {
       child.on("error", reject);
       child.once("close", (code, signal) => {
         clearTimeout(this.killTimer);
-        sessionStarted(undefined);
         if (this.stopped) resolve();
         else if (!settled) reject(new Error(`Pi exited (${signal || code})`));
       });
@@ -204,16 +186,16 @@ export class ProgressReporter {
 }
 
 export class Assistant {
-  constructor({ stateFile, api, allowedUsers, createPi, sessionExists, log = console.error, progressDelay = 1000 }) {
+  constructor({ stateFile, mainsFile, api, allowedUsers, createPi, log = console.error, progressDelay = 1000 }) {
     this.stateFile = stateFile;
+    this.mainsFile = mainsFile;
     this.api = api;
     this.allowedUsers = new Set(allowedUsers);
     this.createPi = createPi;
-    this.sessionExists = sessionExists;
     this.log = log;
     this.progressDelay = progressDelay;
     this.state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8"))
-      : { offset: 0, sessions: {}, pending: [], running: {} };
+      : { offset: 0, pending: [], running: {} };
     this.active = new Map();
     this.controls = new Set();
   }
@@ -268,11 +250,19 @@ export class Assistant {
       });
     }
   }
-  session(chat) {
-    const saved = this.state.sessions[chat];
-    if (saved?.id && this.sessionExists(saved.id)) return saved;
-    if (saved) this.log(`Session ${saved.id} for chat ${chat} is missing; starting a new one`);
-    return { chat };
+  // The chat's session file, as pi-agents records it in main.json.
+  mainSession(chat) {
+    return existsSync(this.mainsFile) ? JSON.parse(readFileSync(this.mainsFile, "utf8"))[`telegram:${chat}`] : undefined;
+  }
+  // Without an entry, the next `pd main` starts a new session and pi-agents records it; the old host idles out.
+  // pi-agents rewrites main.json too, so it is read right before being replaced at once.
+  newSession(chat) {
+    if (!this.mainSession(chat)) return;
+    const mains = JSON.parse(readFileSync(this.mainsFile, "utf8"));
+    delete mains[`telegram:${chat}`];
+    const temporary = `${this.mainsFile}.${process.pid}`;
+    writeFileSync(temporary, JSON.stringify(mains), { mode: 0o600 });
+    renameSync(temporary, this.mainsFile);
   }
   async processChat(chat, active) {
     while (!this.closing && !active.stopped) {
@@ -280,8 +270,8 @@ export class Assistant {
       if (index < 0) break;
       const [message] = this.state.pending.splice(index, 1);
       if (this.command(message) === "/new") {
-        delete this.state.sessions[chat];
         this.save();
+        this.newSession(chat);
         await this.text(chat, "🆕 已开启新会话。后续消息会沿用它。").catch(this.log);
         continue;
       }
@@ -293,16 +283,11 @@ export class Assistant {
         await this.api("sendChatAction", { chat_id: chat, action: "typing" }).catch(this.log);
         if (active.stopped || this.closing) break;
         const status = new ProgressState();
-        const run = this.createPi(chat, this.session(chat), promptFor(message), (event) => {
+        const run = this.createPi(chat, promptFor(message), (event) => {
           const text = status.update(event);
           if (text) progress.update(text);
         });
         active.run = run;
-        const id = await run.session;
-        if (id) {
-          this.state.sessions[chat] = { id };
-          this.save();
-        }
         // Assistant text is intentionally not forwarded. The agent sends replies through its skill.
         await run.done;
       } catch (error) {
@@ -326,7 +311,7 @@ export class Assistant {
     if (command === "/ping") return this.text(chat, "🏓 Pong!");
     if (command === "/help") return this.text(chat, "/ping — 检查状态\n/status — 运行与会话信息\n/new — 手动开启新会话（当前任务结束后按顺序执行）\n/stop — 停止当前任务，并取消本聊天排队消息\n/logs — 最近服务日志\n/restart — 重启服务，保留会话\n/help — 帮助");
     if (command === "/status") {
-      return this.text(chat, `状态: ${this.active.has(chat) ? "运行中" : "空闲"}\n会话: ${this.state.sessions[chat]?.id || "尚未开始"}\n排队消息: ${this.state.pending.filter((item) => String(item.chat.id) === chat).length}`);
+      return this.text(chat, `状态: ${this.active.has(chat) ? "运行中" : "空闲"}\n会话: ${this.mainSession(chat)?.match(/_([^_]+)\.jsonl$/)?.[1] || "尚未开始"}\n排队消息: ${this.state.pending.filter((item) => String(item.chat.id) === chat).length}`);
     }
     if (command === "/logs") {
       const logFile = path.join(path.dirname(this.stateFile), "pi-assistant.log");
@@ -380,15 +365,19 @@ export async function main() {
     return;
   }
   const agentDir = path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "pi");
+  const agentsDir = process.env.PI_AGENTS_STATE_DIR || path.join(process.env.XDG_STATE_HOME || path.join(homedir(), ".local/state"), "pi/agents");
   const assistant = new Assistant({
-    stateFile: path.join(stateDir, "state.json"), api, allowedUsers, log,
-    sessionExists: (id) => sessionFile(path.join(agentDir, "sessions"), id, root) !== undefined,
-    createPi: (chat, session, message, onEvent) => {
+    stateFile: path.join(stateDir, "state.json"), mainsFile: path.join(agentsDir, "main.json"), api, allowedUsers, log,
+    createPi: (chat, message, onEvent) => {
       const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
       for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
-      const child = spawn("pi", piArgs(session), { cwd: root, env, stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn("pd", piArgs(chat), { cwd: homedir(), env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.setEncoding("utf8");
-      child.stderr.on("data", (text) => log(text.trim()));
+      // pd warns on every message to a running host that it keeps the host's options.
+      child.stderr.on("data", (text) => {
+        const lines = text.trim().split("\n").filter((line) => !line.startsWith("The Session is already running"));
+        if (lines.length) log(lines.join("\n"));
+      });
       child.stdin.end(message);
       return new PiRun(child, onEvent);
     },

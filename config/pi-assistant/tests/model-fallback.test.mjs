@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import modelFallback from "../.pi/extensions/model-fallback.ts";
+import modelFallback from "../extensions/model-fallback.ts";
 
 const model = (id, provider = "openai") => ({ provider, id });
 const scoped = [model("opus", "claude-code"), model("astra"), model("sol")];

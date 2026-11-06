@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
-import { Assistant, commandPreview, payloadFor, piArgs, PiRun, ProgressReporter, ProgressState, promptFor, sessionFile } from "../startup.mjs";
+import { Assistant, commandPreview, payloadFor, piArgs, PiRun, ProgressReporter, ProgressState, promptFor } from "../startup.mjs";
 
 function mockChild(onInput = () => {}) {
   const child = new EventEmitter();
@@ -41,14 +40,13 @@ test("payload keeps necessary media and quote fields without duplicating raw mes
   });
 });
 
-test("a run records its session, accepts split records and settles with the final assistant outcome", async () => {
+test("a run accepts split records and settles with the final assistant outcome", async () => {
   const child = mockChild();
   const events = [];
   const run = new PiRun(child, (event) => events.push(event.type));
   const line = JSON.stringify({ type: "session", id: "s1", cwd: "/tmp/a\u2028b" });
   child.stdout.write(line.slice(0, 15));
   child.stdout.write(`${line.slice(15)}\r\n`);
-  assert.equal(await run.session, "s1");
   child.emitJson({ type: "message_end", message: { role: "assistant", stopReason: "error", errorMessage: "provider down" } });
   child.emitJson({ type: "agent_end", willRetry: true });
   child.emitJson({ type: "message_end", message: { role: "assistant", stopReason: "stop" } });
@@ -67,7 +65,6 @@ test("a run fails on a final provider error or an early exit", async () => {
   const crashing = new PiRun(crashed);
   crashed.exit(1);
   await assert.rejects(crashing.done, /Pi exited \(1\)/);
-  assert.equal(await crashing.session, undefined);
 });
 
 test("stopping a run terminates Pi, escalates to SIGKILL and is not an error", async () => {
@@ -80,44 +77,73 @@ test("stopping a run terminates Pi, escalates to SIGKILL and is not an error", a
   assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
 });
 
-function offlinePi(t) {
-  const directory = mkdtempSync(path.join(tmpdir(), "pi-assistant-offline-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
+// The bridge with real `pd` and isolated Pi and pi-agents state; /tmp keeps socket paths short.
+function offlinePd(t) {
+  const directory = mkdtempSync("/tmp/pi-assistant-");
+  const agentDir = path.join(directory, "agent");
+  const agentsDir = path.join(directory, "agents");
+  t.after(() => {
+    const runtime = path.join(agentsDir, "runtime");
+    for (const name of existsSync(runtime) ? readdirSync(runtime) : []) {
+      const pid = /^h-(\d+)\.sock$/.exec(name)?.[1];
+      if (pid) try { process.kill(Number(pid)); } catch {}
+    }
+    // Exiting hosts may still write their files.
+    rmSync(directory, { recursive: true, force: true, maxRetries: 10 });
+  });
+  execFileSync("mkdir", ["-m", "700", agentDir, agentsDir]);
   // A provider that cannot be reached: Pi records the user message, then settles with an error.
-  writeFileSync(path.join(directory, "models.json"), JSON.stringify({ providers: { offline: { baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions", apiKey: "none", models: [{ id: "unreachable" }] } } }));
-  writeFileSync(path.join(directory, "settings.json"), JSON.stringify({ retry: { enabled: false } }));
-  const workspace = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-  const env = { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: directory };
-  for (const key of Object.keys(env)) if (/_API_KEY$|_TOKEN$|^PI_SESSION_|^PI_CODING_AGENT_SESSION_DIR$/.test(key)) delete env[key];
-  return { directory, workspace, run: (session, message) => {
-    const child = spawn("pi", [...piArgs(session), "--offline", "--model", "offline/unreachable"], { cwd: workspace, env, stdio: ["pipe", "pipe", "pipe"] });
-    child.stderr.resume();
-    child.stdin.end(message);
-    return new PiRun(child);
-  } };
+  writeFileSync(path.join(agentDir, "models.json"), JSON.stringify({ providers: { offline: { baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions", apiKey: "none", models: [{ id: "unreachable" }] } } }));
+  const piAgents = path.resolve(realpathSync(execFileSync("which", ["pd"], { encoding: "utf8" }).trim()), "../..");
+  writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ retry: { enabled: false }, packages: [piAgents] }));
+  const env = { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir, PI_AGENTS_STATE_DIR: agentsDir };
+  for (const key of Object.keys(env)) if (/_API_KEY$|_TOKEN$|^PI_SESSION_|^PI_AGENTS_HOST|^PI_CODING_AGENT_SESSION_DIR$/.test(key)) delete env[key];
+  const calls = [];
+  const systemPrompts = [];
+  const assistant = new Assistant({
+    stateFile: path.join(directory, "state.json"), mainsFile: path.join(agentsDir, "main.json"), allowedUsers: [1], progressDelay: 60000, log: () => {},
+    api: async (method, args) => { calls.push({ method, args }); return { message_id: 100 }; },
+    createPi: (chat, message, onEvent) => {
+      const child = spawn("pd", [...piArgs(chat), "--offline", "--model", "offline/unreachable"], { cwd: homedir(), env, stdio: ["pipe", "pipe", "pipe"] });
+      child.stderr.resume();
+      child.stdin.end(message);
+      return new PiRun(child, (event) => {
+        if (event.type === "message_start" && event.message.role === "system") systemPrompts.push(JSON.stringify(event.message));
+        onEvent(event);
+      });
+    },
+  });
+  return { assistant, calls, systemPrompts };
 }
 
-test("real Pi names a new session, stores it in the default directory and resumes it by id", { timeout: 60000 }, async (t) => {
-  const { directory, workspace, run } = offlinePi(t);
-  const root = path.join(directory, "sessions");
-  const first = run({ chat: "123" }, "channel: telegram\ntext: first\n");
-  const id = await first.session;
-  await assert.rejects(first.done, /Connection error|ECONNREFUSED|fetch failed/i);
-  const file = sessionFile(root, id, workspace);
-  assert.equal(path.dirname(path.dirname(file)), root);
-  mkdirSync(path.join(root, "--elsewhere--"));
-  writeFileSync(path.join(root, "--elsewhere--", path.basename(file)), JSON.stringify({ type: "session", id, cwd: "/elsewhere" }) + "\n");
-  assert.equal(sessionFile(root, id, workspace), file, "a stale copy from another workspace is not preferred");
-  const entries = () => readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-  assert.equal(entries().find((entry) => entry.type === "session_info")?.name, "telegram:123");
-  assert.ok(entries().some((entry) => entry.type === "message" && entry.message.role === "user" && /text: first/.test(JSON.stringify(entry.message.content))));
-  const second = run({ id }, "channel: telegram\ntext: second\n");
-  assert.equal(await second.session, id);
-  await assert.rejects(second.done);
-  assert.equal(sessionFile(root, id, workspace), file);
-  const users = entries().filter((entry) => entry.type === "message" && entry.message.role === "user");
-  assert.equal(users.length, 2);
-  assert.equal(readFileSync(file, "utf8").split("session_info").length, 2, "resuming does not rename the session");
+test("real pd keeps a chat in its home-directory main Agent named after its entry with Milo's resources, also after /new", { timeout: 120000 }, async (t) => {
+  const { assistant, calls, systemPrompts } = offlinePd(t);
+  const entries = (file) => readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const name = (file) => entries(file).findLast((entry) => entry.type === "session_info")?.name;
+  const texts = (file) => entries(file).filter((entry) => entry.type === "message" && entry.message.role === "user")
+    .map((entry) => parsePrompt(entry.message.content[0].text).text);
+  assistant.accept([update(1, "first"), update(2, "second")]);
+  await idle(assistant);
+  const first = assistant.mainSession("123");
+  assert.equal(name(first), "telegram:123");
+  assert.deepEqual(texts(first), ["first", "second"]);
+  assistant.accept([update(3, "/new"), update(4, "third")]);
+  const prompted = systemPrompts.length;
+  await idle(assistant);
+  const second = assistant.mainSession("123");
+  assert.notEqual(second, first);
+  assert.equal(entries(second)[0].cwd, homedir());
+  const prompt = JSON.parse(systemPrompts.at(-1)).sections;
+  assert.ok(systemPrompts.length > prompted);
+  assert.match(prompt.addendum, /You are Milo/);
+  assert.match(prompt.skills, /<name>telegram<\/name>/);
+  assert.equal(name(second), "telegram:123");
+  assert.deepEqual(texts(second), ["third"]);
+  assert.deepEqual(texts(first), ["first", "second"]);
+  assert.ok(calls.some((call) => call.method === "sendMessage" && /已开启新会话/.test(call.args.text)));
+  assistant.accept([update(5, "/status")]);
+  await idle(assistant);
+  assert.ok(calls.at(-1).args.text.includes(`会话: ${path.basename(second, ".jsonl").split("_").at(-1)}`));
 });
 
 test("progress preserves phases and steps and redacts bash command previews", () => {
@@ -136,24 +162,26 @@ function fixture(t, run = async () => {}) {
   const calls = [];
   const prompts = [];
   const runs = [];
-  const missing = new Set();
+  const mainsFile = path.join(directory, "main.json");
+  const mains = () => existsSync(mainsFile) ? JSON.parse(readFileSync(mainsFile, "utf8")) : {};
   const assistant = new Assistant({
-    stateFile: path.join(directory, "state.json"), allowedUsers: [1], progressDelay: 60000,
+    stateFile: path.join(directory, "state.json"), mainsFile, allowedUsers: [1], progressDelay: 60000,
     log: (error) => { throw error; },
     api: async (method, args) => { calls.push({ method, args }); return { message_id: 100 }; },
-    sessionExists: (id) => !missing.has(id),
-    createPi: (_chat, session, message, onEvent) => {
-      const id = session.id || `session-${runs.length}`;
-      const pi = { session: Promise.resolve(id), stopped: false };
+    // As pd main: a message without an entry creates the entry's session.
+    createPi: (chat, message, onEvent) => {
+      const entry = `telegram:${chat}`;
+      if (!mains()[entry]) writeFileSync(mainsFile, JSON.stringify({ ...mains(), [entry]: `session-${runs.length}` }));
+      const pi = { stopped: false };
       pi.stop = async () => { pi.stopped = true; pi.finish?.(); };
       pi.close = async () => {};
-      prompts.push({ message, sessionId: id, name: session.id ? undefined : `telegram:${session.chat}` });
+      prompts.push({ message, sessionId: mains()[entry] });
       pi.done = run(pi, message, onEvent);
       runs.push(pi);
       return pi;
     },
   });
-  return { assistant, calls, prompts, runs, missing };
+  return { assistant, calls, prompts, runs, mainsFile };
 }
 const update = (id, text, extra = {}, chat = 123) => ({ update_id: id, message: { message_id: id, text, from: { id: 1 }, chat: { id: chat, type: "private" }, ...extra } });
 async function idle(assistant) {
@@ -220,27 +248,14 @@ test("accepted messages and offset are saved together; unauthorized updates are 
   assert.equal(prompts.length, 1);
 });
 
-test("successive messages reuse the saved session; a missing session file starts a new named one", async (t) => {
-  const { assistant, prompts, missing } = fixture(t);
-  assistant.accept([update(1, "first", { date: 1 })]);
-  await idle(assistant);
-  assistant.accept([update(2, "second", { date: 999999999, reply_to_message: { message_id: 1 } })]);
-  await idle(assistant);
-  assert.deepEqual(prompts.map((prompt) => [prompt.sessionId, prompt.name]), [["session-0", "telegram:123"], ["session-0", undefined]]);
-  missing.add("session-0");
-  assistant.log = () => {};
-  assistant.accept([update(3, "third")]);
-  await idle(assistant);
-  assert.deepEqual(prompts.at(-1).name, "telegram:123");
-  assert.notEqual(assistant.state.sessions["123"].id, "session-0");
-});
-
-test("manual new forgets the session so the next message starts a new one", async (t) => {
-  const { assistant, prompts, calls } = fixture(t);
-  assistant.accept([update(1, "first"), update(2, "/new", { reply_to_message: { message_id: 1 } }), update(3, "second")]);
+test("manual new removes only the chat's entry so the next message starts a new session", async (t) => {
+  const { assistant, prompts, calls, mainsFile } = fixture(t);
+  writeFileSync(mainsFile, JSON.stringify({ main: "other" }));
+  assistant.accept([update(1, "/new"), update(2, "first"), update(3, "/new", { reply_to_message: { message_id: 2 } }), update(4, "second")]);
   await idle(assistant);
   assert.deepEqual(prompts.map((prompt) => prompt.sessionId), ["session-0", "session-1"]);
-  assert.ok(calls.some((call) => call.method === "sendMessage" && /新会话/.test(call.args.text)));
+  assert.deepEqual(JSON.parse(readFileSync(mainsFile, "utf8")), { main: "other", "telegram:123": "session-1" });
+  assert.equal(calls.filter((call) => call.method === "sendMessage" && /已开启新会话/.test(call.args.text)).length, 2);
 });
 
 test("stop terminates active work, cancels queued messages and retains the session", async (t) => {
@@ -251,7 +266,6 @@ test("stop terminates active work, cancels queued messages and retains the sessi
   await idle(assistant);
   assert.equal(prompts.length, 1);
   assert.equal(runs[0].stopped, true);
-  assert.equal(assistant.state.sessions["123"].id, "session-0");
 });
 
 test("settled runs remain tracked until Pi exits, with a bounded cleanup wait", async (t) => {
@@ -292,13 +306,12 @@ test("settled runs remain tracked until Pi exits, with a bounded cleanup wait", 
   }
 });
 
-test("failed runs are reported once and the session is still remembered", async (t) => {
+test("failed runs are reported once", async (t) => {
   const { assistant, calls } = fixture(t, async () => { throw new Error("provider down"); });
   assistant.log = () => {};
   assistant.accept([update(1, "work")]);
   await idle(assistant);
   assert.equal(calls.filter((call) => call.method === "sendMessage" && /处理失败/.test(call.args.text)).length, 1);
-  assert.equal(assistant.state.sessions["123"].id, "session-0");
   assert.deepEqual(assistant.state.running, {});
 });
 
@@ -329,16 +342,14 @@ test("messages in one chat are serial while other chats can run", async (t) => {
   assert.equal(prompts.length, 3);
 });
 
-test("restart restores queued messages and sessions but never replays interrupted work", async (t) => {
+test("restart restores queued messages but never replays interrupted work", async (t) => {
   const { assistant, calls, prompts } = fixture(t);
-  assistant.state.sessions["123"] = { id: "saved-session" };
   assistant.state.running["123"] = update(1, "already started").message;
   assistant.state.pending = [update(2, "not started").message];
   assistant.save();
   await assistant.recover();
   await idle(assistant);
   assert.equal(prompts.length, 1);
-  assert.equal(prompts[0].sessionId, "saved-session");
   assert.match(prompts[0].message, /not started/);
   assert.match(calls.find((call) => call.method === "sendMessage").args.text, /不会自动重做/);
   assert.deepEqual(assistant.state.running, {});
