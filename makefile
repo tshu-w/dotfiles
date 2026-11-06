@@ -63,7 +63,7 @@ unlink:
 	stow -v -D -t $(HOME)/.local local
 	for f in $$(ls -A $(DOTFILES_DIR)/runcom); do \
 		tf=$(HOME)/$${f//"dot-"/"."}; \
-		if [[ -f $$tf{.bak} ]]; then \
+		if [[ -f $${tf}.bak ]]; then \
 			mv -v "$${tf}.bak" "$$tf"; \
 		fi \
 	done
