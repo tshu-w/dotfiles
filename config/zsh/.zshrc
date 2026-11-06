@@ -1,6 +1,8 @@
 # Raise the soft open-file limit before loading plugins.
 ulimit -S -n 8192 2>/dev/null
 
+export GPG_TTY=$TTY
+
 [[ $TERM == "dumb" ]] && unsetopt zle && PS1='$ ' && return
 
 ### Zsh
@@ -452,8 +454,6 @@ fi
 compdef _gnu_generic emacs emacsclient
 compdef _man man-preview
 compdef _mkdir md
-compdef _run run
-compdef _sweep sweep
 
 znap function _pip_completion pip       'eval "$( pip completion --zsh )"'
 compctl -K    _pip_completion pip

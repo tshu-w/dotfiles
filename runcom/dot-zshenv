@@ -29,9 +29,8 @@ case $VENDOR in
         export PATH=$HOMEBREW_PREFIX/opt/$pkg/libexec/gnubin:$PATH
     done
 
-    export PATH=$XDG_BIN_HOME:$PATH:/Library/TeX/Distributions/Programs/texbin
+    export PATH=$XDG_BIN_HOME:$PATH
     export FPATH=$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH
-    export MANPATH=$MANPATH:`readlink -f /Library/TeX/Distributions/Programs/texbin/man`
 
     export GITPERLLIB=/Library/Developer/CommandLineTools/usr/share/git-core/perl
   ;;
@@ -84,9 +83,12 @@ export VIMINIT="set nocp | source $XDG_CONFIG_HOME/vim/vimrc"
 
 export DET_MASTER="http://det.cipsup.cn"
 
-export GPG_TTY=$(tty)
 if [ "${gnupg_SSH_AUTH_SOCK_by:-0}" -ne $$ ]; then
-    export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+    if [[ $VENDOR == apple ]]; then
+        export SSH_AUTH_SOCK=$GNUPGHOME/S.gpg-agent.ssh
+    else
+        export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+    fi
     [ -S $SSH_AUTH_SOCK ] || gpgconf --launch gpg-agent
 fi
 
@@ -112,7 +114,8 @@ et () { emacsclient -a "" -t "$@" }
 export _AUTHINFO_CACHE="${XDG_RUNTIME_DIR:-$XDG_CACHE_HOME/authinfo}/authinfo.env"
 _authinfo_export() {
     [[ -f "$_AUTHINFO_CACHE" ]] || return
-    local var pat
+    local var pat line
+    local -a lines=("${(@f)$(<$_AUTHINFO_CACHE)}")
     local -A entries=(
         GH_TOKEN             '^machine github[.]com.*login tshu-w password '
         NPM_TOKEN            '^machine registry[.]npmjs[.]org[[:space:]]'
@@ -128,7 +131,10 @@ _authinfo_export() {
         ONEAPI_API_KEY       '^machine one-api[.]ponte[.]top.*login envkey'
     )
     for var pat in ${(kv)entries}; do
-        export $var=$(awk -v pat="$pat" '$0 ~ pat {print $NF; exit}' "$_AUTHINFO_CACHE")
+        export $var=
+        for line in $lines; do
+            [[ $line =~ $pat ]] && { export $var=${${=line}[-1]}; break }
+        done
     done
 }
 _authinfo_export
