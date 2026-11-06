@@ -29,6 +29,7 @@ __pycache__/
 
 ### Pi ###
 **/pi/auth.json
+**/pi/mcp-auth.json
 **/pi/cache/**
 **/pi/sessions/**
 config/pi/models-store.json
