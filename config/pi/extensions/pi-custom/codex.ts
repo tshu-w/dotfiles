@@ -663,6 +663,14 @@ export async function registerCodex(
     return patched ? payload : undefined;
   });
 
+  // Like Codex CLI and Pi's codex transport, ask OpenAI Responses models for low verbosity.
+  pi.on("before_provider_request", (event) => {
+    if (model?.provider !== "openai" || model.api !== "openai-responses" || !isRecord(event.payload)) return undefined;
+    const text = isRecord(event.payload.text) ? event.payload.text : {};
+    if (text.verbosity !== undefined) return undefined;
+    return { ...event.payload, text: { ...text, verbosity: "low" } };
+  });
+
   const compactCodex = async (
     event: SessionBeforeCompactEvent,
     ctx: ExtensionContext,

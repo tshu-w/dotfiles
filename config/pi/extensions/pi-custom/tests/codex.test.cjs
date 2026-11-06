@@ -136,6 +136,14 @@ async function main() {
 	);
 	assert.equal(plain, undefined);
 
+	// OpenAI Responses requests ask for low verbosity unless they set one.
+	const [, verbosity] = handlers.get("before_provider_request");
+	assert.equal(verbosity({ payload: { model: "gpt-5.6" } }), undefined);
+	for (const handler of handlers.get("model_select")) handler({ model: { ...model, provider: "openai", api: "openai-responses" } }, { ui });
+	assert.deepEqual(verbosity({ payload: { model: "gpt-5.6", text: { format: { type: "text" } } } }), { model: "gpt-5.6", text: { format: { type: "text" }, verbosity: "low" } });
+	assert.equal(verbosity({ payload: { text: { verbosity: "high" } } }), undefined);
+	for (const handler of handlers.get("model_select")) handler({ model }, { ui });
+
 	// After a text-only compaction, the next remote attempt must use Pi's
 	// active context instead of resurrecting every message in the branch.
 	const accountPayload = Buffer.from(JSON.stringify({
