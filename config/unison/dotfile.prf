@@ -4,6 +4,8 @@ root = /Users/wangtianshu
 root = /Users/wangtianshu/Library/Mobile Documents/com~apple~CloudDocs/Unison
 prefer = newer
 atomic = Name .git*
+# Git metadata conflicts under iCloud; repositories sync through their remotes
+ignore = Name .git
 
 # Keep a backup copy of every file in a central location
 backuplocation = central
