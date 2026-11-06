@@ -38,6 +38,7 @@ async function setup() {
     loadedResourcesContainer: new tui.Container(),
     toolOutputExpanded: false,
     outputPad: 1,
+    session: { isStreaming: false },
     ui: { requestRender() {} },
     setToolsExpanded: pi.InteractiveMode.prototype.setToolsExpanded,
     showStatus: (message) => statusMessages.push(message),
@@ -45,7 +46,13 @@ async function setup() {
   const editor = new pi.CustomEditor(mode.ui, themes.getEditorTheme(), keybindings);
   editor.onAction("app.tools.expand", () => mode.toggleToolOutputExpansion());
   const restore = installTranscriptDisplay(prototype, () => themes.theme);
-  return { ...pi, ...tui, mode, editor, keybindings, themes, statusMessages, restore() { restore(); tui.setKeybindings(previousKeybindings); } };
+  let current = restore;
+  return {
+    ...pi, ...tui, mode, editor, keybindings, themes, statusMessages,
+    reinstall() { current = installTranscriptDisplay(prototype, () => themes.theme); },
+    uninstall() { current(); },
+    restore() { current(); tui.setKeybindings(previousKeybindings); },
+  };
 }
 
 function message(content, stopReason = "toolUse") {
@@ -81,7 +88,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /\d+ steps?:/);
     editor.handleInput("\x0f");
     let text = mode.chatContainer.render(80).join("\n");
-    assert.match(text, /1 step: read/);
+    assert.match(stripAnsi(text), /1 step: read/);
     assert.doesNotMatch(text, /private reasoning|secret-path|Thinking/);
     const second = new ToolExecutionComponent("read", "2", {}, {}, undefined, mode.ui, "/tmp");
     mode.chatContainer.addChild(new AssistantMessageComponent(message([{ type: "thinking", thinking: "more reasoning" }])));
@@ -103,12 +110,13 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     assert.equal(mode.toolOutputExpanded, true);
     editor.handleInput("\x19");
     assert.equal(mode.chatContainer.children.length, 6);
-    assert.equal((mode.chatContainer.render(80).join("\n").match(/\d+ steps?:/g) || []).length, 1);
+    assert.equal((stripAnsi(mode.chatContainer.render(80).join("\n")).match(/\d+ steps?:/g) || []).length, 1);
     keybindings.setUserBindings({ "app.tools.expand": "ctrl+o" });
     assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /hidden result|more reasoning/);
     assert.ok(mode.chatContainer.render(1).every(line => visibleWidth(line) <= 1));
     // A narrow line drops tool names before the count and the hint.
-    assert.match(stripAnsi(mode.chatContainer.render(42).join("\n")), /\.\.\. \(3 steps: read, …, ctrl\+o to expand\)/);
+    assert.match(stripAnsi(mode.chatContainer.render(54).join("\n")), /^─ Worked for 0s, 3 steps: read, …, ctrl\+o to expand ─+$/m);
+    assert.match(stripAnsi(mode.chatContainer.render(12).join("\n")), /^─ Worke\.\.\. ─$/m);
     const reply = new AssistantMessageComponent(message([{ type: "text", text: "Partial reply" }], "pending"));
     mode.chatContainer.addChild(reply);
     assert.match(mode.chatContainer.render(80).join("\n"), /Partial reply/);
@@ -116,7 +124,7 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     mode.chatContainer.addChild(new ToolExecutionComponent("read", "4", {}, {}, undefined, mode.ui, "/tmp"));
     text = mode.chatContainer.render(80).join("\n");
     assert.match(text, /Final reply/);
-    assert.equal((text.match(/\d+ steps?:/g) || []).length, 2);
+    assert.equal((stripAnsi(text).match(/\d+ steps?:/g) || []).length, 2);
     mode.chatContainer.invalidate();
     for (const width of [8, 20, 80]) {
       for (const line of mode.chatContainer.render(width)) {
@@ -154,10 +162,10 @@ test("compact view summarizes custom messages but preserves user input across Ct
     mode.renderInitialMessages();
     const render = () => stripAnsi(mode.chatContainer.render(120).join("\n"));
     const compact = render();
-    assert.match(compact, /\.\.\. \(1 step: messages, ctrl\+o to expand\)/);
-    assert.match(compact, /\.\.\. \(branch summary, ctrl\+o to expand\)/);
+    assert.match(compact, /^─ 1 step: messages, ctrl\+o to expand ─+$/m);
+    assert.match(compact, /^─ Branch summary, ctrl\+o to expand ─+$/m);
     // Custom messages and tool calls between the same texts share one line.
-    assert.match(compact, /\.\.\. \(2 steps: read, messages, ctrl\+o to expand\) *\n *\n \.\.\. \(branch summary/);
+    assert.match(compact, /─ 2 steps: read, messages, ctrl\+o to expand ─+\n *\n─ Branch summary/);
     assert.doesNotMatch(compact, /First observation|Notice preview|Hidden report detail|Hidden notice detail|Expanded detail|reviewer-1|Hidden branch detail/);
     assert.match(compact, /Direct user input/);
     assert.match(compact, /Keep this too/);
@@ -190,6 +198,78 @@ test("compact view summarizes custom messages but preserves user input across Ct
   }
 });
 
+test("finished turns keep only their last text while the running turn shows progress", async () => {
+  const { mode, restore, AssistantMessageComponent, CustomMessageComponent, ToolExecutionComponent, UserMessageComponent, Text, getMarkdownTheme } = await setup();
+  try {
+    const chat = mode.chatContainer;
+    const tool = (name, id) => new ToolExecutionComponent(name, id, {}, {}, undefined, mode.ui, "/tmp");
+    const done = (component) => { component.updateResult({ content: [{ type: "text", text: "ok" }] }); return component; };
+    chat.addChild(new UserMessageComponent("First question", getMarkdownTheme(), 1, [], undefined, new Date(0).toISOString()));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Looking first" }])));
+    chat.addChild(done(tool("bash", "1")));
+    chat.addChild(new AssistantMessageComponent({ ...message([{ type: "text", text: "First answer" }], "stop"), timestamp: 83000 }));
+    chat.addChild(new UserMessageComponent("Second question", getMarkdownTheme(), 1, [], undefined, Date.now() - 42000));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Checking now" }])));
+    chat.addChild(done(tool("read", "2")));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Almost there" }])));
+    const running = tool("bash", "3");
+    running.updateResult({ content: [{ type: "text", text: "partial output" }] }, true);
+    chat.addChild(running);
+    mode.renderInitialMessages();
+    const render = () => stripAnsi(chat.render(80).join("\n"));
+    mode.session.isStreaming = true;
+    let text = render();
+    assert.match(text, /─ Worked for 1m 23s, 1 step: bash, ctrl\+o to expand ─+\s+First answer/);
+    assert.doesNotMatch(text, /Looking first/);
+    assert.match(text, /Checking now\s+─ Working for 4[2-4]s, 1 step: read, ctrl\+o to expand ─+\s+Almost there/);
+    assert.match(text, /partial output/);
+    running.updateResult({ content: [{ type: "text", text: "partial output" }] });
+    assert.match(render(), /Almost there\s+─ 1 step: bash, ctrl\+o to expand ─+$/);
+    chat.addChild(new AssistantMessageComponent({ ...message([{ type: "text", text: "Second answer" }], "stop"), timestamp: Date.now() }));
+    mode.session.isStreaming = false;
+    text = render();
+    assert.match(text, /Second question\s+─ Worked for 4[2-4]s, 2 steps: read, bash, ctrl\+o to expand ─+\s+Second answer/);
+    assert.doesNotMatch(text, /Checking now|Almost there|partial output/);
+    // A notification after the agent stopped starts a turn; one mid-run does not. Both fold.
+    const notice = (content) => new CustomMessageComponent({ customType: "pi-agents", content, display: true, details: {} },
+      (message, { expanded }) => new Text(expanded ? `${message.content} detail` : message.content, 0, 0));
+    chat.addChild(notice("Agent finished"));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Notified once" }])));
+    chat.addChild(notice("Steered notice"));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Notified reply" }], "stop")));
+    text = render();
+    assert.match(text, /Second answer\s+─ Worked for 0s, 2 steps: messages, ctrl\+o to expand ─+\s+Notified reply/);
+    assert.doesNotMatch(text, /Agent finished|Notified once|Steered notice|detail/);
+    // A turn that folds only texts still shows its line.
+    chat.addChild(new UserMessageComponent("Third question", getMarkdownTheme(), 1, [], undefined, new Date(0).toISOString()));
+    chat.addChild(new AssistantMessageComponent({ ...message([{ type: "text", text: "Steered text" }], "stop"), timestamp: 20000 }));
+    chat.addChild(new AssistantMessageComponent({ ...message([{ type: "text", text: "Third answer" }], "stop"), timestamp: 30000 }));
+    text = render();
+    assert.match(text, /Third question\s+─ Worked for 30s, ctrl\+o to expand ─+\s+Third answer/);
+    assert.doesNotMatch(text, /Steered text/);
+  } finally {
+    restore();
+  }
+});
+
+test("compact view stays on across a reload that rebuilds the chat before reinstalling", async () => {
+  const { mode, restore, reinstall, uninstall, ToolExecutionComponent } = await setup();
+  try {
+    mode.chatContainer.addChild(new ToolExecutionComponent("read", "1", {}, {}, undefined, mode.ui, "/tmp"));
+    mode.renderInitialMessages();
+    const compact = stripAnsi(mode.chatContainer.render(80).join("\n"));
+    assert.match(compact, /1 step: read/);
+    uninstall();
+    mode.rebuildChatFromMessages();
+    reinstall();
+    assert.equal(stripAnsi(mode.chatContainer.render(80).join("\n")), compact);
+    mode.rebuildChatFromMessages();
+    assert.equal(stripAnsi(mode.chatContainer.render(80).join("\n")), compact);
+  } finally {
+    restore();
+  }
+});
+
 test("compact view keeps errors, supports rebuilt history, and restores on shutdown", async () => {
   const { mode, restore, AssistantMessageComponent, ToolExecutionComponent, UserMessageComponent, Text, getMarkdownTheme } = await setup();
   const originalRender = mode.chatContainer.render;
@@ -203,7 +283,7 @@ test("compact view keeps errors, supports rebuilt history, and restores on shutd
   mode.chatContainer.clear();
   mode.chatContainer.addChild(new Text("Another branch"));
   assert.doesNotMatch(mode.chatContainer.render(80).join("\n"), /step|Request failed/);
-  // A failure its turn recovers from folds into the next line, keeping its text.
+  // A failure its turn recovers from folds, its text and all.
   mode.chatContainer.clear();
   const partial = message([{ type: "text", text: "Partial answer" }], "error");
   partial.errorMessage = "Stream cut";
@@ -212,8 +292,8 @@ test("compact view keeps errors, supports rebuilt history, and restores on shutd
   mode.chatContainer.addChild(new ToolExecutionComponent("bash", "2", {}, {}, undefined, mode.ui, "/tmp"));
   mode.chatContainer.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Done" }], "stop")));
   const text = stripAnsi(mode.chatContainer.render(80).join("\n"));
-  assert.match(text, /\.\.\. \(1 retry, ctrl\+o to expand\)\s+Partial answer\s+\.\.\. \(1 step: bash · 1 retry, ctrl\+o to expand\)\s+Done/);
-  assert.doesNotMatch(text, /Request failed|Stream cut/);
+  assert.match(text, /─ Worked for 0s, 1 step, 2 retries: bash, ctrl\+o to expand ─+\s+Done/);
+  assert.doesNotMatch(text, /Request failed|Stream cut|Partial answer/);
   mode.chatContainer.addChild(new UserMessageComponent("Next question", getMarkdownTheme()));
   mode.chatContainer.addChild(new AssistantMessageComponent(failed));
   assert.match(mode.chatContainer.render(80).join("\n"), /Request failed/);

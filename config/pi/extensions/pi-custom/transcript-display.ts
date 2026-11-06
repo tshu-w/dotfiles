@@ -16,6 +16,7 @@ interface DisplayMode {
   chatContainer: Container;
   toolOutputExpanded: boolean;
   outputPad: number;
+  session: { isStreaming: boolean };
   ui: { requestRender(force?: boolean): void };
   setToolsExpanded(expanded: boolean): void;
   showStatus(message: string): void;
@@ -36,6 +37,17 @@ type AssistantView = {
 };
 
 const FAILED = ["error", "aborted", "length"];
+
+// A turn's start and the start of its last assistant message, in milliseconds.
+type Turn = { start?: number; end?: number };
+
+// As Codex shows elapsed time: 45s, 1m 05s, 1h 02m.
+function elapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}m`;
+}
 
 function isUserInput(child: Component): boolean {
   if (child instanceof UserMessageComponent) return true;
@@ -65,44 +77,92 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
 
   chat.render = (width) => {
     projection.clear();
-    let steps = 0, retries = 0, messages = false;
-    let tools: string[] = [];
-    // `names` are dropped from the end, then elided, until the line fits.
-    const summarize = (head: string, names: string[] = [], warning = "") => {
-      const theme = getTheme();
-      const key = keyText("app.tools.expand");
-      const padding = Math.min(mode.outputPad, Math.max(0, width));
-      const hint = key ? theme.fg("muted", ", ") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "";
-      const tail = (warning ? theme.fg("muted", " · ") + theme.fg("warning", warning) : "") + hint + theme.fg("muted", ")");
-      const line = (shown: string[]) => " ".repeat(padding)
-        + theme.fg("muted", `... (${head}${shown.length ? `: ${shown.join(", ")}` : ""}`) + tail;
-      let label = line(names);
-      for (let count = names.length - 1; count >= 0 && visibleWidth(label) > width; count--) {
-        label = line([...names.slice(0, count), "…"]);
+    const children = chat.children;
+    const streaming = mode.session.isStreaming;
+    // A finished turn keeps only its last assistant text; earlier ones fold with its steps.
+    const folded = new Set<Component>();
+    const starts = new Map<number, Turn>();
+    const first: Turn = {};
+    let last = first;
+    let turn: Component[] = [], ended = true;
+    const finish = () => { for (const child of turn.slice(0, -1)) folded.add(child); turn = []; };
+    for (const [index, child] of children.entries()) {
+      // A custom message after the agent stopped, such as a notification, starts a turn of its own.
+      if (isUserInput(child) || (ended && child instanceof CustomMessageComponent)) {
+        finish();
+        const stamp = child instanceof CustomMessageComponent ? child.message.timestamp : (child as unknown as { timestamp?: string | number }).timestamp;
+        last = { start: stamp === undefined ? undefined : new Date(stamp).getTime() };
+        starts.set(index, last);
+        ended = false;
+        continue;
       }
+      const message = child instanceof AssistantMessageComponent ? (child as unknown as AssistantView).lastMessage : undefined;
+      if (message) {
+        ended = message.stopReason !== "toolUse";
+        // Live user input has no timestamp; its first reply starts right after it.
+        last.start ??= message.timestamp;
+        last.end = message.timestamp;
+      }
+      if (!message?.content.some((part) => part.type === "text" && part.text.trim())) continue;
+      if (!FAILED.includes(message.stopReason) || recovered(children, index)) turn.push(child);
+    }
+    if (!streaming) finish();
+    const running = streaming ? last : undefined;
+    let current = starts.get(0) ?? first, timed = false;
+    let steps = 0, retries = 0, notes = false, messages = false;
+    let tools: string[] = [];
+    const theme = getTheme();
+    const key = keyText("app.tools.expand");
+    // Tool names are dropped from the end, then elided, before the label is truncated.
+    const rule = (head: string, retry = "", names: string[] = []) => {
+      const hint = key ? theme.fg("muted", head || retry ? ", " : "") + theme.fg("dim", key) + theme.fg("muted", " to expand") : "";
+      const label = (shown: string[]) => theme.fg("muted", head) + retry + theme.fg("muted", shown.length ? `: ${shown.join(", ")}` : "") + hint;
+      const room = Math.max(0, width - 4);
+      let text = label(names);
+      for (let count = names.length - 1; count >= 0 && visibleWidth(text) > room; count--) text = label([...names.slice(0, count), "…"]);
+      text = truncateToWidth(text, room);
       // Pi puts a blank line before summaries already.
       const gap = projection.children.at(-1) instanceof Spacer ? "" : "\n";
-      projection.addChild(new Text(`${gap}${truncateToWidth(label, width)}`, 0, 0));
+      const line = theme.fg("borderMuted", "─ ") + text + theme.fg("borderMuted", ` ${"─".repeat(Math.max(1, width - 3 - visibleWidth(text)))}`);
+      projection.addChild(new Text(`${gap}${truncateToWidth(line, width)}`, 0, 0));
     };
     const fold = () => {
-      if (!steps && !retries) return;
-      const retry = retries ? `${retries} ${retries > 1 ? "retries" : "retry"}` : "";
-      if (steps) summarize(`${steps} step${steps > 1 ? "s" : ""}`, [...new Set(tools), ...(messages ? ["messages"] : [])], retry);
-      else summarize(retry);
+      if (!steps && !retries && !notes) return;
+      let head = steps ? `${steps} step${steps > 1 ? "s" : ""}` : "";
+      // The first line of a turn tells how long it took, or has taken so far.
+      if (!timed && current.start !== undefined) {
+        const end = current === running ? Date.now() : current.end;
+        if (end !== undefined) head = [`${current === running ? "Working" : "Worked"} for ${elapsed(end - current.start)}`, head].filter(Boolean).join(", ");
+      }
+      timed = true;
+      const names = [...new Set(tools), ...(messages ? ["messages"] : [])];
+      const retry = retries ? theme.fg("muted", head ? ", " : "") + theme.fg("warning", `${retries} ${retries > 1 ? "retries" : "retry"}`) : "";
+      rule(head, retry, names);
       steps = retries = 0;
-      messages = false;
+      notes = messages = false;
       tools = [];
     };
-    const children = chat.children;
     for (const [index, child] of children.entries()) {
+      const next = starts.get(index);
+      if (next) {
+        fold();
+        current = next;
+        timed = false;
+      }
       if (child instanceof ToolExecutionComponent) {
+        // The running turn shows its unfinished tool calls as Pi renders them.
+        if (current === running && (child as unknown as { isPartial: boolean }).isPartial) {
+          fold();
+          projection.addChild(child);
+          continue;
+        }
         steps++;
         tools.push((child as unknown as { toolName: string }).toolName);
         continue;
       }
       if (child instanceof BranchSummaryMessageComponent || child instanceof CompactionSummaryMessageComponent) {
         fold();
-        summarize(child instanceof BranchSummaryMessageComponent ? "branch summary" : "compaction summary");
+        rule(child instanceof BranchSummaryMessageComponent ? "Branch summary" : "Compaction summary");
         continue;
       }
       if (child instanceof CustomMessageComponent && !isUserInput(child)) {
@@ -118,6 +178,11 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         const failed = FAILED.includes(message.stopReason);
         const retried = failed && recovered(children, index);
         if (!content.length && (!failed || retried)) {
+          if (retried) retries++;
+          continue;
+        }
+        if (folded.has(child)) {
+          notes = true;
           if (retried) retries++;
           continue;
         }
@@ -156,10 +221,19 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
   };
 }
 
+// Each mode's view, kept across reinstalls: `/reload` rebuilds the chat before the new install.
+const VIEWS = Symbol.for("pi-custom.transcript-display.views");
+
 export function installTranscriptDisplay(prototype: DisplayPrototype, getTheme: () => Theme): () => void {
   const original = prototype.toggleToolOutputExpansion;
   const compact = new Map<DisplayMode, () => void>();
   const initialized = new WeakSet<DisplayMode>();
+  const views = (prototype as { [VIEWS]?: Map<DisplayMode, boolean> })[VIEWS] ??= new Map();
+  for (const [mode, compacted] of views) {
+    initialized.add(mode);
+    if (compacted) compact.set(mode, compactTranscript(mode, getTheme));
+  }
+  views.clear();
   const restoreRenderers = (["renderInitialMessages", "rebuildChatFromMessages"] as const).map((name) => {
     const render = prototype[name];
     function wrapped(this: DisplayMode) {
@@ -193,7 +267,10 @@ export function installTranscriptDisplay(prototype: DisplayPrototype, getTheme: 
   }
   prototype.toggleToolOutputExpansion = toggle;
   return () => {
-    for (const restore of compact.values()) restore();
+    for (const [mode, restore] of compact) {
+      views.set(mode, true);
+      restore();
+    }
     compact.clear();
     for (const restore of restoreRenderers) restore();
     if (prototype.toggleToolOutputExpansion === toggle) prototype.toggleToolOutputExpansion = original;
