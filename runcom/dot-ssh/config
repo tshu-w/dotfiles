@@ -8,7 +8,7 @@ Host github.com
   Hostname ssh.github.com
   User git
   Port 443
-Match exec "echo %h | grep 'git' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match host "*git*" exec "! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host cft ssh-mbp.ponte.top
   HostName ssh-mbp.ponte.top
@@ -19,12 +19,12 @@ Host macbook-pro
 Host backup
   User wangtianshu
   Hostname 192.168.14.74
-Match exec "{ echo %h | grep '172\|192\|124' } && {echo %r | grep 'tianshu' }"
+Match host "*172*,*192*,*124*" user "*tianshu*"
   LocalCommand  { gpg-forward %n; emacs-forward %n } &
   RemoteForward 2048 localhost:22
   RemoteForward 6152 localhost:6152
   RemoteForward 6153 localhost:6153
-Match exec "echo %h | grep '172\|192\|124' && ! timeout 1 nc -z %h %p &> /dev/null"
+Match host "*172*,*192*,*124*" exec "! timeout 1 nc -z %h %p &> /dev/null"
   ProxyCommand nc -X 5 -x 127.0.0.1:6153 %h %p
 Host *
   Compression yes
