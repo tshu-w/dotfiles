@@ -47,6 +47,9 @@
       "source": "git:github.com/tshu-w/pi-exec"
     },
     {
+      "source": "git:github.com/tshu-w/pi-codex-remote"
+    },
+    {
       "source": "git:github.com/vercel-labs/agent-desktop",
       "skills": [
         "skills/agent-desktop"
@@ -94,7 +97,7 @@
   "deviceId": "ba8ef7d4-9749-4eee-bac0-1e91f977f8e1",
   "hideThinkingBlock": true,
   "extensionChangelogVersions": {
-    "{\"source\":\"git:github.com/tshu-w/pi-agents\",\"scope\":\"user\"}": "0.4.1",
+    "{\"source\":\"git:github.com/tshu-w/pi-agents\",\"scope\":\"user\"}": "0.5.0",
     "{\"source\":\"npm:@marckrenn/pi-sub-status\",\"scope\":\"user\"}": "1.5.0"
   }
 }
