@@ -38,7 +38,7 @@ type AssistantView = {
 
 const FAILED = ["error", "aborted", "length"];
 
-// A turn's start and the start of its last assistant message, in milliseconds.
+// A turn's start and the end of its last assistant message, in milliseconds; only replies set `end`.
 type Turn = { start?: number; end?: number };
 
 // As Codex shows elapsed time: 45s, 1m 05s, 1h 02m.
@@ -74,6 +74,9 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
   const invalidate = chat.invalidate;
   const projection = new Container();
   const assistants = new WeakMap<Component, { key: string; outputPad: number; component: AssistantMessageComponent }>();
+  // When live replies were first seen finished; rebuilt ones carry their entry's time.
+  const streamed = new WeakSet<Component>();
+  const finished = new WeakMap<Component, number>();
 
   chat.render = (width) => {
     projection.clear();
@@ -87,8 +90,9 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
     let turn: Component[] = [], ended = true;
     const finish = () => { for (const child of turn.slice(0, -1)) folded.add(child); turn = []; };
     for (const [index, child] of children.entries()) {
-      // A custom message after the agent stopped, such as a notification, starts a turn of its own.
-      if (isUserInput(child) || (ended && child instanceof CustomMessageComponent)) {
+      // A custom message after the agent replied and stopped, such as a notification, starts a turn of its own;
+      // notifications before a reply share its turn.
+      if (isUserInput(child) || (ended && last.end !== undefined && child instanceof CustomMessageComponent)) {
         finish();
         const stamp = child instanceof CustomMessageComponent ? child.message.timestamp : (child as unknown as { timestamp?: string | number }).timestamp;
         last = { start: stamp === undefined ? undefined : new Date(stamp).getTime() };
@@ -101,7 +105,10 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         ended = message.stopReason !== "toolUse";
         // Live user input has no timestamp; its first reply starts right after it.
         last.start ??= message.timestamp;
-        last.end = message.timestamp;
+        const view = child as unknown as AssistantView & { timestamp?: string | number };
+        if (view.isStreaming) streamed.add(child);
+        else if (streamed.has(child) && !finished.has(child)) finished.set(child, Date.now());
+        last.end = finished.get(child) ?? (view.timestamp === undefined ? message.timestamp : new Date(view.timestamp).getTime());
       }
       if (!message?.content.some((part) => part.type === "text" && part.text.trim())) continue;
       if (!FAILED.includes(message.stopReason) || recovered(children, index)) turn.push(child);
@@ -128,8 +135,9 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
       const line = theme.fg("borderMuted", "─── ") + text + theme.fg("borderMuted", " ───");
       projection.addChild(new Text(`${gap}${truncateToWidth(line, inner)}`, mode.outputPad, 0));
     };
-    const fold = () => {
-      if (!steps && !retries && !notes) return;
+    const fold = (force = false) => {
+      // Steps of a turn without replies fold into the next turn's rule.
+      if ((!steps && !retries && !notes) || (!force && current.end === undefined)) return;
       let head = steps ? `${steps} step${steps > 1 ? "s" : ""}` : "";
       // The first line of a finished turn tells how long it took; Pi shows a running turn's activity itself.
       if (!timed && current !== running && current.start !== undefined && current.end !== undefined) {
@@ -156,7 +164,7 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         continue;
       }
       if (child instanceof BranchSummaryMessageComponent || child instanceof CompactionSummaryMessageComponent) {
-        fold();
+        fold(true);
         rule(child instanceof BranchSummaryMessageComponent ? "Branch summary" : "Compaction summary");
         continue;
       }
@@ -197,11 +205,11 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
         projection.addChild(cached.component);
         if (retried) retries++;
       } else {
-        fold();
+        if (!next) fold();
         projection.addChild(child);
       }
     }
-    fold();
+    fold(true);
     return projection.render(width);
   };
   chat.handleMouse = (event) => projection.handleMouse(event);

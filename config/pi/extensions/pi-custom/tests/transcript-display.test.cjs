@@ -166,10 +166,8 @@ test("compact view summarizes custom messages but preserves user input across Ct
     mode.renderInitialMessages();
     const render = () => stripAnsi(mode.chatContainer.render(120).join("\n"));
     const compact = render();
-    assert.match(compact, /^ ─── 1 step: messages, ctrl\+o to expand ─── *$/m);
-    assert.match(compact, /^ ─── Branch summary, ctrl\+o to expand ─── *$/m);
-    // Custom messages and tool calls between the same texts share one line.
-    assert.match(compact, /─── 2 steps: read, messages, ctrl\+o to expand ─── *\n *\n ─── Branch summary/);
+    // Without replies, custom messages and tool calls share one line before the summary.
+    assert.match(compact, /Keep this instruction\s+─── 3 steps: read, messages, ctrl\+o to expand ─── *\n *\n ─── Branch summary, ctrl\+o to expand ─── *$/);
     assert.doesNotMatch(compact, /First observation|Notice preview|Hidden report detail|Hidden notice detail|Expanded detail|reviewer-1|Hidden branch detail/);
     assert.match(compact, /Direct user input/);
     assert.match(compact, /Keep this too/);
@@ -251,6 +249,37 @@ test("finished turns keep only their last text while the running turn folds step
     text = render();
     assert.match(text, /Third question\s+─── Worked for 30s, ctrl\+o to expand ───\s+Third answer/);
     assert.doesNotMatch(text, /Steered text/);
+  } finally {
+    restore();
+  }
+});
+
+test("notifications without replies join the turn of the next reply", async () => {
+  const { mode, restore, AssistantMessageComponent, CustomMessageComponent, UserMessageComponent, getMarkdownTheme } = await setup();
+  try {
+    const chat = mode.chatContainer;
+    const notice = (timestamp) => new CustomMessageComponent({ customType: "pi-agents", content: "notice", display: true, details: {}, timestamp });
+    // As in a real session: two notifications arrive before the reply to them.
+    chat.addChild(new UserMessageComponent("Start agents", getMarkdownTheme()));
+    chat.addChild(new AssistantMessageComponent(message([{ type: "text", text: "Started" }], "stop")));
+    chat.addChild(notice(0));
+    chat.addChild(notice(1000));
+    // A rebuilt reply ends when its entry was written.
+    chat.addChild(new AssistantMessageComponent({ ...message([{ type: "text", text: "Both done" }], "stop"), timestamp: 2000 }, false, undefined, undefined, 1, [], "id", new Date(61000).toISOString()));
+    chat.addChild(notice(70000));
+    chat.addChild(new UserMessageComponent("Next", getMarkdownTheme(), 1, [], undefined, Date.now() - 5000));
+    // A live reply ends when it is first seen finished.
+    const live = new AssistantMessageComponent();
+    live.updateContent({ ...message([{ type: "text", text: "Answer" }], "stop"), timestamp: Date.now() - 5000 }, true);
+    chat.addChild(live);
+    mode.renderInitialMessages();
+    const render = () => stripAnsi(chat.render(80).join("\n"));
+    render();
+    live.updateContent({ ...message([{ type: "text", text: "Answer" }], "stop"), timestamp: Date.now() - 5000 }, false);
+    chat.addChild(notice(80000));
+    const text = render();
+    assert.match(text, /Started\s+─── Worked for 1m 01s, 2 steps: messages, ctrl\+o to expand ─── *\s+Both done\s+Next\s+─── Worked for [5-7]s, 1 step: messages, ctrl\+o to expand ─── *\s+Answer\s+─── 1 step: messages, ctrl\+o to expand ─── *$/);
+    assert.equal((text.match(/───/g) || []).length, 6);
   } finally {
     restore();
   }
