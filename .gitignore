@@ -17,6 +17,7 @@ __pycache__/
 **/dot-ssh/*_id_*
 **/dot-ssh/known_hosts*
 **/dot-ssh/config.local
+**/dot-ssh/authorized_keys.local
 
 ### ZSH ###
 *.zwc
