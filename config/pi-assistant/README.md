@@ -7,7 +7,7 @@ each chat has its own, `pd main --name telegram:<chat_id>`, so Agents keep worki
 and their results reach Telegram.
 The bridge handles polling, authorization, queues, typing and editable tool progress.
 The agent replies, sends files and processes attachments through the Bot API
-(`skills/telegram`); stdout is not forwarded. Milo works in the home directory.
+(`skills/telegram`). Milo works in the home directory.
 
 ## Setup
 
@@ -21,7 +21,7 @@ machine-specific plist into `~/Library/LaunchAgents/`. Stop other pollers for th
 
 ## Commands and recovery
 
-- `/new`: start a new session for the next messages; no automatic idle reset.
+- `/new`: start a new session for the next messages.
 - `/stop`: terminate current work and cancel queued messages, retaining the session.
 - `/ping`, `/status`, `/help`, `/logs`: service information.
 - `/restart`: restart the bridge.
@@ -29,8 +29,8 @@ machine-specific plist into `~/Library/LaunchAgents/`. Stop other pollers for th
 Open a chat's agent with `pd attach <id>` (`/status` shows the id) or `pd agents`. Let the bridge start it:
 one started first from a terminal runs without `--approve` and Milo's prompt, skill and extensions.
 State and logs live under `~/.local/state/pi-assistant/`.
-After restart, unstarted messages resume; interrupted work is reported but never automatically
-replayed. Runs are non-interactive, so extensions cannot prompt; the `questionnaire` tool is disabled.
+After restart, unstarted messages resume; interrupted work is reported for you to resend.
+Runs are non-interactive, so extensions cannot prompt; the `questionnaire` tool is disabled.
 
 When a run still fails after Pi's retries, `extensions/model-fallback.ts` continues it
 with the next model in global `enabledModels`, then restores the default model.

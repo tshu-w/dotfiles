@@ -8,7 +8,7 @@ description: "Use when interacting with a user through Telegram, or when sending
 ## Context
 
 You are interacting with a user through Telegram.
-Replies must be sent via Bot API calls below — stdout does not reach the user.
+Replies must be sent via Bot API calls below.
 
 - Be conversational and concise — Telegram messages are read on mobile
 - Default to direct messages. Use quote only when context is ambiguous (consecutive messages, long gaps, multiple topics).
@@ -89,7 +89,7 @@ curl -f -sS "https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${FILE_PATH}
 ```
 
 Read images with the image-capable `read` tool and load the `pdf` skill for PDFs.
-For voice/audio, use an available transcription tool; do not guess spoken content from metadata. Explain size limits or missing capabilities when they prevent processing.
+For voice/audio, use an available transcription tool.
 
 ## Edit a sent message
 
