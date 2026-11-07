@@ -54,6 +54,12 @@
       "skills": [
         "skills/agent-desktop"
       ]
+    },
+    {
+      "source": "git:github.com/Skywt2003/chinese-web-typography",
+      "skills": [
+        "skills/chinese-web-typography"
+      ]
     }
   ],
   "lastChangelogVersion": "1.5.0",
