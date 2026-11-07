@@ -75,6 +75,8 @@ path = Library/Preferences/com.MrKai77.Loop.plist
 ## Pi
 path = .config/pi/sessions
 path = .config/pi/tape
+path = .local/state/pi/agents
+ignore = Path .local/state/pi/agents/{runtime,mailboxes,*.log}
 ## Quicklook
 path = Library/Quicklook
 atomic = Name *.qlgenerator
