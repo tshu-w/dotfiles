@@ -1,9 +1,33 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createClaudeBridge, type ClaudeSession } from "./claude/bridge.js";
 import { PROVIDER_ID } from "./claude/convert.js";
 
-const SESSION_ENTRY = "pi-custom:claude-session";
+const STATE_DIR = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi", "claude-bridge");
+
+// One file per Pi session, overwritten after each turn, so resume state never grows the session file.
+function statePath(piSessionId: string): string {
+  return join(STATE_DIR, `${createHash("sha256").update(piSessionId).digest("hex")}.json`);
+}
+
+function saveState(state: ClaudeSession) {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+  const path = statePath(state.piSessionId), temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(state), { mode: 0o600 });
+  renameSync(temp, path);
+}
+
+function loadState(piSessionId: string): ClaudeSession | undefined {
+  try {
+    return JSON.parse(readFileSync(statePath(piSessionId), "utf8"));
+  } catch {
+    return undefined;
+  }
+}
 
 type Bridge = ReturnType<typeof createClaudeBridge>;
 
@@ -17,7 +41,7 @@ export function registerClaude(pi: ExtensionAPI) {
   const bridge = createClaudeBridge({
     cwd: () => context!.cwd,
     sessionId: () => context!.sessionManager.getSessionId(),
-    save: (state) => pi.appendEntry(SESSION_ENTRY, state),
+    save: saveState,
   });
 
   pi.registerProvider(PROVIDER_ID, {
@@ -49,9 +73,7 @@ export function registerClaude(pi: ExtensionAPI) {
     context = ctx;
     sessionId = ctx.sessionManager.getSessionId();
     bridges.set(sessionId, bridge);
-    const entry = ctx.sessionManager.getBranch().findLast((entry) =>
-      entry.type === "custom" && entry.customType === SESSION_ENTRY);
-    if (entry?.type === "custom") bridge.restore(entry.data as ClaudeSession);
+    bridge.restore(loadState(sessionId));
   };
   pi.on("session_start", restore);
   pi.on("session_tree", restore);
