@@ -7,5 +7,13 @@
   "workspaces": [
     "extensions/pi-custom",
     "mcp/chatgpt-computer-use"
-  ]
+  ],
+  "overrides": {
+    "extensions/pi-custom": {
+      "@modelcontextprotocol/sdk": "1.32.2"
+    },
+    "chatgpt-computer-use-mcp": {
+      "@modelcontextprotocol/sdk": "1.32.2"
+    }
+  }
 }
