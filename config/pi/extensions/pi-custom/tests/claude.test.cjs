@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { test, before } = require("node:test");
 const { execFileSync } = require("node:child_process");
-const { mkdtempSync, realpathSync, readFileSync } = require("node:fs");
+const { existsSync, mkdtempSync, realpathSync, readFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -49,7 +49,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
     const uuid = session.addAssistantMessage([{ type: "text", text: "fixture" }]);
     session.save();
     const call = {
-      options, accountInfo, prompts: [], sessionId: options.resume ?? session.sessionId, uuid,
+      options, accountInfo, prompts: [], sessionId: options.forkSession ? session.sessionId : options.resume ?? session.sessionId, uuid,
       get closed() { return closed; },
       emit(message) { queue.push(message); wake?.(); wake = undefined; },
       event(event) { this.emit({ type: "stream_event", parent_tool_use_id: null, event }); },
@@ -420,6 +420,29 @@ test("concurrent independent requests do not overwrite main-session state", { ti
   h.calls[0].text("main answer"); h.calls[0].finish();
   await main.result(); assert.equal(h.saved.length, 1);
   assert.equal(h.saved[0].sessionId, h.calls[0].sessionId);
+});
+
+test("other requests extending the main history fork its CC session and remove the fork", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result(), state = structuredClone(h.saved[0]);
+  const compaction = h.stream([...history, answer, user("summarize")], { sessionId: "compaction" });
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(h.calls[1].options.resume, state.sessionId);
+  assert.equal(h.calls[1].options.forkSession, true);
+  h.calls[1].text("summary"); h.calls[1].finish();
+  assert.equal((await compaction.result()).stopReason, "stop");
+  assert.equal(h.saved.length, 1);
+  assert.equal(existsSync(sessions.getSessionPath(h.calls[1].sessionId, directory)), false);
+  assert.equal(existsSync(sessions.getSessionPath(state.sessionId, directory)), true);
+  const next = h.stream([...history, answer, user("again")]);
+  await until(() => h.calls.length === 3);
+  assert.equal(h.calls[2].options.resume, state.sessionId);
+  assert.equal(h.calls[2].options.forkSession, undefined);
+  h.calls[2].text("again back"); h.calls[2].finish();
+  await next.result();
 });
 
 test("SDK errors, early abort and malformed schemas terminate rather than hang", { timeout: 10000 }, async (t) => {

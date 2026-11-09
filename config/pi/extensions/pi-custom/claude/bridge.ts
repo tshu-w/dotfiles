@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
 import {
@@ -77,6 +77,8 @@ interface RunningQuery {
   sessionId?: string;
   lastUuid?: string;
   main: boolean;
+  // Set for a fork of the main CC session; its session file is removed when the query ends.
+  fork?: { configDir?: string; sessionId?: string };
   cwd: string;
   stopped: boolean;
   sawMessage: boolean;
@@ -117,6 +119,7 @@ export function createClaudeBridge(options: {
     q.results.clear();
     q.removeAbort?.();
     q.query?.close();
+    if (q.fork?.sessionId) rmSync(getSessionPath(q.fork.sessionId, q.cwd, q.fork.configDir), { force: true });
     running.delete(q);
   }
 
@@ -216,7 +219,10 @@ export function createClaudeBridge(options: {
           || message.rate_limit_info.errorCode === "credits_required")) {
           throw new Error(USAGE_CREDITS_ERROR);
         }
-        if (message.type === "system" && message.subtype === "init") q.sessionId = message.session_id;
+        if (message.type === "system" && message.subtype === "init") {
+          q.sessionId = message.session_id;
+          if (q.fork) q.fork.sessionId = message.session_id;
+        }
         if (message.type === "assistant") {
           q.lastUuid = message.uuid;
           if (message.error) {
@@ -319,13 +325,16 @@ export function createClaudeBridge(options: {
     let promptMessages = messages;
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
-    if (main && saved && saved.piSessionId === options.sessionId() && saved.cwd === cwd
+    let fork = false;
+    // Other requests that extend the main history fork the main CC session to reuse its prompt cache.
+    if (saved && saved.piSessionId === options.sessionId() && saved.cwd === cwd
       && startsWith(incoming, saved.prefix) && messages.slice(saved.prefix.length).every(isInput)
       && existsSync(getSessionPath(saved.sessionId, cwd, request.env?.CLAUDE_CONFIG_DIR))) {
       promptMessages = messages.slice(saved.prefix.length);
       resume = saved.sessionId;
       resumeSessionAt = saved.lastUuid;
-      options.trace?.("resume: unchanged history");
+      fork = !main;
+      options.trace?.(fork ? "fork: unchanged main history" : "resume: unchanged history");
     } else {
       // Import only into a new, bridge-owned session. Never overwrite another session's history.
       const split = messages.findLastIndex((m) => !isInput(m)) + 1;
@@ -348,6 +357,7 @@ export function createClaudeBridge(options: {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
       cwd, main, stopped: false, sawMessage: false, sessionId: resume,
+      ...(fork ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR } } : {}),
     };
     running.add(q);
     attach(q, stream, request.signal);
@@ -390,7 +400,7 @@ export function createClaudeBridge(options: {
       extraArgs: { "strict-mcp-config": null },
       ...(mappedEffort && adaptive ? { effort: mappedEffort as Options["effort"] } : {}),
       thinking,
-      ...(resume ? { resume, resumeSessionAt } : { persistSession: main }),
+      ...(resume ? { resume, resumeSessionAt, ...(fork ? { forkSession: true } : {}) } : { persistSession: main }),
     };
     try {
       q.query = runQuery({ prompt: input.stream, options: sdkOptions });
