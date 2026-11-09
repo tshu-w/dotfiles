@@ -1,20 +1,13 @@
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { getSystemMessageText, type SystemMessage } from "@earendil-works/pi-ai";
-import { getPackageDir } from "@earendil-works/pi-coding-agent";
 
-// Pi does not publicly export this builder; integration tests track its internal API.
-async function defaultSections(): Promise<Record<string, string>> {
-  const { buildSystemPromptSections } = await import(pathToFileURL(join(getPackageDir(), "dist/core/system-prompt.js")).href);
-  return buildSystemPromptSections({ cwd: "" });
-}
+// Pi's default docs guide and identity, matched by shape so wording from any Pi version is recognized.
+// Anthropic bills requests carrying this guide as a third-party app, outside the subscription.
+const DEFAULT_DOCS = /^<docs>\nPi documentation \([^\n]*\):\n(?:- [^\n]*\n)+<\/docs>$/;
+const DEFAULT_PREAMBLE = /^You are [^\n]* inside pi, a coding agent harness\./;
 
-function normalizeDocsInstallPaths(text: string): string {
-  return text.replace(
-    /^(- (?:Main documentation|Additional docs|Examples): )\S+?(?=\/@earendil-works\/pi-coding-agent\/)/gm,
-    "$1<install>",
-  );
+export function isPiDefaultSection(name: string, value: string | null): boolean {
+  return value !== null && (name === "docs" ? DEFAULT_DOCS : name === "preamble" ? DEFAULT_PREAMBLE : undefined)?.test(value) === true;
 }
 
 function rewriteToolReferences(text: string, names: Map<string, string>): string {
@@ -34,10 +27,9 @@ export async function buildClaudeSystemPrompt(message: SystemMessage | undefined
   // Forced prompts and auxiliary requests are opaque, exact replacements.
   if (!message?.sections) return message ? getSystemMessageText(message) : "";
   const sections = { ...message.sections };
-  const defaults = await defaultSections();
-  if (sections.docs && normalizeDocsInstallPaths(sections.docs) === normalizeDocsInstallPaths(defaults.docs)) {
-    // Custom prefixes omit the default docs; keep ambiguous/customized prompts intact.
-    if (sections.preamble === defaults.preamble) delete sections.preamble;
+  // Custom prefixes omit the default docs; keep ambiguous/customized prompts intact.
+  if (isPiDefaultSection("docs", sections.docs)) {
+    if (isPiDefaultSection("preamble", sections.preamble)) delete sections.preamble;
     delete sections.docs;
   }
   for (const name of ["tools", "rules", "skills"]) {

@@ -285,6 +285,35 @@ test("old Pi install paths do not leak the default docs into Claude", { timeout:
   }
 });
 
+// Default Pi sections from a session saved by an older Pi; Anthropic bills prompts carrying this docs guide as a third-party app.
+const OLD_PREAMBLE = "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
+const OLD_DOCS = "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /previous-pi-install/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /previous-pi-install/@earendil-works/pi-coding-agent/docs\n- Examples: /previous-pi-install/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>";
+
+test("default Pi docs and identity from older Pi versions never reach Claude", { timeout: 10000 }, async (t) => {
+  const { buildSystemPromptState } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/system-prompt.js")));
+  const native = buildSystemPromptState({ cwd: directory });
+  const h = harness(t), history = [
+    { role: "system", ...native, sections: { ...native.sections, preamble: OLD_PREAMBLE, docs: OLD_DOCS }, toolsAdded: [tool], timestamp: 0 },
+    user("hello"),
+  ];
+  const patched = { ...model, compat: { ...model.compat, supportsMidConvoSystemMessages: true } };
+  const stream = (messages) => h.bridge.streamSimple(patched, { messages }, { sessionId: "pi-main" });
+  const first = stream(history);
+  await until(() => h.calls.length === 1);
+  const prompt = h.calls[0].options.systemPrompt.append;
+  assert.ok(!prompt.includes("docs/custom-provider.md") && !prompt.includes("inside pi"));
+  assert.ok(prompt.includes(native.sections.rules));
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result();
+  const patch = { role: "system", content: "", sections: { preamble: native.sections.preamble, docs: native.sections.docs, memory: "New memory" }, timestamp: 0 };
+  const second = stream([...history, answer, patch, user("again")]);
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  const sent = JSON.stringify(h.calls[1].prompts[0].message.content);
+  assert.ok(sent.includes("New memory") && !sent.includes("docs/custom-provider.md") && !sent.includes("inside pi"));
+  h.calls[1].text("again back"); h.calls[1].finish();
+  assert.equal((await second.result()).stopReason, "stop");
+});
+
 test("custom sections survive projection and full prompt overrides remain exact", { timeout: 10000 }, async (t) => {
   const { buildSystemPromptState } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/system-prompt.js")));
   const native = buildSystemPromptState({ cwd: directory });

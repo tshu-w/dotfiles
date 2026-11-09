@@ -1,6 +1,7 @@
 // Adapted from pi-claude-bridge (MIT), copyright 2026 Eli Dickinson. See LICENSE.
 import { renderSystemMessageUpdate, type Message as PiMessage } from "@earendil-works/pi-ai";
 import type { Message as SessionMessage, ContentBlock, ToolResultBlock } from "cc-session-io";
+import { isPiDefaultSection } from "./system-prompt.js";
 const MCP_TOOL_PREFIX = "mcp__pi__";
 
 export const PROVIDER_ID = "claude-code";
@@ -75,7 +76,8 @@ export function convertPiMessages(
 
 	for (const msg of messages) {
 		if (msg.role === "system") {
-			const text = renderSystemMessageUpdate(msg);
+			const sections = Object.fromEntries(Object.entries(msg.sections ?? {}).filter(([name, value]) => !isPiDefaultSection(name, value)));
+			const text = renderSystemMessageUpdate({ ...msg, sections });
 			if (text) anthropicMessages.push({ role: "user", content: `<system-reminder>\n${text}\n</system-reminder>` });
 		} else if (msg.role === "user") {
 			if (typeof msg.content === "string") {
