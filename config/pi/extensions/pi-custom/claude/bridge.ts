@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
 import {
-  calculateCost, createAssistantMessageEventStream, getCurrentSystemMessage, getSystemMessageText, getCurrentTools,
+  calculateCost, createAssistantMessageEventStream, getInitialSystemMessage, getSystemMessageText, getCurrentTools, resolveTranscript,
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { convertPiMessages } from "./convert.js";
@@ -27,8 +27,9 @@ function digest(value: unknown): string {
 
 // Exclude timestamps, usage and provider-specific response metadata from continuity checks.
 function hashes(messages: any[]): string[] {
-  return messages.filter((m) => m.role !== "system").map((m) => digest({
+  return messages.map((m) => digest({
     role: m.role,
+    sections: m.sections,
     toolCallId: m.toolCallId,
     isError: m.isError,
     content: typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content.map((b: any) => {
@@ -41,6 +42,11 @@ function hashes(messages: any[]): string[] {
       }
     }),
   }));
+}
+
+// System patches reach Claude Code as user text, so they may follow the resumed prefix.
+function isInput(message: { role: string }): boolean {
+  return message.role === "user" || message.role === "system";
 }
 
 function startsWith(history: string[], prefix: string[]): boolean {
@@ -254,10 +260,13 @@ export function createClaudeBridge(options: {
     request.signal?.throwIfAborted();
     if (billingError) throw new Error(billingError);
     if (request.fetch) throw new Error("Claude Code uses an SDK subprocess and cannot accept a custom fetch");
-    const system = getCurrentSystemMessage(context.messages);
+    // Like Pi's native Anthropic path, later system messages stay in place when the model accepts them;
+    // the prompt comes from the leading one, so a patch appends to the history instead of changing the prefix.
+    const transcript = resolveTranscript(context, (model.compat as any)?.supportsMidConvoSystemMessages);
+    const system = getInitialSystemMessage(transcript.messages);
     const originalPrompt = system ? getSystemMessageText(system) : "";
     const payload = {
-      messages: context.messages.filter((m) => m.role !== "system"),
+      messages: system ? transcript.messages.slice(1) : transcript.messages,
       tools: request.toolChoice === "none" ? [] : getCurrentTools(context.messages),
       systemPrompt: originalPrompt,
       reasoning: request.reasoning,
@@ -291,9 +300,8 @@ export function createClaudeBridge(options: {
       if (owner.stopped) return;
       owner.history = structuredClone(messages);
       // The stdin write must precede releasing MCP results, so steering reaches this turn.
-      for (const message of delta) if (message.role === "user") {
-        const { anthropicMessages } = convertPiMessages([message]);
-        await owner.input.push(userMessage(anthropicMessages[0].content as any, "next"));
+      for (const message of convertPiMessages(delta.filter(isInput)).anthropicMessages) {
+        await owner.input.push(userMessage(message.content as any, "next"));
       }
       owner.ids.clear();
       for (const message of results) {
@@ -312,7 +320,7 @@ export function createClaudeBridge(options: {
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
     if (main && saved && saved.piSessionId === options.sessionId() && saved.cwd === cwd
-      && startsWith(incoming, saved.prefix) && messages.slice(saved.prefix.length).every((m) => m.role === "user")
+      && startsWith(incoming, saved.prefix) && messages.slice(saved.prefix.length).every(isInput)
       && existsSync(getSessionPath(saved.sessionId, cwd, request.env?.CLAUDE_CONFIG_DIR))) {
       promptMessages = messages.slice(saved.prefix.length);
       resume = saved.sessionId;
@@ -320,7 +328,7 @@ export function createClaudeBridge(options: {
       options.trace?.("resume: unchanged history");
     } else {
       // Import only into a new, bridge-owned session. Never overwrite another session's history.
-      const split = messages.findLastIndex((m) => m.role !== "user") + 1;
+      const split = messages.findLastIndex((m) => !isInput(m)) + 1;
       const history = messages.slice(0, split);
       promptMessages = messages.slice(split);
       if (history.length) {

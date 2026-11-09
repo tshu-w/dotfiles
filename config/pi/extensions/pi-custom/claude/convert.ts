@@ -1,5 +1,5 @@
 // Adapted from pi-claude-bridge (MIT), copyright 2026 Eli Dickinson. See LICENSE.
-import type { Message as PiMessage } from "@earendil-works/pi-ai";
+import { renderSystemMessageUpdate, type Message as PiMessage } from "@earendil-works/pi-ai";
 import type { Message as SessionMessage, ContentBlock, ToolResultBlock } from "cc-session-io";
 const MCP_TOOL_PREFIX = "mcp__pi__";
 
@@ -74,7 +74,10 @@ export function convertPiMessages(
 	let turnAssistantIdx: number | null = null;
 
 	for (const msg of messages) {
-		if (msg.role === "user") {
+		if (msg.role === "system") {
+			const text = renderSystemMessageUpdate(msg);
+			if (text) anthropicMessages.push({ role: "user", content: `<system-reminder>\n${text}\n</system-reminder>` });
+		} else if (msg.role === "user") {
 			if (typeof msg.content === "string") {
 				anthropicMessages.push({ role: "user", content: msg.content || "[empty]" });
 			} else if (Array.isArray(msg.content)) {

@@ -196,6 +196,28 @@ test("streams text, usage and payload edits; resumes and restores unchanged hist
   assert.equal((await second.result()).stopReason, "stop");
 });
 
+test("mid-conversation system patches resume as user text without changing the prompt", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const patched = { ...model, compat: { ...model.compat, supportsMidConvoSystemMessages: true } };
+  const stream = (messages) => h.bridge.streamSimple(patched,
+    ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages }), { sessionId: "pi-main" });
+  const first = stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result();
+  const patch = { role: "system", content: "", sections: { memory: "New memory" }, timestamp: Date.now() };
+  const second = stream([...history, answer, patch, user("again")]);
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(h.calls[1].options.resume, h.saved[0].sessionId);
+  assert.deepEqual(h.calls[1].options.systemPrompt, h.calls[0].options.systemPrompt);
+  assert.deepEqual(h.calls[1].prompts[0].message.content, [
+    { type: "text", text: "<system-reminder>\nUpdated system prompt section \"memory\":\n\nNew memory\n</system-reminder>" },
+    { type: "text", text: "again" },
+  ]);
+  h.calls[1].text("again back"); h.calls[1].finish();
+  assert.equal((await second.result()).stopReason, "stop");
+});
+
 test("Claude preset retains current Pi constraints and routes their tool references through MCP", { timeout: 10000 }, async (t) => {
   const { buildSystemPromptState } = await import(pathToFileURL(join(PI_PACKAGE, "dist/core/system-prompt.js")));
   const state = buildSystemPromptState({
