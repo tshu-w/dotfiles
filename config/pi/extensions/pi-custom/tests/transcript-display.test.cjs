@@ -36,6 +36,7 @@ async function setup() {
   const mode = Object.assign(Object.create(prototype), {
     chatContainer: new tui.Container(),
     loadedResourcesContainer: new tui.Container(),
+    pendingMessagesContainer: new tui.Container(),
     toolOutputExpanded: false,
     outputPad: 1,
     session: { isStreaming: false },
