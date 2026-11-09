@@ -94,7 +94,7 @@
   ],
   "pi-custom": {
     "fast": false,
-    "codexCompaction": true,
+    "codexCompaction": false,
     "transcriptOptimization": true
   },
   "defaultProjectTrust": "always",
