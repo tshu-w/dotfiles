@@ -76,15 +76,25 @@ function unseen(point: ClaudeSession, messages: any[]): any[] {
   return start < 0 ? [] : suffix.slice(start);
 }
 
-// The record of Claude Code's own result for `ids`, written when a query stopped at their tool gap.
+// The last record of Claude Code's own results for `ids`, written when a query stopped at their tool gap.
+// Only a record that completes the batch is a resume point.
 function interruption(sessionId: string, cwd: string, configDir: string | undefined, ids: string[]): string | undefined {
+  let records: any[];
   try {
-    return readFileSync(getSessionPath(sessionId, cwd, configDir), "utf8").trim().split("\n").map((line) => JSON.parse(line))
-      .findLast((r) => r.type === "user" && Array.isArray(r.message?.content)
-        && r.message.content.some((b: any) => b.type === "tool_result" && ids.includes(b.tool_use_id)))?.uuid;
+    records = readFileSync(getSessionPath(sessionId, cwd, configDir), "utf8").trim().split("\n").map((line) => JSON.parse(line));
   } catch {
     return undefined;
   }
+  const answered = new Set<string>();
+  let uuid: string | undefined;
+  for (const r of records) {
+    if (r.type !== "user" || !Array.isArray(r.message?.content)) continue;
+    const found = r.message.content.filter((b: any) => b.type === "tool_result" && ids.includes(b.tool_use_id));
+    if (!found.length) continue;
+    for (const b of found) answered.add(b.tool_use_id);
+    uuid = r.uuid;
+  }
+  return answered.size === ids.length ? uuid : undefined;
 }
 
 function outputFor(model: Model<any>): AssistantMessage {

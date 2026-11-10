@@ -595,6 +595,27 @@ test("a tool-gap point restored after a hard exit resumes at Claude Code's inter
   await next.result();
 });
 
+test("a restored tool-gap point with only part of the batch interrupted rebuilds", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tools")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.tools(["call-a", "call-b"]); q.record(["call-a", "call-b"]);
+  const answer = await first.result();
+  await until(() => h.saved.length === 1);
+  appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-partial",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
+  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, clear() {}, query: h.query });
+  t.after(() => restarted.reset());
+  restarted.restore(structuredClone(h.saved[0]));
+  const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
+    messages: [...history, answer, result("call-a", "a"), result("call-b", "b"), user("next")] }), { sessionId: "pi-main" });
+  await until(() => h.calls.length === 2);
+  assert.notEqual(h.calls[1].options.resume, q.sessionId);
+  h.calls[1].text("done"); h.calls[1].finish();
+  await next.result();
+});
+
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);
