@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getSessionPath } from "cc-session-io";
-import { createClaudeBridge, type ClaudeSession } from "./claude/bridge.js";
+import { createClaudeBridge, type BridgeState } from "./claude/bridge.js";
 import { PROVIDER_ID } from "./claude/convert.js";
 
 const STATE_DIR = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi", "claude-bridge");
@@ -15,14 +15,14 @@ function statePath(piSessionId: string): string {
   return join(STATE_DIR, `${createHash("sha256").update(piSessionId).digest("hex")}.json`);
 }
 
-function saveState(state: ClaudeSession) {
+function saveState(state: BridgeState) {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
   const path = statePath(state.piSessionId), temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, JSON.stringify(state), { mode: 0o600 });
   renameSync(temp, path);
 }
 
-function loadState(piSessionId: string): ClaudeSession | undefined {
+function loadState(piSessionId: string): BridgeState | undefined {
   try {
     return JSON.parse(readFileSync(statePath(piSessionId), "utf8"));
   } catch {
@@ -42,16 +42,32 @@ export function removeOrphanedStates(sessionsDir = join(getAgentDir(), "sessions
   const states = readdirSync(stateDir).filter((name) => name.endsWith(".json")).flatMap((name) => {
     const path = join(stateDir, name);
     try {
-      return [{ path, state: JSON.parse(readFileSync(path, "utf8")) as ClaudeSession, mtime: statSync(path).mtimeMs }];
+      return [{ path, state: JSON.parse(readFileSync(path, "utf8")) as BridgeState, mtime: statSync(path).mtimeMs }];
     } catch {
       return [];
     }
   });
   const orphaned = states.filter(({ state, mtime }) => !live.has(state.piSessionId) && now - mtime > 60_000);
-  const kept = new Set(states.filter((entry) => !orphaned.includes(entry)).map(({ state }) => state.sessionId));
+  // A forked Session's state may point into its parent's Claude Code session.
+  const sessions = (state: BridgeState) => [state, ...state.points ?? []].flatMap((point) => point.sessionId ? [point] : []);
+  const kept = new Set(states.filter((entry) => !orphaned.includes(entry)).flatMap(({ state }) => sessions(state).map((point) => point.sessionId)));
   for (const { path, state } of orphaned) {
     rmSync(path, { force: true });
-    if (!kept.has(state.sessionId)) rmSync(getSessionPath(state.sessionId, state.cwd), { force: true });
+    for (const point of sessions(state)) {
+      if (!kept.has(point.sessionId!)) rmSync(getSessionPath(point.sessionId!, point.cwd!), { force: true });
+    }
+  }
+}
+
+function parentSessionId(sessionFile: string): string | undefined {
+  try {
+    const fd = openSync(sessionFile, "r"), buffer = Buffer.alloc(4096);
+    const length = readSync(fd, buffer, 0, buffer.length, 0);
+    closeSync(fd);
+    const header = JSON.parse(buffer.subarray(0, length).toString("utf8").split("\n", 1)[0]!);
+    return header.type === "session" && typeof header.id === "string" ? header.id : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -111,13 +127,15 @@ export function registerClaude(pi: ExtensionAPI) {
   const release = () => {
     if (sessionId && bridges.get(sessionId) === bridge) bridges.delete(sessionId);
   };
-  const restore = (_event: unknown, ctx: ExtensionContext) => {
+  const restore = (event: { reason?: string; previousSessionFile?: string }, ctx: ExtensionContext) => {
     bridge.reset();
     release();
     context = ctx;
     sessionId = ctx.sessionManager.getSessionId();
     bridges.set(sessionId, bridge);
-    bridge.restore(loadState(sessionId));
+    // A fork starts with its parent's history, so it may fork its parent's Claude Code session.
+    const parent = event.reason === "fork" && event.previousSessionFile ? parentSessionId(event.previousSessionFile) : undefined;
+    bridge.restore(loadState(sessionId), parent && parent !== sessionId ? loadState(parent)?.points ?? [] : []);
   };
   pi.on("session_start", (event, ctx) => {
     if (!(globalThis as Record<symbol, boolean>)[ORPHANS_REMOVED]) {
@@ -126,7 +144,7 @@ export function registerClaude(pi: ExtensionAPI) {
     }
     restore(event, ctx);
   });
-  pi.on("session_tree", restore);
+  pi.on("session_tree", () => bridge.navigate());
   pi.on("tool_execution_end", (event) => bridge.deliver(event.toolCallId, event.result?.content ?? [], event.isError));
   pi.on("session_shutdown", () => {
     bridge.reset();

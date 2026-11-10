@@ -17,7 +17,9 @@ export interface ClaudeSession {
   piSessionId: string;
   sessionId: string;
   cwd: string;
-  prefix: string[];
+  // The Pi history the point continues: its length and the digest chained over its message hashes.
+  size: number;
+  tip: string;
   lastUuid?: string;
   // The tool calls the prefix ends with were answered in the CC session (an interrupted tool use).
   answered?: boolean;
@@ -25,6 +27,12 @@ export interface ClaudeSession {
   delivered?: Record<string, string>;
   // A tool-gap point waits on these tool calls; Claude Code marks them interrupted once its query ends.
   pending?: string[];
+}
+
+// What the state file holds: the main resume point, if any, and the recent points to fork from.
+export interface BridgeState extends Partial<ClaudeSession> {
+  piSessionId: string;
+  points?: ClaudeSession[];
 }
 
 function digest(value: unknown): string {
@@ -55,16 +63,31 @@ function isInput(message: { role: string }): boolean {
   return message.role === "user" || message.role === "system";
 }
 
+// Digests chained over message hashes: entry i names the history up to message i.
+function chain(messageHashes: string[]): string[] {
+  const out: string[] = [];
+  for (const hash of messageHashes) out.push(digest([out.at(-1) ?? "", hash]));
+  return out;
+}
+
+function anchor(messageHashes: string[]): { size: number; tip: string } {
+  return { size: messageHashes.length, tip: chain(messageHashes).at(-1) ?? "" };
+}
+
+function extendsPoint(point: ClaudeSession, tips: string[]): boolean {
+  return point.size <= tips.length && (point.size === 0 || tips[point.size - 1] === point.tip);
+}
+
 function startsWith(history: string[], prefix: string[]): boolean {
   return history.length >= prefix.length && prefix.every((item, index) => history[index] === item);
 }
 
 // Whether `messages` continue the CC session at `point`: results for the tool calls it ends with, then input.
-function continues(point: ClaudeSession, messages: any[], incoming: string[]): boolean {
-  if (!startsWith(incoming, point.prefix)) return false;
-  const last = messages[point.prefix.length - 1];
+function continues(point: ClaudeSession, messages: any[], tips: string[]): boolean {
+  if (!extendsPoint(point, tips)) return false;
+  const last = messages[point.size - 1];
   const calls: string[] = last?.role === "assistant" ? last.content.filter((b: any) => b.type === "toolCall").map((b: any) => b.id) : [];
-  const suffix = messages.slice(point.prefix.length);
+  const suffix = messages.slice(point.size);
   if (point.answered) {
     // Claude Code already answered every call; Pi may lack some results, as after a crash.
     const start = suffix.findIndex((m) => m.role !== "toolResult");
@@ -79,7 +102,7 @@ function continues(point: ClaudeSession, messages: any[], incoming: string[]): b
 
 // Messages after the point that Claude Code has not seen.
 function unseen(point: ClaudeSession, messages: any[]): any[] {
-  const suffix = messages.slice(point.prefix.length);
+  const suffix = messages.slice(point.size);
   if (!point.answered) return suffix;
   const start = suffix.findIndex((m) => m.role !== "toolResult");
   return start < 0 ? [] : suffix.slice(start);
@@ -172,6 +195,19 @@ interface RunningQuery {
   removeAbort?: () => void;
 }
 
+const MAX_POINTS = 32;
+
+function samePoint(a: ClaudeSession, b: ClaudeSession): boolean {
+  return a.sessionId === b.sessionId && a.lastUuid === b.lastUuid && a.size === b.size && a.tip === b.tip;
+}
+
+// State files written before points were compact carry the full list of message hashes.
+function migrate(point: ClaudeSession & { prefix?: string[] }): ClaudeSession {
+  if (!Array.isArray(point.prefix)) return point;
+  const { prefix, ...rest } = point;
+  return { ...rest, ...anchor(prefix) };
+}
+
 // Points a resume failed from, shared because bridges fork from each other's points.
 const failedPoints = new WeakSet<ClaudeSession>();
 // How Claude Code's print mode reports a session or message it cannot resume.
@@ -234,12 +270,18 @@ export function createClaudeBridge(options: {
     if (q.fork?.sessionId) rmSync(getSessionPath(q.fork.sessionId, q.cwd, q.fork.configDir), { force: true });
   }
 
-  function checkpoint(q: RunningQuery, prefix: string[], pending?: string[]) {
+  // The state file keeps the main point and the recent points, so /tree, a restart or a fork can fork from them.
+  function persist() {
+    if (saved || points.length) options.save({ ...saved ?? { piSessionId: options.sessionId() }, points });
+    else options.clear();
+  }
+
+  function checkpoint(q: RunningQuery, at: { size: number; tip: string }, pending?: string[]) {
     // A tool-gap point also keeps the results already handed over, in case a deliver came first.
     const delivered = pending && q.delivered.size ? { delivered: Object.fromEntries(q.delivered) } : {};
-    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, prefix, lastUuid: q.lastUuid, ...pending ? { pending } : {}, ...delivered };
-    points = [...points.slice(-15), saved];
-    options.save(saved);
+    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, ...at, lastUuid: q.lastUuid, ...pending ? { pending } : {}, ...delivered };
+    points = [...points.slice(-(MAX_POINTS - 1)), saved];
+    persist();
   }
 
   // While the main query runs, its CC session is a resume point once a tool step is recorded.
@@ -247,7 +289,7 @@ export function createClaudeBridge(options: {
     const recorded = q.expect?.gap ? q.recorded.uses : q.recorded.results;
     if (!q.expect || !q.sessionId || [...q.expect.ids].some((id) => !recorded.has(id))) return;
     const previous = saved;
-    checkpoint(q, q.expect.prefix, q.expect.gap ? [...q.expect.ids] : undefined);
+    checkpoint(q, anchor(q.expect.prefix), q.expect.gap ? [...q.expect.ids] : undefined);
     if (q.expect.gap) q.gap = { point: saved!, previous, ids: [...q.expect.ids] };
     q.expect = undefined;
   }
@@ -259,14 +301,13 @@ export function createClaudeBridge(options: {
       points = points.filter((point) => point !== q.gap!.point);
       q.interrupted = q.gap;
       saved = q.gap.previous;
-      if (saved) options.save(saved);
-      else options.clear();
+      persist();
     }
     // Keep the resume point after an abort or another error, such as a rate limit; the next turn resumes by prefix.
     // Only a rejected resume invalidates it: other requests stop forking from it, and the main conversation rebuilds.
     if (q.point && !q.responded && (q.failedToLoad || RESUME_FAILURE.test(error.message))) {
       failedPoints.add(q.point);
-      if (q.main && saved === q.point) { saved = undefined; options.clear(); }
+      if (q.main && saved === q.point) { saved = undefined; persist(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
     release(q, error.message, true);
@@ -408,7 +449,7 @@ export function createClaudeBridge(options: {
           }
           if (!q.stream || !q.sawMessage) throw new Error("Claude Code finished without a complete streamed response");
           q.history.push(structuredClone(q.output));
-          if (q.main && q.sessionId) checkpoint(q, hashes(q.history));
+          if (q.main && q.sessionId) checkpoint(q, anchor(hashes(q.history)));
           options.trace?.(`completed cacheRead=${q.output.usage.cacheRead} cacheWrite=${q.output.usage.cacheWrite} input=${q.output.usage.input}`);
           q.stopped = true;
           release(q, "Claude Code query completed");
@@ -439,10 +480,10 @@ export function createClaudeBridge(options: {
     const uuid = interruption(q.sessionId, q.cwd, q.configDir, gap.ids);
     if (!uuid) return;
     q.lastUuid = uuid;
-    checkpoint(q, gap.point.prefix);
+    checkpoint(q, { size: gap.point.size, tip: gap.point.tip });
     saved!.answered = true;
     if (q.delivered.size) saved!.delivered = Object.fromEntries(q.delivered);
-    options.save(saved!);
+    persist();
   }
 
   async function start(model: Model<any>, context: TranscriptContext, request: SimpleStreamOptions, stream: AssistantMessageEventStream) {
@@ -477,7 +518,7 @@ export function createClaudeBridge(options: {
     if (billingError) throw new Error(billingError);
     const env = subscriptionEnvironment(request);
     const configuration = digest([model.id, systemPrompt, tools, reasoning, maxTokens, request.thinkingBudgets, request.env, request.headers, request.cacheRetention]);
-    const incoming = hashes(messages);
+    const incoming = hashes(messages), tips = chain(incoming);
     const resultIds = new Set(messages.filter((m) => m.role === "toolResult").map((m) => m.toolCallId));
     // Replays such as cache warming must neither continue nor record the main conversation.
     const side = (request as { disableContinuation?: boolean }).disableContinuation === true;
@@ -519,14 +560,14 @@ export function createClaudeBridge(options: {
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
     let fork = false;
-    const usable = (point: ClaudeSession) => point.cwd === cwd && continues(point, messages, incoming)
+    const usable = (point: ClaudeSession) => point.cwd === cwd && continues(point, messages, tips)
       && existsSync(getSessionPath(point.sessionId, cwd, request.env?.CLAUDE_CONFIG_DIR));
     let point = main && saved?.piSessionId === options.sessionId() && usable(saved) ? saved : undefined;
     // Requests that extend a main history at an earlier or another Session's point fork that CC session
     // to reuse its prompt cache; for this Session's main conversation, the fork becomes its own session.
     if (!point) {
       fork = true;
-      point = [...points, ...options.forkSources()].sort((a, b) => b.prefix.length - a.prefix.length)
+      point = [...points, ...options.forkSources()].sort((a, b) => b.size - a.size)
         .find((candidate) => !failedPoints.has(candidate) && usable(candidate));
     }
     if (point) {
@@ -640,17 +681,21 @@ export function createClaudeBridge(options: {
       });
       return stream;
     },
-    restore(state?: ClaudeSession) {
+    // Load this Session's state; a forked Session also inherits its parent's points.
+    restore(state?: BridgeState, inherited: ClaudeSession[] = []) {
+      const { points: stored, ...top } = state ?? {};
+      let own = top.sessionId ? migrate(top as ClaudeSession) : undefined;
       // Pi exited at a tool gap without withdrawing it: resume at Claude Code's interrupted result, or rebuild.
-      if (state?.pending) {
-        const uuid = interruption(state.sessionId, state.cwd, undefined, state.pending);
-        const { pending: _pending, ...rest } = state;
-        state = uuid ? { ...rest, lastUuid: uuid, answered: true } : undefined;
-        if (state) options.save(state);
-        else options.clear();
+      if (own?.pending) {
+        const uuid = interruption(own.sessionId, own.cwd, undefined, own.pending);
+        const { pending: _pending, ...rest } = own;
+        own = uuid ? { ...rest, lastUuid: uuid, answered: true } : undefined;
       }
-      saved = state;
-      points = state ? [state] : [];
+      const kept = (stored ?? []).map(migrate).filter((point) => !point.pending && !(own && samePoint(point, own)));
+      saved = own;
+      points = [...inherited, ...kept, ...own ? [own] : []].slice(-MAX_POINTS);
+      // Rewrite a state that was re-anchored or still uses the old point format.
+      if (state?.pending || (state as { prefix?: unknown } | undefined)?.prefix) persist();
     },
     points: () => points,
     // Hand a finished tool's result to Claude Code at once, so an abort later in the batch keeps it.
@@ -662,12 +707,17 @@ export function createClaudeBridge(options: {
       q.delivered.set(toolCallId, resultDigest(content, isError));
       if (q.gap && saved === q.gap.point) {
         saved.delivered = Object.fromEntries(q.delivered);
-        options.save(saved);
+        persist();
       }
       const result = { content: toolResultToMcpContent(content), isError };
       const resolve = q.handlers.get(toolCallId);
       if (resolve) { q.handlers.delete(toolCallId); resolve(result); }
       else q.results.set(toolCallId, result);
+    },
+    // /tree: stop the running queries, but keep the points the new branch may fork from.
+    navigate() {
+      generation++;
+      for (const q of [...running]) stop(q, new Error("Pi session context changed"), true);
     },
     reset() {
       generation++;

@@ -696,21 +696,23 @@ test("state of deleted Pi sessions is removed with a Claude Code session no othe
   const live = "01a00000-0000-7000-8000-00000000000a";
   writeFileSync(join(sessionsDir, "--cwd--", "subagents", `2026-11-01T00-00-00-000Z_${live}.jsonl`), "");
   const cc = (id) => { const s = sessions.createSession({ projectPath: directory, sessionId: id }); s.addUserMessage("x"); s.save(); return sessions.getSessionPath(id, directory); };
-  const [shared, own, recent] = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"].map((id) => ({ id, path: cc(id) }));
+  const [shared, own, recent, parent] = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"].map((id) => ({ id, path: cc(id) }));
   const now = Date.now(), old = new Date(now - 120_000);
-  const state = (name, piSessionId, sessionId, mtime = old) => {
+  const state = (name, piSessionId, sessionId, mtime = old, points = []) => {
     const path = join(stateDir, `${name}.json`);
-    writeFileSync(path, JSON.stringify({ piSessionId, sessionId, cwd: directory, prefix: [] }));
+    writeFileSync(path, JSON.stringify({ piSessionId, sessionId, cwd: directory, size: 0, tip: "", points }));
     utimesSync(path, mtime, mtime);
     return path;
   };
-  const kept = state("live", live, shared.id);
+  // The live Session was forked from a deleted one and still holds a point into its CC session.
+  const kept = state("live", live, shared.id, old, [{ piSessionId: "01a00000-0000-7000-8000-00000000000e", sessionId: parent.id, cwd: directory, size: 1, tip: "t" }]);
+  const forkedFrom = state("parent", "01a00000-0000-7000-8000-00000000000e", parent.id);
   const sharing = state("sharing", "01a00000-0000-7000-8000-00000000000b", shared.id);
   const orphan = state("orphan", "01a00000-0000-7000-8000-00000000000c", own.id);
   const fresh = state("fresh", "01a00000-0000-7000-8000-00000000000d", recent.id, new Date(now));
   removeOrphanedStates(sessionsDir, stateDir, now);
-  assert.deepEqual([kept, sharing, orphan, fresh].map(existsSync), [true, false, false, true]);
-  assert.deepEqual([shared.path, own.path, recent.path].map(existsSync), [true, false, true]);
+  assert.deepEqual([kept, sharing, orphan, fresh, forkedFrom].map(existsSync), [true, false, false, true, false]);
+  assert.deepEqual([shared.path, own.path, recent.path, parent.path].map(existsSync), [true, false, true, true]);
 });
 
 test("an empty tool result is imported with Claude Code's no-output placeholder", async () => {
@@ -720,6 +722,36 @@ test("an empty tool result is imported with Claude Code's no-output placeholder"
     { role: "toolResult", toolCallId: "call-a", toolName: "bash", content: [], isError: true },
   ]);
   assert.deepEqual(anthropicMessages[1].content, [{ type: "tool_result", tool_use_id: "call-a", content: "(mcp__pi__bash completed with no output)", is_error: true }]);
+});
+
+test("/tree, a restart and a fork resume an earlier point instead of rebuilding", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const turn = async (messages, i) => {
+    const stream = h.stream(messages);
+    await until(() => h.calls.length === i + 1);
+    h.calls[i].text(`answer ${i}`); h.calls[i].finish();
+    return stream.result();
+  };
+  const u1 = user("first"), a1 = await turn([u1], 0);
+  const u2 = user("second"), a2 = await turn([u1, a1, u2], 1);
+  const first = h.saved.find((state) => state.size === 2), state = structuredClone(h.saved.at(-1));
+  assert.equal(state.points.length, 2);
+  // /tree back to the first answer, then a new prompt.
+  h.bridge.navigate();
+  const branch = h.stream([u1, a1, user("other")]);
+  await until(() => h.calls.length === 3);
+  assert.deepEqual([h.calls[2].options.resume, h.calls[2].options.resumeSessionAt, h.calls[2].options.forkSession], [first.sessionId, first.lastUuid, true]);
+  h.calls[2].text("branch"); h.calls[2].finish(); await branch.result();
+  // A restarted Pi and a forked Session find the points in the state files.
+  for (const [i, restored] of [[3, (b) => b.restore(state)], [4, (b) => b.restore(undefined, state.points)]]) {
+    const other = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, clear() {}, forkSources: () => [], query: h.query });
+    t.after(() => other.reset());
+    restored(other);
+    const next = other.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages: [u1, a1, user("again")] }), { sessionId: "pi-main" });
+    await until(() => h.calls.length === i + 1);
+    assert.deepEqual([h.calls[i].options.resumeSessionAt, h.calls[i].options.forkSession], [first.lastUuid, true]);
+    h.calls[i].text("again"); h.calls[i].finish(); await next.result();
+  }
 });
 
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
