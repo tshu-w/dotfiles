@@ -401,12 +401,13 @@ export function createClaudeBridge(options: {
     let thinking: Options["thinking"] = { type: "disabled" };
     let outputTokens = maxTokens;
     if (reasoning) {
-      if (adaptive) thinking = { type: "adaptive" };
+      // Claude Code omits thinking text unless asked for summaries.
+      if (adaptive) thinking = { type: "adaptive", display: "summarized" };
       else {
         const level = reasoning === "xhigh" || reasoning === "max" ? "high" : reasoning;
         const budget = Math.max(1024, request.thinkingBudgets?.[level] ?? { minimal: 1024, low: 2048, medium: 8192, high: 16384 }[level]);
         outputTokens = Math.min(model.maxTokens, Math.max(maxTokens, 1024) + budget);
-        thinking = { type: "enabled", budgetTokens: Math.min(budget, Math.max(0, outputTokens - 1024)) };
+        thinking = { type: "enabled", budgetTokens: Math.min(budget, Math.max(0, outputTokens - 1024)), display: "summarized" };
       }
     }
     const sdkOptions: Options = {

@@ -658,7 +658,7 @@ test("thinking budgets, redacted signatures and authentication errors survive th
   const stream = h.stream([user("think")], { reasoning: "low", maxTokens: 2000, thinkingBudgets: { low: 1200 } });
   await until(() => h.calls.length === 1);
   const q = h.calls[0];
-  assert.deepEqual(q.options.thinking, { type: "enabled", budgetTokens: 1200 });
+  assert.deepEqual(q.options.thinking, { type: "enabled", budgetTokens: 1200, display: "summarized" });
   assert.equal(q.options.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, "3200");
   q.begin();
   q.event({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
@@ -685,7 +685,7 @@ test("thinking budgets, redacted signatures and authentication errors survive th
   assert.match((await imported.result()).errorMessage, /Token expired: log in again/);
   const short = h.stream([user("short thought")], { reasoning: "minimal", maxTokens: 128 });
   await until(() => h.calls.length === 3);
-  assert.deepEqual(h.calls[2].options.thinking, { type: "enabled", budgetTokens: 1024 });
+  assert.deepEqual(h.calls[2].options.thinking, { type: "enabled", budgetTokens: 1024, display: "summarized" });
   assert.equal(h.calls[2].options.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, "2048");
   h.calls[2].text("short answer"); h.calls[2].finish();
   assert.equal((await short.result()).stopReason, "stop");
