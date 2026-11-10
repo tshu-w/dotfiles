@@ -156,9 +156,9 @@ export function createClaudeBridge(options: {
   cwd: () => string;
   sessionId: () => string;
   save: (state: ClaudeSession) => void;
-  clear?: () => void;
+  clear: () => void;
   // Checkpoints of other Sessions' bridges that this bridge may fork from.
-  forkSources?: () => ClaudeSession[];
+  forkSources: () => ClaudeSession[];
   query?: typeof query;
   trace?: (message: string) => void;
 }) {
@@ -222,13 +222,13 @@ export function createClaudeBridge(options: {
       q.interrupted = q.gap;
       saved = q.gap.previous;
       if (saved) options.save(saved);
-      else options.clear?.();
+      else options.clear();
     }
     // Keep the resume point after an abort or another error, such as a rate limit; the next turn resumes by prefix.
     // Only a rejected resume invalidates it: other requests stop forking from it, and the main conversation rebuilds.
     if (q.point && !q.responded && RESUME_FAILURE.test(error.message)) {
       failedPoints.add(q.point);
-      if (q.main && saved === q.point) { saved = undefined; options.clear?.(); }
+      if (q.main && saved === q.point) { saved = undefined; options.clear(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
     release(q, error.message);
@@ -480,7 +480,7 @@ export function createClaudeBridge(options: {
     // to reuse its prompt cache; for this Session's main conversation, the fork becomes its own session.
     if (!point) {
       fork = true;
-      point = [...points, ...options.forkSources?.() ?? []].sort((a, b) => b.prefix.length - a.prefix.length)
+      point = [...points, ...options.forkSources()].sort((a, b) => b.prefix.length - a.prefix.length)
         .find((candidate) => !failedPoints.has(candidate) && usable(candidate));
     }
     if (point) {
@@ -601,7 +601,7 @@ export function createClaudeBridge(options: {
         const { pending: _pending, ...rest } = state;
         state = uuid ? { ...rest, lastUuid: uuid, answered: true } : undefined;
         if (state) options.save(state);
-        else options.clear?.();
+        else options.clear();
       }
       saved = state;
       points = state ? [state] : [];

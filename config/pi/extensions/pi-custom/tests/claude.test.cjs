@@ -99,7 +99,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
     void (async () => { try { for await (const message of prompt) call.prompts.push(message); } catch {} })();
     return call;
   };
-  const bridge = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save: (state) => saved.push(state), query, trace: (message) => traces.push(message) });
+  const bridge = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save: (state) => saved.push(state), clear() {}, forkSources: () => [], query, trace: (message) => traces.push(message) });
   t.after(() => bridge.reset());
   const stream = (messages, options = {}, tools = [tool]) => bridge.streamSimple(model,
     ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools, messages }), { sessionId: "pi-main", ...options });
@@ -605,7 +605,7 @@ test("a tool-gap point restored after a hard exit resumes at Claude Code's inter
   // Pi was killed: the next process restores the persisted gap point without a reset.
   appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-interrupted",
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
-  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, query: h.query });
+  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, clear() {}, forkSources: () => [], query: h.query });
   t.after(() => restarted.reset());
   restarted.restore(structuredClone(h.saved[0]));
   const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
@@ -628,7 +628,7 @@ test("a restored tool-gap point with only part of the batch interrupted rebuilds
   await until(() => h.saved.length === 1);
   appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-partial",
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
-  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, clear() {}, query: h.query });
+  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, clear() {}, forkSources: () => [], query: h.query });
   t.after(() => restarted.reset());
   restarted.restore(structuredClone(h.saved[0]));
   const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
@@ -645,7 +645,7 @@ test("an Agent forked with the caller's context starts from the caller's CC sess
   await until(() => h.calls.length === 1);
   h.calls[0].text("hello back"); h.calls[0].finish();
   const answer = await first.result(), childSaved = [];
-  const child = createClaudeBridge({ cwd: () => directory, sessionId: () => "child", save: (state) => childSaved.push(state),
+  const child = createClaudeBridge({ cwd: () => directory, sessionId: () => "child", save: (state) => childSaved.push(state), clear() {},
     forkSources: () => h.bridge.points(), query: h.query });
   t.after(() => child.reset());
   const stream = child.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
