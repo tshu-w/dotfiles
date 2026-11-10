@@ -98,7 +98,6 @@ async function main() {
 		{
 			get: () => ({
 				fast: { value: false, scope: "global" },
-				codexCompaction: { value: true, scope: "global" },
 				transcriptOptimization: { value: true, scope: "global" },
 			}),
 			getHistoryStatus: () => "Recent",
@@ -120,9 +119,6 @@ async function main() {
 	panel.handleInput("\r");
 	panel.handleInput("r");
 	panel.handleInput("\x1b[B");
-	panel.handleInput("\r");
-	panel.handleInput("r");
-	panel.handleInput("\x1b[B");
 	const historyPanel = panel.render(80).join("\n");
 	for (const key of [/enter/, /space/, /\br\b/, /\bf\b/, /escape/, /ctrl\+c/]) assert.match(historyPanel, key);
 	panel.handleInput("\r");
@@ -132,8 +128,6 @@ async function main() {
 	assert.deepEqual(calls, [
 		"toggle:fast",
 		"global:fast",
-		"toggle:codexCompaction",
-		"reset:codexCompaction",
 		"toggle:transcriptOptimization",
 		"reset:transcriptOptimization",
 		"history:older",

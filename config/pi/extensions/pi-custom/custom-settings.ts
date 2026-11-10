@@ -14,14 +14,12 @@ const SETTINGS_DOCUMENT_KEY = "pi-custom";
 
 export interface PiCustomSettings {
   fast: boolean;
-  codexCompaction: boolean;
   transcriptOptimization: boolean;
 }
 
 export type CustomSetting = keyof PiCustomSettings;
 const CUSTOM_SETTING_KEYS = [
   "fast",
-  "codexCompaction",
   "transcriptOptimization",
 ] as const satisfies readonly CustomSetting[];
 export type CustomSettingScope = "global" | "session";
@@ -35,7 +33,6 @@ export type ResolvedCustomSettings = {
 
 export const DEFAULT_CUSTOM_SETTINGS: PiCustomSettings = {
   fast: false,
-  codexCompaction: true,
   transcriptOptimization: true,
 };
 

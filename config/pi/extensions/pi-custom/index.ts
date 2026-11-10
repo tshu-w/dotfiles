@@ -666,12 +666,6 @@ export class PreferencesPanel implements Component {
       description: "Use OpenAI priority service tier with the openai-codex provider.",
     },
     {
-      field: "codexCompaction",
-      group: "Codex",
-      label: "Codex compaction",
-      description: "Use remote context compaction with the openai-codex provider.",
-    },
-    {
       field: "transcriptOptimization",
       group: "Transcript",
       label: "Optimization",
@@ -811,7 +805,6 @@ function registerCustomSettings(
       : "off";
     return [
       `Fast mode: ${fast} (${settings.fast.scope})`,
-      `Codex compaction: ${settings.codexCompaction.value ? "on" : "off"} (${settings.codexCompaction.scope})`,
       `Transcript optimization: ${settings.transcriptOptimization.value ? "on" : "off"} (${settings.transcriptOptimization.scope})`,
       `Transcript history: ${transcriptHistory.getStatus()}`,
     ].join("; ");
@@ -932,16 +925,12 @@ export default async function piCustom(pi: ExtensionAPI) {
   registerPackageAutoUpdate(pi);
   registerEditor(pi, runtime);
   registerFooter(pi, runtime);
-  const codexControl = await registerCodex(pi, runtime, {
-    fast: initial.fast.value,
-    compaction: initial.codexCompaction.value,
-  });
+  const codexControl = registerCodex(pi, runtime, { fast: initial.fast.value });
   registerClaude(pi);
   registerReroll(pi);
   const applyPreferences = () => {
     const settings = preferences.get();
     codexControl.setDesired(settings.fast.value);
-    codexControl.setCompactionEnabled(settings.codexCompaction.value);
     renderPerf.setEnabled(settings.transcriptOptimization.value);
   };
   preferences.onChange(applyPreferences);

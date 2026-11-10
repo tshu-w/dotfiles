@@ -17,12 +17,11 @@ import {
 test("session settings override global defaults per field", () => {
   assert.deepEqual(
     resolveCustomSettings(
-      { fast: false, codexCompaction: true, transcriptOptimization: true },
+      { fast: false, transcriptOptimization: true },
       { fast: true },
     ),
     {
       fast: { value: true, scope: "session" },
-      codexCompaction: { value: true, scope: "global" },
       transcriptOptimization: { value: true, scope: "global" },
     },
   );
@@ -31,11 +30,11 @@ test("session settings override global defaults per field", () => {
 test("global settings use defaults for missing or invalid values", () => {
   assert.deepEqual(parseGlobalSettings({}), DEFAULT_CUSTOM_SETTINGS);
   assert.deepEqual(
-    parseGlobalSettings({ fast: true, codexCompaction: false, transcriptOptimization: false }),
-    { fast: true, codexCompaction: false, transcriptOptimization: false },
+    parseGlobalSettings({ fast: true, transcriptOptimization: false }),
+    { fast: true, transcriptOptimization: false },
   );
   assert.deepEqual(
-    parseGlobalSettings({ fast: "yes", codexCompaction: 1, transcriptOptimization: "yes" }),
+    parseGlobalSettings({ fast: "yes", transcriptOptimization: "yes" }),
     DEFAULT_CUSTOM_SETTINGS,
   );
 });
@@ -75,7 +74,7 @@ test("setting a session value equal to global clears the redundant override", ()
   const normalized = createCustomPreferences({
     path: "/unused/settings.json",
     appendSession: () => {},
-    global: { fast: false, codexCompaction: true, transcriptOptimization: true },
+    global: { fast: false, transcriptOptimization: true },
     session: { fast: false },
   });
   assert.deepEqual(normalized.get().fast, { value: false, scope: "global" });
@@ -84,7 +83,7 @@ test("setting a session value equal to global clears the redundant override", ()
   const preferences = createCustomPreferences({
     path: "/unused/settings.json",
     appendSession: (value) => appended.push(value),
-    global: { fast: false, codexCompaction: true, transcriptOptimization: true },
+    global: { fast: false, transcriptOptimization: true },
     session: { fast: true },
   });
 
@@ -103,7 +102,7 @@ test("saving one global field preserves other settings and foreign keys", async 
     const preferences = createCustomPreferences({
       path,
       appendSession: (value) => appended.push(value),
-      global: { fast: false, codexCompaction: true, transcriptOptimization: true },
+      global: { fast: false, transcriptOptimization: true },
       session: { fast: true, transcriptOptimization: false },
     });
 
@@ -111,14 +110,13 @@ test("saving one global field preserves other settings and foreign keys", async 
 
     assert.deepEqual(preferences.get(), {
       fast: { value: true, scope: "global" },
-      codexCompaction: { value: true, scope: "global" },
       transcriptOptimization: { value: false, scope: "session" },
     });
     assert.deepEqual(appended.at(-1), { transcriptOptimization: false });
     assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), {
       defaultModel: "m",
       extensions: ["a.ts"],
-      "pi-custom": { fast: true, codexCompaction: true, transcriptOptimization: true },
+      "pi-custom": { fast: true, transcriptOptimization: true },
     });
   } finally {
     await rm(directory, { recursive: true });
