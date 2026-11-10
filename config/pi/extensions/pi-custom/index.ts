@@ -146,9 +146,6 @@ let packageUpdateStarted = false;
 
 interface PackageUpdateState {
   lastAttempt?: number;
-  lastSuccess?: number;
-  lastExitCode?: number;
-  lastError?: string;
 }
 
 function suppressPackageUpdateBanner(): void {
@@ -225,10 +222,6 @@ function releasePackageUpdateLock(path: string, token: string): void {
   } catch { /* stale lock expires */ }
 }
 
-function truncateLog(text: string): string {
-  return text.length <= 4000 ? text : text.slice(-4000);
-}
-
 const PACKAGE_UPDATE_COMMANDS = [
   { command: "pi", args: ["update", "--extensions"] },
   { command: "npm", args: ["update", "-g", "@browserbridge/bbx"] },
@@ -285,25 +278,12 @@ async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
   return dirty;
 }
 
-function runUpdateCommand(command: string, args: readonly string[], cwd: string): Promise<{ code: number; output: string }> {
+function runUpdateCommand(command: string, args: readonly string[], cwd: string): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn(command, [...args], {
-      cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    let settled = false;
-    const finish = (code: number, extra = "") => {
-      if (settled) return;
-      settled = true;
-      resolve({ code, output: truncateLog(output + extra) });
-    };
-
-    child.stdout?.on("data", (data) => { output = truncateLog(output + data.toString()); });
-    child.stderr?.on("data", (data) => { output = truncateLog(output + data.toString()); });
-    child.on("error", (error) => finish(-1, `\n${error.message}`));
-    child.on("close", (code) => finish(code ?? -1));
+    const child = spawn(command, [...args], { cwd, env: process.env, stdio: "ignore" });
+    // An error (e.g. a missing executable) may come without a close event.
+    child.on("error", () => resolve(-1));
+    child.on("close", (code) => resolve(code ?? -1));
   });
 }
 
@@ -344,40 +324,15 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         ? PACKAGE_UPDATE_COMMANDS.filter((update) => update.command !== "pi")
         : PACKAGE_UPDATE_COMMANDS;
       let code = 0;
-      let output = dirty.length ? `skipped pi update --extensions (local changes: ${dirty.join(", ")})` : "";
-      let failedCommand: string | undefined;
-
       for (const update of commands) {
-        const result = await runUpdateCommand(update.command, update.args, ctx.cwd);
-        output = truncateLog(`${output}\n$ ${update.command} ${update.args.join(" ")}\n${result.output}`);
-        code = result.code;
-        if (code !== 0) {
-          failedCommand = `${update.command} ${update.args.join(" ")}`;
-          break;
-        }
+        code = await runUpdateCommand(update.command, update.args, ctx.cwd);
+        if (code !== 0) break;
       }
-
-      const latest = readPackageUpdateState(statePath);
-      writePackageUpdateState(statePath, {
-        ...latest,
-        lastSuccess: code === 0 ? Date.now() : latest.lastSuccess,
-        lastExitCode: code,
-        lastError: code === 0 ? undefined : `${failedCommand ?? "update"} failed: ${output.trim() || `exit ${code}`}`,
-      });
       releasePackageUpdateLock(lockPath, lockToken);
       const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (extensions skipped)" : "pkg updated";
       safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, statusText));
       setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
-    })().catch((error: unknown) => {
-      // Best-effort bookkeeping: a throw here would itself become an
-      // unhandled rejection.
-      try {
-        writePackageUpdateState(statePath, {
-          ...readPackageUpdateState(statePath),
-          lastExitCode: -1,
-          lastError: error instanceof Error ? error.message : String(error),
-        });
-      } catch { /* state file is advisory */ }
+    })().catch(() => {
       releasePackageUpdateLock(lockPath, lockToken);
       safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
       setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
