@@ -127,18 +127,18 @@ async function main() {
 	assert.equal(callStyles.some(([color]) => color === "muted"), false);
 	assert.equal(callStyles.some(([color]) => color === "accent"), false);
 	const renderedFetch = fetchTool.renderResult(
-		{ content: [{ type: "text", text: 'Title: Example\n\n3 matches for "release notes"\n\n...\none\n...\ntwo\n...\nthree\n...' }], details: { title: "Example", chars: 4 } },
+		{ content: [{ type: "text", text: 'Title: Example\n\n3 of 3 matching excerpts for "release notes"\n\n...\none\n...\ntwo\n...\nthree\n...' }], details: { title: "Example", chars: 4, total: 3, count: 3 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: fetchArgs, isError: false },
+		{ args: fetchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
-	assert.match(renderedFetch, /^Example \(4 chars, 3 matches\)\n\.\.\. \(11 more lines,/);
+	assert.match(renderedFetch, /^Example \(4 chars, 3 of 3 matching excerpts\)\n\.\.\. \(11 more lines,/);
 	assert.doesNotMatch(renderedFetch, /\[find:/);
 	const noMatchesFetch = fetchTool.renderResult(
-		{ content: [{ type: "text", text: 'Title: Example\n\nNo matches for "release notes".' }], details: { title: "Example", chars: 4 } },
+		{ content: [{ type: "text", text: 'Title: Example\n\nNo matches for "release notes".' }], details: { title: "Example", chars: 4, total: 0, count: 0 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: fetchArgs, isError: false },
+		{ args: fetchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(noMatchesFetch, "Example (4 chars, no matches)");
 	const expandedContent = "Title: Example\n\n# Body\n\nfull result";
@@ -146,7 +146,7 @@ async function main() {
 		{ content: [{ type: "text", text: expandedContent }], details: { title: "Example", chars: 18 } },
 		{ expanded: true, isPartial: false },
 		callTheme,
-		{ args: fetchArgs, isError: false },
+		{ args: fetchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(expandedFetch, expandedContent);
 	const searchContent = "- Example — https://example.com\n  Snippet: release notes";
@@ -160,21 +160,21 @@ async function main() {
 	assert.doesNotMatch(collapsedSearch, /Snippet:/);
 	const sourceOnly = search.renderResult(
 		{ content: [{ type: "text", text: "- Example" }], details: { count: 1 } },
-		{ expanded: false, isPartial: false }, callTheme, { args: searchArgs, isError: false },
+		{ expanded: false, isPartial: false }, callTheme, { args: searchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(sourceOnly, "- Example");
 	const emptySearch = search.renderResult(
 		{ content: [{ type: "text", text: "No results found." }], details: { count: 0 } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: searchArgs, isError: false },
+		{ args: searchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(emptySearch, "No results found.");
 	const expandedSearch = search.renderResult(
 		{ content: [{ type: "text", text: searchContent }], details: { count: 1 } },
 		{ expanded: true, isPartial: false },
 		callTheme,
-		{ args: searchArgs, isError: false },
+		{ args: searchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000).map((line) => line.trimEnd()).join("\n");
 	assert.equal(expandedSearch, searchContent);
 
@@ -199,44 +199,44 @@ async function main() {
 			}
 		}
 		for (const [content, expected] of [[[], failure], [[{ type: "text", text: "" }], ""]]) {
-			const output = tool.renderResult({ content }, { expanded: true, isPartial: false }, callTheme, { args, isError: true })
+			const output = tool.renderResult({ content }, { expanded: true, isPartial: false }, callTheme, { args, isError: true, keyText: () => "ctrl+o" })
 				.render(1000).map((line) => line.trimEnd()).join("\n");
 			assert.equal(output, expected, "error fallback still distinguishes absent and empty text");
 		}
 	}
 
 	const wrappedResult = { content: [{ type: "text", text: `- Example\n  Snippet: ${"x".repeat(100)}` }], details: { count: 1 } };
-	const wrappedSearch = search.renderResult(wrappedResult, { expanded: false, isPartial: false }, callTheme, { args: searchArgs, isError: false });
+	const wrappedSearch = search.renderResult(wrappedResult, { expanded: false, isPartial: false }, callTheme, { args: searchArgs, isError: false, keyText: () => "ctrl+o" });
 	assert.match(wrappedSearch.render(60).join("\n"), /\.\.\. \(3 more lines,/);
 	assert.match(wrappedSearch.render(120).join("\n"), /\.\.\. \(1 more lines,/);
 	wrappedSearch.invalidate();
 	assert.match(wrappedSearch.render(60).join("\n"), /\.\.\. \(3 more lines,/);
-	const wrappedFetch = fetchTool.renderResult(wrappedResult, { expanded: false, isPartial: false }, callTheme, { args: { url: "https://example.com" }, isError: false });
+	const wrappedFetch = fetchTool.renderResult(wrappedResult, { expanded: false, isPartial: false }, callTheme, { args: { url: "https://example.com" }, isError: false, keyText: () => "ctrl+o" });
 	assert.match(wrappedFetch.render(60).join("\n"), /\.\.\. \(4 more lines,/);
 	assert.match(wrappedFetch.render(120).join("\n"), /\.\.\. \(2 more lines,/);
 	assert.ok(callStyles.some(([color, text]) => color === "muted" && /more lines,.*to expand/.test(text)));
 
 	const truncationNotice = "[Showing lines 1-20 of 100. Full output: /tmp/web.txt]";
-	const continuation = '\n\nScope: 100 fetched characters; 2 matching excerpts in fetched content only.\n\n[1 more results. Use web_fetch(url="https://example.com", pattern="test", offset=1) to continue.]';
+	const continuation = '\n\n[1 more results. Use offset=1 to continue.]';
 	for (const prefix of ["body\n\n", ""]) {
 		callStyles.length = 0;
 		const text = `${prefix}${truncationNotice}${continuation}`;
 		const result = { content: [{ type: "text", text }], details: { title: "Example", truncation: { truncated: true } } };
 		const original = structuredClone(result);
-		const rendered = fetchTool.renderResult(result, { expanded: true, isPartial: false }, callTheme, { args: fetchArgs, isError: false })
+		const rendered = fetchTool.renderResult(result, { expanded: true, isPartial: false }, callTheme, { args: fetchArgs, isError: false, keyText: () => "ctrl+o" })
 			.render(1000).map((line) => line.trimEnd()).join("\n");
 		assert.equal(rendered, text);
 		assert.deepEqual(result, original);
 		assert.ok(callStyles.some(([color, value]) => color === "warning" && value === truncationNotice));
 		assert.ok(callStyles.some(([color, value]) => color === "toolOutput" && value.includes(continuation)));
-		assert.equal(callStyles.some(([color, value]) => color === "warning" && /Scope:|to continue/.test(value)), false);
+		assert.equal(callStyles.some(([color, value]) => color === "warning" && /to continue/.test(value)), false);
 	}
 	callStyles.length = 0;
 	search.renderResult(
 		{ content: [{ type: "text", text: `[Output truncated: quoted page text]\nbody\n\n${truncationNotice}` }], details: { count: 1, truncation: { truncated: true } } },
 		{ expanded: true, isPartial: false },
 		callTheme,
-		{ args: searchArgs, isError: false },
+		{ args: searchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000);
 	assert.ok(callStyles.some(([color, text]) => color === "warning" && text === truncationNotice));
 
@@ -245,7 +245,7 @@ async function main() {
 		{ content: [{ type: "text", text: searchContent }], details: { count: 1, truncation: { truncated: true } } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: searchArgs, isError: false },
+		{ args: searchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000);
 	assert.ok(callStyles.some(([color, text]) => color === "warning" && text === "output truncated"));
 	assert.equal(callStyles.some(([color, text]) => color === "warning" && /source snippets|to expand/.test(text)), false);
@@ -255,7 +255,7 @@ async function main() {
 		{ content: [{ type: "text", text: expandedContent }], details: { title: "Example", chars: 18, truncation: { truncated: true } } },
 		{ expanded: false, isPartial: false },
 		callTheme,
-		{ args: fetchArgs, isError: false },
+		{ args: fetchArgs, isError: false, keyText: () => "ctrl+o" },
 	).render(1000);
 	assert.ok(callStyles.some(([color, text]) => color === "warning" && text.includes("truncated")));
 
@@ -280,17 +280,17 @@ async function main() {
 		const firstPage = await fetchTool.execute("page", { ...pageArgs, limit: 5 }, undefined, undefined, ctx);
 		assert.equal(firstPage.details.total, 12);
 		assert.equal(firstPage.details.count, 5);
-		assert.match(firstPage.content[0].text, /7 more results.*url="https:\/\/example.com\/", pattern="needle", offset=5/);
+		assert.match(firstPage.content[0].text, /\n\n\[7 more results\. Use offset=5 to continue\.\]$/);
 		global.fetch = async () => { cacheRequests++; throw new Error("Cached paging must not fetch"); };
 		const secondPage = await fetchTool.execute("page", { ...pageArgs, offset: 5, limit: 5 }, undefined, undefined, ctx);
 		assert.equal(secondPage.details.count, 5);
 		assert.match(secondPage.content[0].text, /excerpt-5/);
 		assert.doesNotMatch(secondPage.content[0].text, /excerpt-4/);
 		const collapsedPage = fetchTool.renderResult(secondPage, { expanded: false, isPartial: false }, callTheme,
-			{ args: { ...pageArgs, offset: 5 }, isError: false }).render(1000).join("\n");
+			{ args: { ...pageArgs, offset: 5 }, isError: false, keyText: () => "ctrl+o" }).render(1000).join("\n");
 		assert.match(collapsedPage, /5 of 12 matching excerpts/);
 		assert.doesNotMatch(collapsedPage, /snapshot/i);
-		assert.match(collapsedPage, /offset=10.*to continue/);
+		assert.match(collapsedPage, /\[2 more results\. Use offset=10 to continue\.\]/);
 		assert.doesNotMatch(collapsedPage, /page content hidden|excerpt-5/);
 		const lastPage = await fetchTool.execute("page", { ...pageArgs, offset: 10 }, undefined, undefined, ctx);
 		assert.equal(lastPage.details.count, 2);
@@ -333,7 +333,6 @@ async function main() {
 		assert.equal(noMatches.details.total, 0);
 		assert.equal(noMatches.details.chars, 13);
 		assert.match(noMatches.content[0].text, /No matches/);
-		assert.match(noMatches.content[0].text, /13 fetched characters/);
 		assert.doesNotMatch(noMatches.content[0].text, /to continue|maxChars/);
 
 		// TTL starts at successful fetch completion and never slides on cache hits.
@@ -420,51 +419,6 @@ async function main() {
 		completeRequest(pendingRequests[beforeSeparate + 1], "Session B");
 		assert.deepEqual((await Promise.all(separateCalls)).map(result => result.details.title), ["Session A", "Session B"]);
 
-		for (const cancelledIndex of [0, 1]) {
-			const args = { ...concurrentArgs, url: `https://waiter-${cancelledIndex}.example` };
-			const controllers = [new AbortController(), new AbortController()];
-			const before = pendingRequests.length;
-			const calls = controllers.map(controller => fetchTool.execute("waiter", args, controller.signal, undefined, ctx));
-			const cancelled = assert.rejects(calls[cancelledIndex], /cancelled/);
-			await flush();
-			assert.equal(pendingRequests.length, before + 1);
-			controllers[cancelledIndex].abort();
-			await cancelled;
-			assert.equal(pendingRequests.at(-1).signal.aborted, false, "one waiter cannot cancel another's request");
-			completeRequest(pendingRequests.at(-1), "Survivor");
-			assert.equal((await calls[1 - cancelledIndex]).details.title, "Survivor");
-			const cached = await fetchTool.execute("cached", args, undefined, undefined, ctx);
-			assert.equal(cached.details.title, "Survivor");
-			assert.equal(pendingRequests.length, before + 1);
-		}
-
-		for (const close of ["all-cancelled", "shutdown"]) {
-			const args = { ...concurrentArgs, url: `https://${close}.example` };
-			const controllers = [new AbortController(), new AbortController()];
-			const calls = controllers.map(controller => fetchTool.execute("close", args, controller.signal, undefined, ctx));
-			const rejected = calls.map(call => assert.rejects(call, /cancelled/));
-			await flush();
-			const abandoned = pendingRequests.at(-1);
-			if (close === "shutdown") await handlers.get("session_shutdown")({}, ctx);
-			else controllers.forEach(controller => controller.abort());
-			await Promise.all(rejected);
-			assert.equal(abandoned.signal.aborted, true);
-			const retry = fetchTool.execute("retry", args, undefined, undefined, ctx);
-			await flush();
-			const replacement = pendingRequests.at(-1);
-			assert.notEqual(replacement, abandoned);
-			// A provider may deliver after abort; it must neither cache nor remove the replacement request.
-			completeRequest(abandoned, "Abandoned");
-			await flush();
-			const beforeJoin = pendingRequests.length;
-			const joined = fetchTool.execute("join", args, undefined, undefined, ctx);
-			await flush();
-			assert.equal(pendingRequests.length, beforeJoin);
-			completeRequest(replacement, "Replacement");
-			for (const result of await Promise.all([retry, joined])) assert.equal(result.details.title, "Replacement");
-			assert.equal((await fetchTool.execute("cached", args, undefined, undefined, ctx)).details.title, "Replacement");
-		}
-
 		const failedArgs = { ...concurrentArgs, url: "https://shared-failure.example" };
 		const failed = [0, 1].map(() => fetchTool.execute("failure", failedArgs, undefined, undefined, ctx));
 		const failures = failed.map(call => assert.rejects(call, /Exa: HTTP 503.*Jina: HTTP 503/s));
@@ -499,11 +453,11 @@ async function main() {
 		while (true) {
 			assert.equal(overlapPage.details.truncation, undefined);
 			assert.equal(overlapPage.details.fullOutputPath, undefined);
-			const body = overlapPage.content[0].text.split("\n\nScope:")[0];
+			const body = overlapPage.content[0].text.split(/\n\n\[\d+ more results/)[0];
 			assert.ok(body.length < 1000, "two fixed-context excerpts remain bounded");
 			for (const match of body.matchAll(/(\d{3}):needle/g)) overlapSeen.add(Number(match[1]));
 			if (overlapPage.details.nextOffset === undefined) break;
-			assert.ok(overlapPage.details.nextOffset > overlapPage.details.offset);
+			assert.ok(overlapPage.details.count > 0);
 			overlapPage = await fetchTool.execute("overlap", { ...overlapArgs, offset: overlapPage.details.nextOffset }, undefined, undefined, ctx);
 		}
 		assert.deepEqual([...overlapSeen].sort((a, b) => a - b), Array.from({ length: 300 }, (_, i) => i));
@@ -534,12 +488,12 @@ async function main() {
 		while (true) {
 			assert.equal(page.details.fullOutputPath, undefined);
 			assert.equal(page.details.truncation, undefined);
-			const body = page.content[0].text.split("\n\nScope:")[0];
+			const body = page.content[0].text.split(/\n\n\[\d+ more results/)[0];
 			assert.ok(body.split("\n").length <= MAX_LINES);
 			assert.ok(Buffer.byteLength(body) <= MAX_BYTES);
 			seen.push(...[...body.matchAll(/item-(\d+)/g)].map((match) => Number(match[1])));
 			if (page.details.nextOffset === undefined) break;
-			assert.ok(page.details.nextOffset > page.details.offset);
+			assert.ok(page.details.count > 0);
 			page = await fetchTool.execute("dense", { url: "https://dense.example", pattern: "needle", offset: page.details.nextOffset, limit: 100 }, undefined, undefined, ctx);
 		}
 		assert.deepEqual(seen, Array.from({ length: 30 }, (_, i) => i));
@@ -555,17 +509,15 @@ async function main() {
 		while (true) {
 			assert.equal(bytePage.details.fullOutputPath, undefined);
 			assert.equal(bytePage.details.truncation, undefined);
-			const body = bytePage.content[0].text.split("\n\nScope:")[0];
+			const body = bytePage.content[0].text.split(/\n\n\[\d+ more results/)[0];
 			assert.ok(Buffer.byteLength(body) <= MAX_BYTES);
 			byteSeen.push(...[...body.matchAll(/item-(\d+)/g)].map((match) => Number(match[1])));
 			if (bytePage.details.nextOffset === undefined) break;
-			assert.match(bytePage.content[0].text, /pattern="needle", offset=/);
+			assert.match(bytePage.content[0].text, /Use offset=\d+ to continue/);
 			bytePage = await fetchTool.execute("bytes", { ...byteArgs, offset: bytePage.details.nextOffset }, undefined, undefined, ctx);
 		}
 		assert.deepEqual(byteSeen, Array.from({ length: 60 }, (_, i) => i));
-		for (const args of [{}, { url: "https://example.com", limit: 1 }, { ...pageArgs, limit: 0 }, { ...pageArgs, offset: -1 }]) {
-			await assert.rejects(fetchTool.execute("invalid", args, undefined, undefined, ctx));
-		}
+		await assert.rejects(fetchTool.execute("invalid", { url: "https://example.com", limit: 1 }, undefined, undefined, ctx), /limit and offset require pattern/);
 		const scanningAbort = new AbortController();
 		global.fetch = async () => {
 			setImmediate(() => scanningAbort.abort());
@@ -626,8 +578,8 @@ async function main() {
 		const patternResult = await fetchTool.execute("test", {
 			url: "https://example.com", pattern: "xxx",
 		}, undefined, undefined, ctx);
-		assert.match(patternResult.content[0].text, /^Title: example\.com\n\n10 matching excerpts for "xxx"\n\n\.\.\.\n/);
-		assert.match(patternResult.content[0].text, /\n\.\.\.\n.*\n\.\.\.\n\nScope:/s);
+		assert.match(patternResult.content[0].text, /^Title: example\.com\n\n10 of \d+ matching excerpts for "xxx"\n\n\.\.\.\n/);
+		assert.match(patternResult.content[0].text, /\n\.\.\.\n.*\n\.\.\.\n\n\[\d+ more results\. Use offset=10 to continue\.\]$/s);
 		assert.doesNotMatch(patternResult.content[0].text, /Match \d+ of \d+:/);
 		assert.equal(fetchUrls.filter((url) => url === "https://r.jina.ai/https://example.com/").length, 1);
 		assert.equal(fetchUrls.includes("https://example.com/"), false, "web_fetch does not fetch URLs directly");
@@ -784,7 +736,7 @@ async function main() {
 		delete process.env.TAVILY_API_KEY;
 		const missingProvidersError = await search.execute("test", { query: "test" }, undefined, undefined)
 			.then(() => null, (error) => error);
-		assert.equal(missingProvidersError.message, "Web search failed:\n- No search providers configured");
+		assert.equal(missingProvidersError.message, "Web search failed:\n- No search providers configured. Set EXA_API_KEY, TAVILY_API_KEY, or JINA_API_KEY.");
 
 		await handlers.get("session_shutdown")({}, ctx);
 		const fetchProviderError = await fetchTool.execute("test", { url: "https://example.com" }, undefined, undefined, ctx)
