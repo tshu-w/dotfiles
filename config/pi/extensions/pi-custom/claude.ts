@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
@@ -42,6 +42,9 @@ export function registerClaude(pi: ExtensionAPI) {
     cwd: () => context!.cwd,
     sessionId: () => context!.sessionManager.getSessionId(),
     save: saveState,
+    clear: () => rmSync(statePath(context!.sessionManager.getSessionId()), { force: true }),
+    // Agents forked with the caller's context start from the caller's CC session.
+    forkSources: () => [...bridges.values()].filter((other) => other !== bridge).flatMap((other) => other.points()),
   });
 
   pi.registerProvider(PROVIDER_ID, {

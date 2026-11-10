@@ -69,6 +69,8 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
         this.event({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 12 } });
         this.event({ type: "message_stop" });
       },
+      // Claude Code's record of the tool uses, which makes the tool gap a resume point.
+      record(ids, uuid = "uuid-tools") { this.emit({ type: "assistant", uuid, message: { content: ids.map((id) => ({ type: "tool_use", id })) } }); },
       tools(ids = ["call-a", "call-b"]) {
         this.begin();
         for (const [index, id] of ids.entries()) {
@@ -101,7 +103,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
   t.after(() => bridge.dispose());
   const stream = (messages, options = {}, tools = [tool]) => bridge.streamSimple(model,
     ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools, messages }), { sessionId: "pi-main", ...options });
-  return { bridge, calls, saved, traces, stream };
+  return { bridge, calls, saved, traces, stream, query };
 }
 
 const callTool = (client, id) => client.callTool({ name: "echo", arguments: { value: id }, _meta: { "claudecode/toolUseId": id } });
@@ -422,13 +424,13 @@ test("an aborted response keeps the resume point and the next turn resumes witho
   assert.equal((await third.result()).stopReason, "stop");
 });
 
-// Pi's history after a tool-gap abort ends with the tool call and its result, which the CC session lacks.
+// Claude Code records the aborted tool use as interrupted and drops that turn on resume, so the retry rebuilds.
 test("abort during the tool gap releases MCP and retry rebuilds from Pi history", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("tool")], controller = new AbortController();
   const first = h.stream(history, { signal: controller.signal });
   await until(() => h.calls.length === 1);
   const q = h.calls[0], client = await q.client();
-  q.tools(["call-a"]); const answer = await first.result();
+  q.tools(["call-a"]); q.record(["call-a"]); const answer = await first.result();
   const pending = callTool(client, "call-a");
   await tick(); controller.abort();
   assert.equal((await pending).isError, true);
@@ -494,6 +496,48 @@ test("other requests extending the main history fork its CC session and remove t
   assert.equal(h.calls[2].options.forkSession, undefined);
   h.calls[2].text("again back"); h.calls[2].finish();
   await next.result();
+});
+
+test("requests extending the running main query at its tool gap fork there with the tool results", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tool")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.tools(["call-a"]); q.record(["call-a"], "uuid-gap");
+  const answer = await first.result();
+  await until(() => h.saved.length === 1);
+  assert.equal(h.saved[0].lastUuid, "uuid-gap");
+  const side = h.stream([...history, answer, result("call-a", "side result"), user("side task")], { sessionId: "side" });
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(q.closed, false);
+  assert.equal(h.calls[1].options.resume, q.sessionId);
+  assert.equal(h.calls[1].options.resumeSessionAt, "uuid-gap");
+  assert.equal(h.calls[1].options.forkSession, true);
+  const [toolResult, text] = h.calls[1].prompts[0].message.content;
+  assert.equal(toolResult.type, "tool_result"); assert.equal(toolResult.tool_use_id, "call-a");
+  assert.deepEqual(text, { type: "text", text: "side task" });
+  h.calls[1].text("side done"); h.calls[1].finish();
+  assert.equal((await side.result()).stopReason, "stop");
+});
+
+test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result(), childSaved = [];
+  const child = createClaudeBridge({ cwd: () => directory, sessionId: () => "child", save: (state) => childSaved.push(state),
+    forkSources: () => h.bridge.points(), query: h.query });
+  t.after(() => child.dispose());
+  const stream = child.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
+    messages: [...history, answer, user("forked task")] }), { sessionId: "child" });
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(h.calls[1].options.resume, h.saved[0].sessionId);
+  assert.equal(h.calls[1].options.forkSession, true);
+  h.calls[1].text("child done"); h.calls[1].finish();
+  await stream.result();
+  assert.equal(childSaved[0].sessionId, h.calls[1].sessionId);
+  assert.equal(existsSync(sessions.getSessionPath(h.calls[1].sessionId, directory)), true);
 });
 
 test("unknown tool names are left to Claude Code instead of ending the turn", { timeout: 10000 }, async (t) => {
