@@ -308,11 +308,11 @@ test("default Pi docs and identity from older Pi versions never reach Claude", {
   assert.ok(prompt.includes(native.sections.rules));
   h.calls[0].text("hello back"); h.calls[0].finish();
   const answer = await first.result();
-  const patch = { role: "system", content: "", sections: { preamble: native.sections.preamble, docs: native.sections.docs, memory: "New memory" }, timestamp: 0 };
+  const patch = { role: "system", content: "", sections: { preamble: native.sections.preamble, docs: null, memory: "New memory" }, timestamp: 0 };
   const second = stream([...history, answer, patch, user("again")]);
   await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
   const sent = JSON.stringify(h.calls[1].prompts[0].message.content);
-  assert.ok(sent.includes("New memory") && !sent.includes("docs/custom-provider.md") && !sent.includes("inside pi"));
+  assert.ok(sent.includes("New memory") && !sent.includes("docs/custom-provider.md") && !sent.includes("inside pi") && !sent.includes("Removed system prompt section"));
   h.calls[1].text("again back"); h.calls[1].finish();
   assert.equal((await second.result()).stopReason, "stop");
 });

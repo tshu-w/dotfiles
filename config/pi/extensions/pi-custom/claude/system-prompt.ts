@@ -8,7 +8,9 @@ const DEFAULT_DOCS = /^<docs>\nPi documentation \([^\n]*\):\n(?:- [^\n]*\n)+<\/d
 const DEFAULT_PREAMBLE = /^You are [^\n]* inside pi, a coding agent harness\. (?:You help|Help) users [^.\n]*\.$/;
 
 function isPiDefaultSection(name: string, value: string | null): boolean {
-  return value !== null && (name === "docs" ? DEFAULT_DOCS : name === "preamble" ? DEFAULT_PREAMBLE : undefined)?.test(value) === true;
+  const pattern = name === "docs" ? DEFAULT_DOCS : name === "preamble" ? DEFAULT_PREAMBLE : undefined;
+  // Removing one of these sections leaves nothing to tell: the default was never shown.
+  return pattern !== undefined && (value === null || pattern.test(value));
 }
 
 // Each default section is dropped on its own, in the prompt and in later system patches alike.
