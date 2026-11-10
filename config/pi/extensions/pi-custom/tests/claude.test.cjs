@@ -554,6 +554,21 @@ test("other requests extending the main history fork its CC session and remove t
   await next.result();
 });
 
+test("a replay that stops at a tool call is closed with its fork", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result();
+  const warm = h.stream([...history, answer, user("again")], { disableContinuation: true });
+  await until(() => h.calls.length === 2);
+  const q = h.calls[1];
+  q.tools(["call-a"]);
+  assert.equal((await warm.result()).stopReason, "toolUse");
+  await until(() => q.closed);
+  await until(() => !existsSync(sessions.getSessionPath(q.sessionId, directory)));
+});
+
 test("a side fork whose account check fails removes its fork file", { timeout: 10000 }, async (t) => {
   let checks = 0;
   const h = harness(t, async () => {

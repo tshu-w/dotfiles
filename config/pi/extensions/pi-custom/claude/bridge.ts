@@ -121,6 +121,8 @@ interface RunningQuery {
   sessionId?: string;
   lastUuid?: string;
   main: boolean;
+  // A replay such as cache warming, which is never continued.
+  replay: boolean;
   requester?: string;
   // Set for a fork of the main CC session; its session file is removed when the query ends.
   fork?: { configDir?: string; sessionId?: string };
@@ -330,6 +332,8 @@ export function createClaudeBridge(options: {
       // With a skipped tool use, the gap lacks Claude Code's result for it; the results checkpoint follows.
       if (q.main && !q.skipped) { q.expect = { ids: new Set(q.ids), prefix: hashes(q.history), gap: true }; settle(q); }
       terminal(q, "toolUse");
+      // Nothing continues a replay, so close it rather than leave its CLI waiting for results.
+      if (q.replay) stop(q, new Error("Claude Code replay ended at a tool call"), true);
     }
   }
 
@@ -510,7 +514,7 @@ export function createClaudeBridge(options: {
     const q: RunningQuery = {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
-      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, sessionId: resume,
+      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, replay: side, sessionId: resume,
       configDir: request.env?.CLAUDE_CONFIG_DIR, generation,
       // A side fork gets its id up front, so its file can be removed even before the CLI reports it.
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR, sessionId: randomUUID() } } : {}),
