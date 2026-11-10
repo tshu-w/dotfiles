@@ -15,12 +15,7 @@ export function sanitizeToolId(id: string, cache: Map<string, string>): string {
 }
 
 export function mapPiToolNameToSdk(name: string): string {
-	if (!name) return "";
-	const normalized = name.toLowerCase();
-	if (normalized.startsWith(MCP_TOOL_PREFIX)) {
-		throw new Error(`mapPiToolNameToSdk: "${name}" is already an SDK tool name — pi history holds pi tool names`);
-	}
-	return `${MCP_TOOL_PREFIX}${name}`;
+	return name ? `${MCP_TOOL_PREFIX}${name}` : "";
 }
 
 export function messageContentToText(
