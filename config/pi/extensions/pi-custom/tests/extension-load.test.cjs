@@ -3,6 +3,8 @@ const { execFileSync } = require("node:child_process");
 const { realpathSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const { pathToFileURL } = require("node:url");
+// Keep the once-per-process orphan cleanup away from the real state directory.
+globalThis[Symbol.for("pi-custom:claude-orphans-removed")] = true;
 
 const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim())));
 const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-coding-agent");

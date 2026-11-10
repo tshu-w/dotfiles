@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getSessionPath } from "cc-session-io";
 import { createClaudeBridge, type ClaudeSession } from "./claude/bridge.js";
 import { PROVIDER_ID } from "./claude/convert.js";
 
@@ -29,6 +30,31 @@ function loadState(piSessionId: string): ClaudeSession | undefined {
   }
 }
 
+// Remove the state of Pi sessions whose session file is gone, with the Claude Code session it
+// pointed to unless another state still uses it. A state written in the last minute may belong to a
+// session whose file Pi has not flushed yet. Older Claude Code sessions are left to Claude Code's expiry.
+export function removeOrphanedStates(sessionsDir = join(getAgentDir(), "sessions"), stateDir = STATE_DIR, now = Date.now()) {
+  const live = new Set<string>();
+  for (const name of readdirSync(sessionsDir, { recursive: true }) as string[]) {
+    const id = /_([0-9a-f-]{36})\.jsonl$/.exec(name)?.[1];
+    if (id) live.add(id);
+  }
+  const states = readdirSync(stateDir).filter((name) => name.endsWith(".json")).flatMap((name) => {
+    const path = join(stateDir, name);
+    try {
+      return [{ path, state: JSON.parse(readFileSync(path, "utf8")) as ClaudeSession, mtime: statSync(path).mtimeMs }];
+    } catch {
+      return [];
+    }
+  });
+  const orphaned = states.filter(({ state, mtime }) => !live.has(state.piSessionId) && now - mtime > 60_000);
+  const kept = new Set(states.filter((entry) => !orphaned.includes(entry)).map(({ state }) => state.sessionId));
+  for (const { path, state } of orphaned) {
+    rmSync(path, { force: true });
+    if (!kept.has(state.sessionId)) rmSync(getSessionPath(state.sessionId, state.cwd), { force: true });
+  }
+}
+
 // Temporary: Anthropic models added in Pi 1.5.1; drop this commit after upgrading Pi.
 const PI_1_5_1_MODELS = [{
   id: "claude-fable-5-2", name: "Claude Fable 5.2", reasoning: true,
@@ -39,6 +65,9 @@ const PI_1_5_1_MODELS = [{
 }] as unknown as ReturnType<typeof getModels>;
 
 type Bridge = ReturnType<typeof createClaudeBridge>;
+
+// Once per process: the first Session's start cleans up after sessions deleted since.
+const ORPHANS_REMOVED = Symbol.for("pi-custom:claude-orphans-removed");
 
 // Sessions in one process share the provider registry, where the last registration wins.
 // Route each request to the bridge of the Session that sent it.
@@ -90,7 +119,13 @@ export function registerClaude(pi: ExtensionAPI) {
     bridges.set(sessionId, bridge);
     bridge.restore(loadState(sessionId));
   };
-  pi.on("session_start", restore);
+  pi.on("session_start", (event, ctx) => {
+    if (!(globalThis as Record<symbol, boolean>)[ORPHANS_REMOVED]) {
+      (globalThis as Record<symbol, boolean>)[ORPHANS_REMOVED] = true;
+      try { removeOrphanedStates(); } catch { /* cleanup is best effort */ }
+    }
+    restore(event, ctx);
+  });
   pi.on("session_tree", restore);
   pi.on("session_shutdown", () => {
     bridge.reset();

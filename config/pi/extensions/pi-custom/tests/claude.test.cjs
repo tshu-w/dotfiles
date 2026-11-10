@@ -1,10 +1,12 @@
 const assert = require("node:assert/strict");
 const { test, before } = require("node:test");
 const { execFileSync } = require("node:child_process");
-const { appendFileSync, existsSync, mkdtempSync, realpathSync, readFileSync } = require("node:fs");
+const { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, utimesSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 const { pathToFileURL } = require("node:url");
+// Keep the once-per-process orphan cleanup away from the real state directory.
+globalThis[Symbol.for("pi-custom:claude-orphans-removed")] = true;
 
 const PI_PREFIX = dirname(dirname(realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim())));
 const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-coding-agent");
@@ -14,6 +16,7 @@ process.env.CLAUDE_CONFIG_DIR = join(directory, "claude");
 const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"));
 const jiti = createJiti(__filename, {
   alias: {
+    "@earendil-works/pi-ai/compat": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
     "@earendil-works/pi-ai": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
     "@earendil-works/pi-coding-agent": join(PI_PACKAGE, "dist/index.js"),
   },
@@ -658,6 +661,30 @@ test("a restored tool-gap point with only part of the batch interrupted rebuilds
   assert.notEqual(h.calls[1].options.resume, q.sessionId);
   h.calls[1].text("done"); h.calls[1].finish();
   await next.result();
+});
+
+test("state of deleted Pi sessions is removed with a Claude Code session no other state uses", async () => {
+  const { removeOrphanedStates } = await jiti.import(join(CUSTOM, "claude.ts"));
+  const root = mkdtempSync(join(tmpdir(), "pi-claude-orphans-")), sessionsDir = join(root, "sessions"), stateDir = join(root, "state");
+  mkdirSync(join(sessionsDir, "--cwd--", "subagents"), { recursive: true }); mkdirSync(stateDir);
+  const live = "01a00000-0000-7000-8000-00000000000a";
+  writeFileSync(join(sessionsDir, "--cwd--", "subagents", `2026-11-01T00-00-00-000Z_${live}.jsonl`), "");
+  const cc = (id) => { const s = sessions.createSession({ projectPath: directory, sessionId: id }); s.addUserMessage("x"); s.save(); return sessions.getSessionPath(id, directory); };
+  const [shared, own, recent] = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"].map((id) => ({ id, path: cc(id) }));
+  const now = Date.now(), old = new Date(now - 120_000);
+  const state = (name, piSessionId, sessionId, mtime = old) => {
+    const path = join(stateDir, `${name}.json`);
+    writeFileSync(path, JSON.stringify({ piSessionId, sessionId, cwd: directory, prefix: [] }));
+    utimesSync(path, mtime, mtime);
+    return path;
+  };
+  const kept = state("live", live, shared.id);
+  const sharing = state("sharing", "01a00000-0000-7000-8000-00000000000b", shared.id);
+  const orphan = state("orphan", "01a00000-0000-7000-8000-00000000000c", own.id);
+  const fresh = state("fresh", "01a00000-0000-7000-8000-00000000000d", recent.id, new Date(now));
+  removeOrphanedStates(sessionsDir, stateDir, now);
+  assert.deepEqual([kept, sharing, orphan, fresh].map(existsSync), [true, false, false, true]);
+  assert.deepEqual([shared.path, own.path, recent.path].map(existsSync), [true, false, true]);
 });
 
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
