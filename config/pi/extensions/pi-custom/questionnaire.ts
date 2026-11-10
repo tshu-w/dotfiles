@@ -391,7 +391,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 					},
 					handleInput,
 				};
-			});
+			}, { blocked: { kind: "question", message: isMulti ? `${questions.length} questions` : questions[0].prompt } });
 			if (!result) return errorResult("Error: UI not available (no terminal attached)");
 
 			if (result.cancelled) {
