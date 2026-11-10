@@ -7,8 +7,6 @@ export type McpContent = Array<
 export interface McpResult {
 	content: McpContent;
 	isError?: boolean;
-	toolCallId?: string;
-	[key: string]: unknown;
 }
 
 export function toolResultToMcpContent(

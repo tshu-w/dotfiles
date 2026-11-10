@@ -3,11 +3,7 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 export interface PromptStream {
 	stream: AsyncGenerator<SDKUserMessage>;
-	
 	push: (msg: SDKUserMessage) => Promise<void>;
-	
-	end: () => void;
-	
 	fail: (error: Error) => void;
 }
 
@@ -49,7 +45,6 @@ export function makePromptStream(): PromptStream {
 		push: (msg) => failure || done
 			? Promise.reject(failure ?? new Error("prompt stream closed"))
 			: new Promise<void>((resolve, reject) => { queue.push({ msg, resolve, reject }); kick(); }),
-		end: () => { done = true; kick(); },
 		fail: (error) => {
 			if (failure) return;
 			failure = error;
