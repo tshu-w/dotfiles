@@ -126,7 +126,9 @@ export function createClaudeBridge(options: {
   function stop(q: RunningQuery, error: Error, aborted = false) {
     if (q.stopped) return;
     q.stopped = true;
-    if (q.main) saved = undefined;
+    // Keep the resume point after an abort or a mid-stream error; the next turn resumes by prefix.
+    // A request that failed before any response may have failed to resume, so it rebuilds.
+    if (q.main && !aborted && !q.sawMessage) saved = undefined;
     terminal(q, aborted ? "aborted" : "error", error.message);
     release(q, error.message);
   }
@@ -283,7 +285,10 @@ export function createClaudeBridge(options: {
     };
     const startedGeneration = generation;
     const effective = (await request.onPayload?.(payload, model) ?? payload) as typeof payload;
-    const { messages, reasoning, maxTokens } = effective;
+    const { reasoning, maxTokens } = effective;
+    // Like pi-ai's transformMessages, incomplete turns are never replayed.
+    const messages = effective.messages.filter((m) =>
+      m.role !== "assistant" || (m.stopReason !== "aborted" && m.stopReason !== "error"));
     const tools = effective.tools.slice().sort((a, b) => a.name.localeCompare(b.name));
     const names = new Map(tools.map((tool) => [`mcp__pi__${tool.name}`, tool.name]));
     const systemPrompt = effective.systemPrompt === originalPrompt

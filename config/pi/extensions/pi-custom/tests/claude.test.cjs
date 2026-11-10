@@ -401,6 +401,28 @@ test("Pi executes parallel tools; MCP pairs out of order and steering is written
   assert.equal(h.saved.length, 1);
 });
 
+test("an aborted response keeps the resume point and the next turn resumes without it", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result(), state = h.saved[0], controller = new AbortController();
+  const second = h.stream([...history, answer, user("long task")], { signal: controller.signal });
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  h.calls[1].begin();
+  controller.abort();
+  const aborted = await second.result();
+  assert.equal(aborted.stopReason, "aborted");
+  const third = h.stream([...history, answer, user("long task"), aborted, user("shorter")]);
+  await until(() => h.calls.length === 3 && h.calls[2].prompts.length === 1);
+  assert.equal(h.calls[2].options.resume, state.sessionId);
+  assert.equal(h.calls[2].options.resumeSessionAt, state.lastUuid);
+  assert.deepEqual(h.calls[2].prompts[0].message.content, [{ type: "text", text: "long task" }, { type: "text", text: "shorter" }]);
+  h.calls[2].text("done"); h.calls[2].finish();
+  assert.equal((await third.result()).stopReason, "stop");
+});
+
+// Pi's history after a tool-gap abort ends with the tool call and its result, which the CC session lacks.
 test("abort during the tool gap releases MCP and retry rebuilds from Pi history", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("tool")], controller = new AbortController();
   const first = h.stream(history, { signal: controller.signal });
