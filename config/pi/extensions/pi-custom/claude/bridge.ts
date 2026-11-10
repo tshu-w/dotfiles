@@ -82,6 +82,9 @@ interface RunningQuery {
   cwd: string;
   stopped: boolean;
   sawMessage: boolean;
+  // Earlier API calls of this Pi turn (Claude Code may call the API several times per turn).
+  prior?: { output: number; cost: AssistantMessage["usage"]["cost"] };
+  callOutput: number;
   removeAbort?: () => void;
 }
 
@@ -139,6 +142,8 @@ export function createClaudeBridge(options: {
     q.stream = stream;
     q.blocks.clear();
     q.sawMessage = false;
+    q.prior = undefined;
+    q.callOutput = 0;
     stream.push({ type: "start", partial: q.output });
     const abort = () => stop(q, new Error("Claude Code request aborted"), true);
     signal?.addEventListener("abort", abort, { once: true });
@@ -150,17 +155,27 @@ export function createClaudeBridge(options: {
     if (!value) return;
     const u = q.output.usage;
     if (value.input_tokens !== undefined) u.input = value.input_tokens;
-    if (value.output_tokens !== undefined) u.output = value.output_tokens;
+    if (value.output_tokens !== undefined) q.callOutput = value.output_tokens;
+    u.output = q.callOutput;
     if (value.cache_read_input_tokens !== undefined) u.cacheRead = value.cache_read_input_tokens;
     if (value.cache_creation_input_tokens !== undefined) u.cacheWrite = value.cache_creation_input_tokens;
     if (value.cache_creation?.ephemeral_1h_input_tokens !== undefined) u.cacheWrite1h = value.cache_creation.ephemeral_1h_input_tokens;
-    u.totalTokens = u.input + u.output + u.cacheRead + u.cacheWrite;
     calculateCost(q.model, u);
+    // Input and cache tokens describe the context of the last call; output and cost add up.
+    u.totalTokens = u.input + u.output + u.cacheRead + u.cacheWrite;
+    if (q.prior) {
+      u.output += q.prior.output;
+      for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) u.cost[key] += q.prior.cost[key];
+    }
   }
 
   function streamEvent(q: RunningQuery, event: any, names: Map<string, string>) {
     if (!q.stream) return;
     if (event.type === "message_start") {
+      if (q.sawMessage) {
+        q.prior = { output: q.output.usage.output, cost: { ...q.output.usage.cost } };
+        q.callOutput = 0;
+      }
       q.sawMessage = true;
       q.output.responseId = event.message.id;
       q.output.responseModel = event.message.model;
@@ -364,7 +379,7 @@ export function createClaudeBridge(options: {
     const q: RunningQuery = {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
-      cwd, main, stopped: false, sawMessage: false, sessionId: resume,
+      cwd, main, stopped: false, sawMessage: false, callOutput: 0, sessionId: resume,
       ...(fork ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR } } : {}),
     };
     running.add(q);

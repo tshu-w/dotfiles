@@ -511,6 +511,11 @@ test("unknown tool names are left to Claude Code instead of ending the turn", { 
   const answer = await stream.result();
   assert.equal(answer.stopReason, "stop");
   assert.deepEqual(answer.content, [{ type: "text", text: "retried" }]);
+  // Both API calls count toward output and cost; context tokens come from the last call.
+  const single = ai.calculateCost(model, { input: 7, output: 0, cacheRead: 2000, cacheWrite: 40, totalTokens: 0, cost: {} });
+  assert.equal(answer.usage.output, 17);
+  assert.equal(answer.usage.totalTokens, 2059);
+  assert.ok(Math.abs(answer.usage.cost.cacheRead - 2 * single.cacheRead) < 1e-12);
 });
 
 test("SDK errors, early abort and malformed schemas terminate rather than hang", { timeout: 10000 }, async (t) => {
