@@ -2,7 +2,7 @@
   "name": "pi-local",
   "private": true,
   "scripts": {
-    "test": "node --test extensions/pi-custom/tests/*.test.cjs extensions/pi-custom/tests/*.test.ts && npm test --workspace=chatgpt-computer-use-mcp"
+    "test": "node --test extensions/pi-custom/tests/*.test.cjs extensions/pi-custom/tests/*.test.ts extensions/pi-web/tests/*.test.cjs extensions/secret-guard/tests/*.test.cjs extensions/secret-guard/tests/*.test.js && npm test --workspace=chatgpt-computer-use-mcp"
   },
   "workspaces": [
     "extensions/pi-custom",
