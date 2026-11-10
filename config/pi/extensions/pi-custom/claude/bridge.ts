@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
@@ -512,7 +512,8 @@ export function createClaudeBridge(options: {
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
       cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, sessionId: resume,
       configDir: request.env?.CLAUDE_CONFIG_DIR, generation,
-      ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR } } : {}),
+      // A side fork gets its id up front, so its file can be removed even before the CLI reports it.
+      ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR, sessionId: randomUUID() } } : {}),
     };
     running.add(q);
     attach(q, stream, request.signal);
@@ -556,8 +557,9 @@ export function createClaudeBridge(options: {
       extraArgs: { "strict-mcp-config": null },
       ...(mappedEffort && adaptive ? { effort: mappedEffort as Options["effort"] } : {}),
       thinking,
-      ...(resume ? { resume, resumeSessionAt, ...(fork ? { forkSession: true } : {}) } : { persistSession: main }),
+      ...(resume ? { resume, resumeSessionAt, ...(fork ? { forkSession: true, ...(q.fork ? { sessionId: q.fork.sessionId } : {}) } : {}) } : { persistSession: main }),
     };
+    let consuming = false;
     try {
       q.query = runQuery({ prompt: input.stream, options: sdkOptions });
       const account = await q.query.accountInfo();
@@ -568,8 +570,14 @@ export function createClaudeBridge(options: {
       }
       void input.push(userMessage(prompt.length ? prompt as any : "Continue from the conversation and tool results above."))
         .catch((error) => { if (!q.stopped) stop(q, error); });
+      consuming = true;
       void consume(q, names);
-    } catch (error) { stop(q, error instanceof Error ? error : new Error(String(error))); }
+    } catch (error) {
+      stop(q, error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      // Without consume, wait here for the CLI to exit before removing a fork it created.
+      if (!consuming && q.fork) void Promise.resolve(q.query?.return(undefined)).catch(() => {}).finally(() => removeFork(q));
+    }
   }
 
   return {

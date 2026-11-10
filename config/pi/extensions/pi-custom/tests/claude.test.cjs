@@ -44,7 +44,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
   const query = ({ prompt, options }) => {
     const queue = [];
     let wake, closed = false;
-    const session = sessions.createSession({ projectPath: directory });
+    const session = sessions.createSession({ projectPath: directory, ...options.forkSession && options.sessionId ? { sessionId: options.sessionId } : {} });
     session.addUserMessage("fixture");
     const uuid = session.addAssistantMessage([{ type: "text", text: "fixture" }]);
     session.save();
@@ -552,6 +552,23 @@ test("other requests extending the main history fork its CC session and remove t
   assert.equal(h.calls[3].options.forkSession, undefined);
   h.calls[3].text("again back"); h.calls[3].finish();
   await next.result();
+});
+
+test("a side fork whose account check fails removes its fork file", { timeout: 10000 }, async (t) => {
+  let checks = 0;
+  const h = harness(t, async () => {
+    if (checks++) throw new Error("account lookup failed");
+    return { apiProvider: "firstParty", subscriptionType: "max" };
+  });
+  const first = h.stream([user("hello")]);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result();
+  const side = await h.stream([user("hello"), answer, user("side")], { sessionId: "side" }).result();
+  assert.equal(side.stopReason, "error");
+  const fork = h.calls[1].options.sessionId;
+  assert.equal(h.calls[1].options.forkSession, true);
+  await until(() => !existsSync(sessions.getSessionPath(fork, directory)));
 });
 
 test("requests extending the running main query at its tool gap fork there with the tool results", { timeout: 10000 }, async (t) => {
