@@ -32,7 +32,7 @@ import {
   installTranscriptHistory,
   type TranscriptHistoryControl,
 } from "./full-transcript.ts";
-import { registerUvGuard, registerJjGuard } from "./guards.ts";
+import { registerUvGuard, registerJjHint } from "./guards.ts";
 import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerClampedOutput } from "./clamped-output.ts";
@@ -847,6 +847,6 @@ export default async function piCustom(pi: ExtensionAPI) {
   registerRestart(pi);
   registerNotify(pi);
   registerUvGuard(pi);
-  registerJjGuard(pi);
+  registerJjHint(pi);
   registerCustomSettings(pi, preferences, codexControl, transcriptHistory);
 }

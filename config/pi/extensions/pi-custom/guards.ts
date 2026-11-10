@@ -105,44 +105,35 @@ const PIP_SUGGESTION = [
 
 const POETRY_SUGGESTION = "Use uv instead of poetry (uv init, uv add, uv sync, uv run)";
 
-function pythonRule(
-  cmd: "python" | "python3",
-  args: string[],
-): { title: string; suggestion: string } {
+function pythonReason(cmd: "python" | "python3", args: string[]): string {
   const lower = args.map((a) => a.toLowerCase());
-  const hasPip = lower.some((a) => a === "pip" || a === "-mpip");
-  const hasVenv = lower.some((a) => a === "venv" || a === "-mvenv");
-  if (hasPip) return { title: `${cmd} -m pip is blocked`, suggestion: PIP_SUGGESTION };
-  if (hasVenv) return {
-    title: `${cmd} -m venv is blocked`,
-    suggestion: "Use uv instead:\n\n  To create a virtual environment: uv venv",
-  };
-  return { title: `${cmd} should be run via uv`, suggestion: "Use: uv run python <args>" };
+  if (lower.some((a) => a === "pip" || a === "-mpip")) return `${cmd} -m pip is blocked. ${PIP_SUGGESTION}`;
+  if (lower.some((a) => a === "venv" || a === "-mvenv")) {
+    return `${cmd} -m venv is blocked. Use uv instead:\n\n  To create a virtual environment: uv venv`;
+  }
+  return `${cmd} should be run via uv. Use: uv run python <args>`;
 }
 
-function findUvRule(command: string): { title: string; suggestion: string } | undefined {
+function uvBlockReason(command: string): string | undefined {
   for (const segment of splitShellSegments(command)) {
     const inv = getInvocation(segment);
     if (!inv) continue;
-    if (inv.cmd === "pip" || inv.cmd === "pip3") return { title: "pip is blocked", suggestion: PIP_SUGGESTION };
-    if (inv.cmd === "poetry") return { title: "poetry is blocked", suggestion: POETRY_SUGGESTION };
-    if (inv.cmd === "python" || inv.cmd === "python3") return pythonRule(inv.cmd, inv.args);
+    if (inv.cmd === "pip" || inv.cmd === "pip3") return `pip is blocked. ${PIP_SUGGESTION}`;
+    if (inv.cmd === "poetry") return `poetry is blocked. ${POETRY_SUGGESTION}`;
+    if (inv.cmd === "python" || inv.cmd === "python3") return pythonReason(inv.cmd, inv.args);
   }
   return undefined;
 }
 
 export function registerUvGuard(pi: ExtensionAPI): void {
-  pi.on("tool_call", async (event, ctx) => {
+  pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
-    const command = String((event.input as { command?: string })?.command ?? "");
-    if (!command.trim()) return;
-    const rule = findUvRule(command);
-    if (!rule) return;
-    return { block: true, reason: `${rule.title}. ${rule.suggestion}` };
+    const reason = uvBlockReason(String((event.input as { command?: string })?.command ?? ""));
+    if (reason) return { block: true, reason };
   });
 }
 
-// ─── JJ Guard ─────────────────────────────────────────────────────────────────
+// ─── JJ Hint ──────────────────────────────────────────────────────────────────
 
 let jjInstalled: boolean | undefined;
 
@@ -187,7 +178,7 @@ function invokesGit(command: string): boolean {
 }
 
 /** Lets a git command run and appends a note preferring jj to its output, unless the model's context already has it. */
-export function registerJjGuard(pi: ExtensionAPI): void {
+export function registerJjHint(pi: ExtensionAPI): void {
   if (!isJjInstalled()) return;
 
   pi.on("tool_result", async (event, ctx) => {
