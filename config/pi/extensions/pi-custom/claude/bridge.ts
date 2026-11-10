@@ -21,6 +21,8 @@ export interface ClaudeSession {
   lastUuid?: string;
   // The tool calls the prefix ends with were answered in the CC session (an interrupted tool use).
   answered?: boolean;
+  // A tool-gap point waits on these tool calls; Claude Code marks them interrupted once its query ends.
+  pending?: string[];
 }
 
 function digest(value: unknown): string {
@@ -72,6 +74,17 @@ function unseen(point: ClaudeSession, messages: any[]): any[] {
   if (!point.answered) return suffix;
   const start = suffix.findIndex((m) => m.role !== "toolResult");
   return start < 0 ? [] : suffix.slice(start);
+}
+
+// The record of Claude Code's own result for `ids`, written when a query stopped at their tool gap.
+function interruption(sessionId: string, cwd: string, configDir: string | undefined, ids: string[]): string | undefined {
+  try {
+    return readFileSync(getSessionPath(sessionId, cwd, configDir), "utf8").trim().split("\n").map((line) => JSON.parse(line))
+      .findLast((r) => r.type === "user" && Array.isArray(r.message?.content)
+        && r.message.content.some((b: any) => b.type === "tool_result" && ids.includes(b.tool_use_id)))?.uuid;
+  } catch {
+    return undefined;
+  }
 }
 
 function outputFor(model: Model<any>): AssistantMessage {
@@ -174,8 +187,8 @@ export function createClaudeBridge(options: {
     if (q.fork?.sessionId) rmSync(getSessionPath(q.fork.sessionId, q.cwd, q.fork.configDir), { force: true });
   }
 
-  function checkpoint(q: RunningQuery, prefix: string[]) {
-    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, prefix, lastUuid: q.lastUuid };
+  function checkpoint(q: RunningQuery, prefix: string[], pending?: string[]) {
+    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, prefix, lastUuid: q.lastUuid, ...pending ? { pending } : {} };
     points = [...points.slice(-15), saved];
     options.save(saved);
   }
@@ -185,7 +198,7 @@ export function createClaudeBridge(options: {
     const recorded = q.expect?.gap ? q.recorded.uses : q.recorded.results;
     if (!q.expect || disposed || !q.sessionId || [...q.expect.ids].some((id) => !recorded.has(id))) return;
     const previous = saved;
-    checkpoint(q, q.expect.prefix);
+    checkpoint(q, q.expect.prefix, q.expect.gap ? [...q.expect.ids] : undefined);
     if (q.expect.gap) q.gap = { point: saved!, previous, ids: [...q.expect.ids] };
     q.expect = undefined;
   }
@@ -368,14 +381,9 @@ export function createClaudeBridge(options: {
   function reanchor(q: RunningQuery) {
     const gap = q.interrupted;
     if (!gap || disposed || q.generation !== generation || saved !== gap.previous || !q.sessionId) return;
-    let record: any;
-    try {
-      record = readFileSync(getSessionPath(q.sessionId, q.cwd, q.configDir), "utf8").trim().split("\n").map((line) => JSON.parse(line))
-        .findLast((r) => r.type === "user" && Array.isArray(r.message?.content)
-          && r.message.content.some((b: any) => b.type === "tool_result" && gap.ids.includes(b.tool_use_id)));
-    } catch { return; }
-    if (!record?.uuid) return;
-    q.lastUuid = record.uuid;
+    const uuid = interruption(q.sessionId, q.cwd, q.configDir, gap.ids);
+    if (!uuid) return;
+    q.lastUuid = uuid;
     checkpoint(q, gap.point.prefix);
     saved!.answered = true;
     options.save(saved!);
@@ -566,7 +574,18 @@ export function createClaudeBridge(options: {
       });
       return stream;
     },
-    restore(state?: ClaudeSession) { saved = state; points = state ? [state] : []; },
+    restore(state?: ClaudeSession) {
+      // Pi exited at a tool gap without withdrawing it: resume at Claude Code's interrupted result, or rebuild.
+      if (state?.pending) {
+        const uuid = interruption(state.sessionId, state.cwd, undefined, state.pending);
+        const { pending: _pending, ...rest } = state;
+        state = uuid ? { ...rest, lastUuid: uuid, answered: true } : undefined;
+        if (state) options.save(state);
+        else options.clear?.();
+      }
+      saved = state;
+      points = state ? [state] : [];
+    },
     points: () => points,
     reset() {
       generation++;

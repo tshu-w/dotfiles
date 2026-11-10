@@ -570,6 +570,31 @@ test("requests extending the running main query at its tool gap fork there with 
   assert.equal((await side.result()).stopReason, "stop");
 });
 
+test("a tool-gap point restored after a hard exit resumes at Claude Code's interrupted result", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tool")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.tools(["call-a"]); q.record(["call-a"]);
+  const answer = await first.result();
+  await until(() => h.saved.length === 1);
+  assert.deepEqual(h.saved[0].pending, ["call-a"]);
+  // Pi was killed: the next process restores the persisted gap point without a reset.
+  appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-interrupted",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
+  const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, query: h.query });
+  t.after(() => restarted.dispose());
+  restarted.restore(structuredClone(h.saved[0]));
+  const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
+    messages: [...history, answer, result("call-a", "aborted"), user("next")] }), { sessionId: "pi-main" });
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(h.calls[1].options.resume, q.sessionId);
+  assert.equal(h.calls[1].options.resumeSessionAt, "uuid-interrupted");
+  assert.deepEqual(h.calls[1].prompts[0].message.content, [{ type: "text", text: "next" }]);
+  h.calls[1].text("done"); h.calls[1].finish();
+  await next.result();
+});
+
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);
