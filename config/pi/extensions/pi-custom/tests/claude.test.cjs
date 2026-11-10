@@ -130,6 +130,7 @@ test("subscription requests strip API keys without changing the parent environme
   assert.equal(process.env.ANTHROPIC_API_KEY, "parent-key");
   assert.equal(env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
   assert.equal(env.HTTPS_PROXY, "http://127.0.0.1:7890");
+  assert.deepEqual([env.CLAUDE_CODE_SILENT_TURN_REMINDER, env.CLAUDE_CODE_ELEGANT_MEADOW, env.CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH], ["0", "0", "16384"]);
   h.calls[0].text("hello"); h.calls[0].finish();
   assert.equal((await stream.result()).stopReason, "stop");
 });

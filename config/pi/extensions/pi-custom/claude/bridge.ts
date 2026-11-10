@@ -687,6 +687,8 @@ export function createClaudeBridge(options: {
         CLAUDE_CODE_MAX_RETRIES: "0",
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", ENABLE_CLAUDEAI_MCP_SERVERS: "0",
         ENABLE_TOOL_SEARCH: "false", DISABLE_AUTO_COMPACT: "1", CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(outputTokens),
+        // No reminders Pi's history lacks, no request-replay records, and Pi's full tool descriptions.
+        CLAUDE_CODE_SILENT_TURN_REMINDER: "0", CLAUDE_CODE_ELEGANT_MEADOW: "0", CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH: "16384",
         ...(request.cacheRetention === "none" ? { DISABLE_PROMPT_CACHING: "1" } : {}),
       },
       extraArgs: { "strict-mcp-config": null },
