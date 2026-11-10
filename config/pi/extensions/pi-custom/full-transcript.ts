@@ -45,16 +45,11 @@ function renderWithEntries(
   const manager = mode.sessionManager;
   const ownDescriptor = Object.getOwnPropertyDescriptor(manager, "buildContextEntries");
 
-  try {
-    Object.defineProperty(manager, "buildContextEntries", {
-      configurable: true,
-      value: () => entries,
-      writable: true,
-    });
-  } catch {
-    return original.apply(mode, args);
-  }
-
+  Object.defineProperty(manager, "buildContextEntries", {
+    configurable: true,
+    value: () => entries,
+    writable: true,
+  });
   try {
     return original.apply(mode, args);
   } finally {
@@ -92,17 +87,6 @@ export function installTranscriptHistory(
   let full = false;
   let activeMode: TranscriptMode | undefined;
   let compactionIdToOmit: string | undefined;
-
-  if (typeof originalInitial !== "function" || typeof originalRebuild !== "function") {
-    return {
-      getStatus: () => "Recent",
-      showOlder: () => {},
-      showRecent: () => {},
-      showFull: () => {},
-      omitCompactionOnNextRebuild: () => {},
-      restore: () => {},
-    };
-  }
 
   const render = (
     mode: TranscriptMode,
