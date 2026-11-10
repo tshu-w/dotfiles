@@ -10,17 +10,15 @@
  */
 
 import type { ExtensionAPI, Theme, TruncationResult } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, getAgentDir, truncateHead } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { setImmediate } from "node:timers/promises";
-import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { renderToolCall } from "./tool-call-render.js";
 
-const CONFIG_PATH = join(getAgentDir(), "web-search.json");
 const EXA_SEARCH_URL = "https://api.exa.ai/search";
 const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
 const JINA_READER_BASE = "https://r.jina.ai/";
@@ -51,34 +49,13 @@ interface FetchCacheEntry {
 
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
 
-interface WebConfig {
-	exaApiKey?: unknown;
-	jinaApiKey?: unknown;
-	tavilyApiKey?: unknown;
+function getKey(envVar: string): string | null {
+	return process.env[envVar]?.trim() || null;
 }
 
-let cachedConfig: WebConfig | null = null;
-
-function loadConfig(): WebConfig {
-	if (cachedConfig) return cachedConfig;
-	try {
-		cachedConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as WebConfig;
-	} catch {
-		cachedConfig = {};
-	}
-	return cachedConfig;
-}
-
-function getKey(envVar: string, cfgField: "exaApiKey" | "jinaApiKey" | "tavilyApiKey"): string | null {
-	const envKey = process.env[envVar]?.trim();
-	if (envKey) return envKey;
-	const value = loadConfig()[cfgField];
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-const getExaKey = () => getKey("EXA_API_KEY", "exaApiKey");
-const getJinaKey = () => getKey("JINA_API_KEY", "jinaApiKey");
-const getTavilyKey = () => getKey("TAVILY_API_KEY", "tavilyApiKey");
+const getExaKey = () => getKey("EXA_API_KEY");
+const getJinaKey = () => getKey("JINA_API_KEY");
+const getTavilyKey = () => getKey("TAVILY_API_KEY");
 
 function requestSignal(signal?: AbortSignal): AbortSignal {
 	const timeout = AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
