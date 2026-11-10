@@ -713,6 +713,15 @@ test("state of deleted Pi sessions is removed with a Claude Code session no othe
   assert.deepEqual([shared.path, own.path, recent.path].map(existsSync), [true, false, true]);
 });
 
+test("an empty tool result is imported with Claude Code's no-output placeholder", async () => {
+  const { convertPiMessages } = await jiti.import(join(CUSTOM, "claude/convert.ts"));
+  const { anthropicMessages } = convertPiMessages([
+    { role: "assistant", provider: "claude-code", content: [{ type: "toolCall", id: "call-a", name: "bash", arguments: {} }] },
+    { role: "toolResult", toolCallId: "call-a", toolName: "bash", content: [], isError: true },
+  ]);
+  assert.deepEqual(anthropicMessages[1].content, [{ type: "tool_result", tool_use_id: "call-a", content: "(mcp__pi__bash completed with no output)", is_error: true }]);
+});
+
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);

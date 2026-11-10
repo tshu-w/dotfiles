@@ -98,7 +98,9 @@ export function convertPiMessages(messages: PiMessage[]): { anthropicMessages: S
       turnAssistantIdx = anthropicMessages.length;
       anthropicMessages.push({ role: "assistant", content: blocks });
     } else if (msg.role === "toolResult") {
-      const block: ToolResultBlock = { type: "tool_result", tool_use_id: sanitizeToolId(msg.toolCallId, sanitizedIds), content: toolResultContent(msg.content), is_error: msg.isError };
+      // An empty result is rejected once imported; Claude Code writes its own placeholder for one.
+      const content = toolResultContent(msg.content) || `(${mapPiToolNameToSdk(msg.toolName)} completed with no output)`;
+      const block: ToolResultBlock = { type: "tool_result", tool_use_id: sanitizeToolId(msg.toolCallId, sanitizedIds), content, is_error: msg.isError };
       if (turnResults) {
         turnResults.content.push(block);
       } else {
