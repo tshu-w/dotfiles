@@ -25,47 +25,44 @@ function assistant({ content = [{ type: "text", text: "ok" }], stopReason = "sto
 
 async function main() {
 	const jiti = createJiti(__filename, { interopDefault: true });
-	const reroll = await jiti.import("../reroll.ts");
-	const { isContextOverflow, isRetryableAssistantError } = await import(
+	const clamped = await jiti.import("../clamped-output.ts");
+	const { isContextOverflow, isRecoverableLength, isRetryableAssistantError } = await import(
 		join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/index.js")
 	);
 
-	assert.equal(reroll.requestMaxTokens({ max_tokens: 4096 }), 4096);
-	assert.equal(reroll.requestMaxTokens({ max_completion_tokens: 2048 }), 2048);
-	assert.equal(reroll.requestMaxTokens({ max_output_tokens: 1024 }), 1024);
-	assert.equal(reroll.requestMaxTokens({}), undefined);
-	assert.equal(reroll.outputWasClamped({ max_output_tokens: 4096 }, 8192), true);
-	assert.equal(reroll.outputWasClamped({ max_output_tokens: 8192 }, 8192), false);
+	assert.equal(clamped.requestMaxTokens({ max_tokens: 4096 }), 4096);
+	assert.equal(clamped.requestMaxTokens({ max_completion_tokens: 2048 }), 2048);
+	assert.equal(clamped.requestMaxTokens({ max_output_tokens: 1024 }), 1024);
+	assert.equal(clamped.requestMaxTokens({}), undefined);
+	assert.equal(clamped.outputWasClamped({ max_output_tokens: 4096 }, 8192), true);
+	assert.equal(clamped.outputWasClamped({ max_output_tokens: 8192 }, 8192), false);
 
-	const length = reroll.classifyAssistantMessage(
-		assistant({ content: [{ type: "text", text: "partial" }], stopReason: "length" }),
-		true,
-	);
-	assert.equal(length.message.stopReason, "error");
-	assert.match(length.message.errorMessage, /^context_length_exceeded:/);
-	assert.equal(isContextOverflow(length.message, 8192), true);
+	// A length stop under a clamped budget is left to Pi, which compacts and retries it.
+	const partial = assistant({ content: [{ type: "text", text: "partial" }], stopReason: "length" });
+	assert.equal(clamped.classifyAssistantMessage(partial, true), partial);
+	assert.equal(isRecoverableLength(partial, 8192), true);
 
 	const toolCall = assistant({
 		content: [{ type: "toolCall", name: "read", arguments: { path: "a" } }],
 		stopReason: "length",
 	});
-	const preserved = reroll.classifyAssistantMessage(toolCall, true);
-	assert.equal(preserved.message, toolCall);
+	const preserved = clamped.classifyAssistantMessage(toolCall, true);
+	assert.equal(preserved, toolCall);
 
 	const thinkingOnly = assistant({ content: [{ type: "thinking", thinking: "private" }] });
 	for (const message of [thinkingOnly, assistant({ content: [] }), assistant({ content: [{ type: "text", text: " " }] })]) {
-		const result = reroll.classifyAssistantMessage(message, false);
-		assert.equal(result.message, message);
-		assert.equal(isRetryableAssistantError(result.message), false);
+		const result = clamped.classifyAssistantMessage(message, false);
+		assert.equal(result, message);
+		assert.equal(isRetryableAssistantError(result), false);
 	}
 
-	const clampedEmpty = reroll.classifyAssistantMessage(thinkingOnly, true);
-	assert.equal(clampedEmpty.message.stopReason, "error");
-	assert.match(clampedEmpty.message.errorMessage, /^context_length_exceeded:/);
-	assert.equal(isContextOverflow(clampedEmpty.message, 8192), true);
+	const clampedEmpty = clamped.classifyAssistantMessage(thinkingOnly, true);
+	assert.equal(clampedEmpty.stopReason, "error");
+	assert.match(clampedEmpty.errorMessage, /^context_length_exceeded:/);
+	assert.equal(isContextOverflow(clampedEmpty, 8192), true);
 
 	const handlers = new Map();
-	reroll.registerReroll({
+	clamped.registerClampedOutput({
 		on(event, handler) { handlers.set(event, handler); },
 	});
 	const ctx = { model: { maxTokens: 8192 } };
@@ -81,10 +78,10 @@ async function main() {
 	assert.equal(handlers.get("message_end")({ message: assistant({ content: [] }) }), undefined);
 
 	const failed = { ...assistant(), stopReason: "error", errorMessage: "503 service unavailable" };
-	assert.equal(reroll.classifyAssistantMessage(failed, false).message, failed);
+	assert.equal(clamped.classifyAssistantMessage(failed, false), failed);
 	assert.equal(isRetryableAssistantError(failed), true);
 
-	console.log("pi-custom: reroll verified");
+	console.log("pi-custom: clamped output verified");
 }
 
 main().catch((error) => {

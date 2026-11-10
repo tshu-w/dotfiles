@@ -35,7 +35,7 @@ import {
 import { registerUvGuard, registerJjGuard } from "./guards.ts";
 import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
-import { registerReroll } from "./reroll.ts";
+import { registerClampedOutput } from "./clamped-output.ts";
 import { installTranscriptDisplay } from "./transcript-display.ts";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
@@ -927,7 +927,7 @@ export default async function piCustom(pi: ExtensionAPI) {
   registerFooter(pi, runtime);
   const codexControl = registerCodex(pi, runtime, { fast: initial.fast.value });
   registerClaude(pi);
-  registerReroll(pi);
+  registerClampedOutput(pi);
   const applyPreferences = () => {
     const settings = preferences.get();
     codexControl.setDesired(settings.fast.value);

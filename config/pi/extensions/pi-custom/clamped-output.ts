@@ -36,43 +36,14 @@ function hasVisibleText(message: AssistantMessage): boolean {
   );
 }
 
-function asError(message: AssistantMessage, errorMessage: string): AssistantMessage {
-  return { ...message, stopReason: "error", errorMessage };
+// Pi recovers length stops on its own; an empty response under a clamped output budget is an overflow too.
+export function classifyAssistantMessage(message: AssistantMessage, wasOutputClamped: boolean): AssistantMessage {
+  if (!wasOutputClamped || message.stopReason === "error" || message.stopReason === "aborted"
+    || hasStructuredToolCall(message) || hasVisibleText(message)) return message;
+  return { ...message, stopReason: "error", errorMessage: "context_length_exceeded: output budget was clamped before an empty assistant response" };
 }
 
-export function classifyAssistantMessage(
-  message: AssistantMessage,
-  wasOutputClamped: boolean,
-) {
-  if (message.stopReason === "error" || message.stopReason === "aborted") {
-    return { message };
-  }
-  if (hasStructuredToolCall(message)) {
-    return { message };
-  }
-  if (message.stopReason === "length" && wasOutputClamped) {
-    return {
-      message: asError(
-        message,
-        "context_length_exceeded: output budget was clamped before a length-limited response",
-      ),
-    };
-  }
-  if (hasVisibleText(message)) {
-    return { message };
-  }
-  if (wasOutputClamped) {
-    return {
-      message: asError(
-        message,
-        "context_length_exceeded: output budget was clamped before an empty assistant response",
-      ),
-    };
-  }
-  return { message };
-}
-
-export function registerReroll(pi: ExtensionAPI): void {
+export function registerClampedOutput(pi: ExtensionAPI): void {
   let pendingOutputWasClamped = false;
 
   pi.on("before_provider_request", (event, ctx) => {
@@ -88,10 +59,7 @@ export function registerReroll(pi: ExtensionAPI): void {
 
     const wasOutputClamped = pendingOutputWasClamped;
     pendingOutputWasClamped = false;
-    const result = classifyAssistantMessage(
-      event.message,
-      wasOutputClamped,
-    );
-    if (result.message !== event.message) return { message: result.message };
+    const message = classifyAssistantMessage(event.message, wasOutputClamped);
+    if (message !== event.message) return { message };
   });
 }
