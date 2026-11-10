@@ -124,6 +124,8 @@ interface RunningQuery {
 
 // Points a resume failed from, shared because bridges fork from each other's points.
 const failedPoints = new WeakSet<ClaudeSession>();
+// How Claude Code's print mode reports a session or message it cannot resume.
+const RESUME_FAILURE = /No conversation found|No message found with message\.uuid|Resume rejected by --resume-drops-turn|Failed to resume session|--resume requires a valid session/;
 
 export function createClaudeBridge(options: {
   cwd: () => string;
@@ -198,11 +200,11 @@ export function createClaudeBridge(options: {
       if (saved) options.save(saved);
       else options.clear?.();
     }
-    // Keep the resume point after an abort or a mid-stream error; the next turn resumes by prefix.
-    // A query that failed before any response may have failed to resume, so it rebuilds.
-    if (!aborted && !q.responded) {
-      if (q.point) failedPoints.add(q.point);
-      if (q.main) { saved = undefined; options.clear?.(); }
+    // Keep the resume point after an abort or another error, such as a rate limit; the next turn resumes by prefix.
+    // Only a rejected resume invalidates it: other requests stop forking from it, and the main conversation rebuilds.
+    if (q.point && !q.responded && RESUME_FAILURE.test(error.message)) {
+      failedPoints.add(q.point);
+      if (q.main && saved === q.point) { saved = undefined; options.clear?.(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
     release(q, error.message);
@@ -451,14 +453,15 @@ export function createClaudeBridge(options: {
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
     let fork = false;
-    const usable = (point: ClaudeSession) => !failedPoints.has(point) && point.cwd === cwd && continues(point, messages, incoming)
+    const usable = (point: ClaudeSession) => point.cwd === cwd && continues(point, messages, incoming)
       && existsSync(getSessionPath(point.sessionId, cwd, request.env?.CLAUDE_CONFIG_DIR));
     let point = main && saved?.piSessionId === options.sessionId() && usable(saved) ? saved : undefined;
     // Requests that extend a main history at an earlier or another Session's point fork that CC session
     // to reuse its prompt cache; for this Session's main conversation, the fork becomes its own session.
     if (!point) {
       fork = true;
-      point = [...points, ...options.forkSources?.() ?? []].sort((a, b) => b.prefix.length - a.prefix.length).find(usable);
+      point = [...points, ...options.forkSources?.() ?? []].sort((a, b) => b.prefix.length - a.prefix.length)
+        .find((candidate) => !failedPoints.has(candidate) && usable(candidate));
     }
     if (point) {
       promptMessages = unseen(point, messages);

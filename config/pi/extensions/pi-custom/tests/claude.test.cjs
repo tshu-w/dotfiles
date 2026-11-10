@@ -470,7 +470,7 @@ for (const failure of ["abort", "error"]) test(`a continuation ended by ${failur
   await retry.result();
 });
 
-test("a resume that fails before any response rebuilds on the next request", { timeout: 10000 }, async (t) => {
+for (const [error, rebuilds] of [["No message found with message.uuid of: uuid-x", true], ["API Error: 429 rate_limit_error", false]]) test(`a resume failing before any response with "${error}" ${rebuilds ? "rebuilds" : "resumes again"}`, { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);
   await until(() => h.calls.length === 1);
@@ -479,11 +479,11 @@ test("a resume that fails before any response rebuilds on the next request", { t
   const failed = h.stream([...history, answer, user("again")]);
   await until(() => h.calls.length === 2);
   assert.equal(h.calls[1].options.resume, state.sessionId);
-  h.calls[1].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["No message found"] });
+  h.calls[1].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: [error] });
   assert.equal((await failed.result()).stopReason, "error");
   const retry = h.stream([...history, answer, user("again")]);
   await until(() => h.calls.length === 3);
-  assert.notEqual(h.calls[2].options.resume, state.sessionId);
+  assert.equal(h.calls[2].options.resume === state.sessionId, !rebuilds);
   h.calls[2].text("rebuilt"); h.calls[2].finish();
   await retry.result();
 });
