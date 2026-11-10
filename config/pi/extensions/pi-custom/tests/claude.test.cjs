@@ -671,18 +671,27 @@ test("SDK errors, early abort and malformed schemas terminate rather than hang",
   assert.equal(h.saved.length, 0);
 });
 
-test("session exhaustion preserves reset time without retries while throttling remains retryable", async (t) => {
+test("quota errors preserve details without retries while throttling remains retryable", async (t) => {
   const h = harness(t);
-  const exhausted = h.stream([user("quota")]);
-  await until(() => h.calls.length === 1);
-  h.calls[0].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text: "You've hit your session limit · resets 5am (Asia/Shanghai)" }] } });
-  const answer = await exhausted.result();
-  assert.equal(answer.errorMessage, "Claude Code quota exceeded · resets 5am (Asia/Shanghai)");
-  assert.equal(ai.isRetryableAssistantError(answer), false);
-  const transient = h.stream([user("throttled")]);
-  await until(() => h.calls.length === 2);
-  h.calls[1].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text: "Too many requests" }] } });
-  assert.equal(ai.isRetryableAssistantError(await transient.result()), true);
+  for (const [text, retryable] of [
+    ["You've hit your 5-hour limit · resets 8:20pm (Asia/Shanghai)", false],
+    ["You've hit your weekly limit", false],
+    ["You've reached your Fable limit.", false],
+    ["You've hit your org's monthly usage limit", false],
+    ["You've hit your team's shared budget.", false],
+    ["You're out of usage credits", false],
+    ["Your usage allocation has been disabled by your admin", false],
+    ["429: Too many requests", true],
+    ["You've used 90% of your weekly limit", true],
+  ]) {
+    const response = h.stream([user("quota")]);
+    const index = h.calls.length;
+    await until(() => h.calls.length === index + 1);
+    h.calls[index].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text }] } });
+    const answer = await response.result();
+    assert.equal(ai.isRetryableAssistantError(answer), retryable, text);
+    assert.equal(answer.errorMessage, `${retryable ? "" : "Claude Code quota exceeded: "}Claude Code: rate_limit\n${text}`);
+  }
 });
 
 test("context errors enable compaction instead of retrying unchanged history", async (t) => {

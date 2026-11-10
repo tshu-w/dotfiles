@@ -4,13 +4,14 @@ export const USAGE_CREDITS_ERROR = "Claude Code billing: this provider only allo
 
 export function normalizeClaudeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith(USAGE_CREDITS_ERROR) || message.startsWith("context_length_exceeded:")) return message;
+  if (message.startsWith(USAGE_CREDITS_ERROR) || message.startsWith("Claude Code quota exceeded") || message.startsWith("context_length_exceeded:")) return message;
   if (/third-party apps now draw from your extra usage|out of extra usage|draws? from your usage credits/i.test(message)) {
     return `${USAGE_CREDITS_ERROR} Original error: ${message}`;
   }
-  if (/you've hit your session limit/i.test(message)) {
-    const reset = message.match(/·\s*resets[^\n]*/)?.[0];
-    return `Claude Code quota exceeded${reset ? ` ${reset}` : ""}`;
+  if (/(?:^|\n)you've (?:hit|reached) your (?:(?:(?:session|5-hour|weekly|opus|sonnet|fable|usage(?: credit)?|(?:(?:org|channel)'s )?monthly (?:spend|usage)) )?limit|team's shared budget)\b/i.test(message)
+    || /(?:^|\n)(?:you're out of usage credits|your org is out of usage|your seat type doesn't include (?:usage(?: credits)?|extra usage))\b/i.test(message)
+    || /(?:^|\n)(?:your usage allocation has been disabled by your admin|your group's usage limit is set to \$0|this service is disabled for your org)\b/i.test(message)) {
+    return `Claude Code quota exceeded: ${message}`;
   }
   if (/prompt is too long|context(?:_| )length|context window exceeded|too many input tokens/i.test(message)) {
     return `context_length_exceeded: ${message}`;
