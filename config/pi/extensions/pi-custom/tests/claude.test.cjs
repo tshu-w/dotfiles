@@ -48,7 +48,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
   let initless = false;
   const query = ({ prompt, options }) => {
     const queue = [];
-    let wake, closed = false;
+    let wake, failure, closed = false;
     const session = sessions.createSession({ projectPath: directory, ...options.forkSession && options.sessionId ? { sessionId: options.sessionId } : {} });
     session.addUserMessage("fixture");
     const uuid = session.addAssistantMessage([{ type: "text", text: "fixture" }]);
@@ -59,11 +59,13 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
       emit(message) { queue.push(message); wake?.(); wake = undefined; },
       event(event) { this.emit({ type: "stream_event", parent_tool_use_id: null, event }); },
       close() { closed = true; wake?.(); wake = undefined; },
+      fail(error) { failure = error; wake?.(); wake = undefined; },
       async interrupt() {},
       async *[Symbol.asyncIterator]() {
         while (!closed) {
-          if (!queue.length) await new Promise((resolve) => { wake = resolve; });
+          if (!queue.length && !failure) await new Promise((resolve) => { wake = resolve; });
           while (queue.length && !closed) yield queue.shift();
+          if (failure) throw failure;
         }
       },
       begin() { this.event({ type: "message_start", message: { id: "msg-test", model: model.id, usage: { input_tokens: 7, cache_read_input_tokens: 2000, cache_creation_input_tokens: 40 } } }); },
@@ -109,7 +111,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
   t.after(() => bridge.reset());
   const stream = (messages, options = {}, tools = [tool]) => bridge.streamSimple(model,
     ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools, messages }), { sessionId: "pi-main", ...options });
-  return { bridge, calls, saved, traces, stream, query, initless: () => { initless = true; } };
+  return { bridge, calls, saved, traces, stream, query, initless: (value = true) => { initless = value; } };
 }
 
 const callTool = (client, id) => client.callTool({ name: "echo", arguments: { value: id }, _meta: { "claudecode/toolUseId": id } });
@@ -855,32 +857,70 @@ test("SDK errors, early abort and malformed schemas terminate rather than hang",
   const failed = h.stream([user("failure")]);
   await until(() => h.calls.length === 1);
   h.calls[0].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["transport failed"] });
-  assert.equal((await failed.result()).errorMessage, "transport failed");
+  assert.equal((await failed.result()).errorMessage, "Claude Code: server_error\ntransport failed");
   await until(() => h.calls[0].closed);
   assert.equal(h.saved.length, 0);
 });
 
-test("quota errors preserve details without retries while throttling remains retryable", async (t) => {
+test("errors name their retry class from Claude Code's structured signals", async (t) => {
   const h = harness(t);
-  for (const [text, retryable] of [
-    ["You've hit your 5-hour limit · resets 8:20pm (Asia/Shanghai)", false],
-    ["You've hit your weekly limit", false],
-    ["You've reached your Fable limit.", false],
-    ["You've hit your org's monthly usage limit", false],
-    ["You've hit your team's shared budget.", false],
-    ["You're out of usage credits", false],
-    ["Your usage allocation has been disabled by your admin", false],
-    ["429: Too many requests", true],
-    ["You've used 90% of your weekly limit", true],
+  const typed = (error, text, status) => (call) => {
+    if (status) call.emit({ type: "rate_limit_event", rate_limit_info: { status } });
+    call.emit({ type: "assistant", error, message: { content: [{ type: "text", text }] } });
+  };
+  for (const [label, fail, retryable] of [
+    ["dropped connection", typed("server_error", "API Error: Connection dropped (ECONNRESET)"), true],
+    ["overload", typed("overloaded", "API Error: 529 Overloaded"), true],
+    ["throttle", typed("rate_limit", "API Error: Rate limit reached", "allowed_warning"), true],
+    ["reached plan limit", typed("rate_limit", "You've hit your weekly limit · resets Mon 9am", "rejected"), false],
+    ["reached spend cap", typed("rate_limit", "You're out of usage credits", "rejected"), false],
+    ["limit wording without a rejected event", typed("rate_limit", "You've hit your weekly limit"), true],
+    ["organization policy", typed("rate_limit", "Your usage allocation has been disabled by your admin"), false],
+    ["unknown", typed("unknown", "Something odd"), true],
+    ["authentication", typed("authentication_failed", "Please run /login"), false],
+    ["invalid request", typed("invalid_request", "API Error: 400 messages: text content blocks must be non-empty"), false],
+    ["billing", typed("billing_error", "Credit balance is too low"), false],
+    ["model", typed("model_not_found", "There's an issue with the selected model"), false],
+    ["execution error", (call) => call.emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["Aborted by user"] }), true],
+    ["process exit", (call) => call.fail(new Error("Claude Code process exited with code 1")), true],
+    ["incomplete stream", (call) => call.emit({ type: "result", subtype: "success", is_error: false, result: "" }), true],
+    ["closed stream", (call) => call.close(), true],
+    ["unsupported stream", (call) => { call.begin(); call.event({ type: "content_block_start", index: 0, content_block: { type: "future_block" } }); }, false],
   ]) {
-    const response = h.stream([user("quota")]);
+    const response = h.stream([user(label)]);
     const index = h.calls.length;
     await until(() => h.calls.length === index + 1);
-    h.calls[index].emit({ type: "assistant", error: "rate_limit", message: { content: [{ type: "text", text }] } });
+    fail(h.calls[index]);
     const answer = await response.result();
-    assert.equal(ai.isRetryableAssistantError(answer), retryable, text);
-    assert.equal(answer.errorMessage, `${retryable ? "" : "Claude Code quota exceeded: "}Claude Code: rate_limit\n${text}`);
+    assert.equal(answer.stopReason, "error", label);
+    assert.equal(ai.isRetryableAssistantError(answer), retryable, `${label}: ${answer.errorMessage}`);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false, label);
   }
+});
+
+test("a resume rejected before init retries by rebuilding, never at the same point", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const turn = async (messages, i) => {
+    const stream = h.stream(messages);
+    await until(() => h.calls.length === i + 1);
+    h.calls[i].text(`answer ${i}`); h.calls[i].finish();
+    return stream.result();
+  };
+  const u1 = user("first"), a1 = await turn([u1], 0);
+  const u2 = user("second"), a2 = await turn([u1, a1, u2], 1);
+  const history = [u1, a1, u2, a2, user("third")], resumes = [];
+  h.initless();
+  // The saved point is rejected, then the prefix session cut at the first point; Pi's retries then rebuild.
+  for (const [i, trace] of [[2, "resume: unchanged history"], [3, "prefix: Pi history changed after a resume point"], [4, "rebuild: Pi history changed or no saved session"]]) {
+    const traces = h.traces.length, response = h.stream(history);
+    await until(() => h.calls.length === i + 1);
+    resumes.push(h.calls[i].options.resume);
+    assert.ok(h.traces.slice(traces).includes(trace), trace);
+    h.calls[i].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: [`No message found with message.uuid of: ${h.calls[i].options.resumeSessionAt}`] });
+    const answer = await response.result();
+    assert.equal(ai.isRetryableAssistantError(answer), true, answer.errorMessage);
+  }
+  assert.equal(new Set(resumes).size, 3);
 });
 
 test("context errors enable compaction instead of retrying unchanged history", async (t) => {

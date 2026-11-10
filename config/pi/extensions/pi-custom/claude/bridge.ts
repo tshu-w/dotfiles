@@ -11,7 +11,7 @@ import { createToolServer } from "./mcp-server.js";
 import { makePromptStream, userMessage, type PromptStream } from "./prompt-stream.js";
 import { toolResultToMcpContent, type McpResult } from "./extract-tool-results.js";
 import { buildClaudeSystemPrompt } from "./system-prompt.js";
-import { normalizeClaudeError, subscriptionEnvironment, USAGE_CREDITS_ERROR } from "./subscription.js";
+import { normalizeClaudeError, queryError, subscriptionEnvironment, typedClaudeError, USAGE_CREDITS_ERROR } from "./subscription.js";
 
 export interface ClaudeSession {
   piSessionId: string;
@@ -201,6 +201,9 @@ interface RunningQuery {
   initialized?: boolean;
   // An error result before system/init: the CLI failed while loading the session.
   failedToLoad?: boolean;
+  // The point a prefix session was cut at; a rejected load stops later requests from cutting there.
+  cut?: ClaudeSession;
+  limitRejected?: boolean;
   requester?: string;
   // Set for a fork of the main CC session; its session file is removed when the query ends.
   fork?: { configDir?: string; sessionId?: string };
@@ -338,8 +341,9 @@ export function createClaudeBridge(options: {
     }
     // Keep the resume point after an abort or another error, such as a rate limit; the next turn resumes by prefix.
     // Only a rejected resume invalidates it: other requests stop forking from it, and the main conversation rebuilds.
-    if (q.point && !q.responded && (q.failedToLoad || RESUME_FAILURE.test(error.message))) {
-      failedPoints.add(q.point);
+    const loaded = q.point ?? q.cut;
+    if (loaded && !q.responded && (q.failedToLoad || RESUME_FAILURE.test(error.message))) {
+      failedPoints.add(loaded);
       if (q.main && saved === q.point) { saved = undefined; persist(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
@@ -406,14 +410,14 @@ export function createClaudeBridge(options: {
         block = { type: "toolCall", id: b.id, name, arguments: b.input ?? {} };
         q.ids.add(b.id);
         kind = "toolcall";
-      } else throw new Error(`Unsupported Claude content block: ${b.type}`);
+      } else throw new Error(`Claude Code: unsupported content block ${b.type}`);
       const index = q.output.content.push(block) - 1;
       q.blocks.set(event.index, { index, json: "" });
       q.stream.push({ type: `${kind}_start`, contentIndex: index, partial: q.output } as any);
     } else if (event.type === "content_block_delta") {
       const entry = q.blocks.get(event.index);
       if (entry === null) return;
-      if (!entry) throw new Error(`Missing Claude content block ${event.index}`);
+      if (!entry) throw new Error(`Claude Code: missing content block ${event.index}`);
       const block = q.output.content[entry.index] as any;
       const delta = event.delta;
       if (delta.type === "signature_delta") { block.thinkingSignature += delta.signature; return; }
@@ -422,7 +426,7 @@ export function createClaudeBridge(options: {
       if (delta.type === "text_delta") { kind = "text"; text = delta.text; block.text += text; }
       else if (delta.type === "thinking_delta") { kind = "thinking"; text = delta.thinking; block.thinking += text; }
       else if (delta.type === "input_json_delta") { kind = "toolcall"; text = delta.partial_json; entry.json += text; }
-      else throw new Error(`Unsupported Claude content delta: ${delta.type}`);
+      else throw new Error(`Claude Code: unsupported content delta ${delta.type}`);
       q.stream.push({ type: `${kind}_delta`, contentIndex: entry.index, delta: text, partial: q.output } as any);
     } else if (event.type === "content_block_stop") {
       const entry = q.blocks.get(event.index);
@@ -455,6 +459,7 @@ export function createClaudeBridge(options: {
           || message.rate_limit_info.errorCode === "credits_required")) {
           throw new Error(USAGE_CREDITS_ERROR);
         }
+        if (message.type === "rate_limit_event") q.limitRejected = message.rate_limit_info.status === "rejected";
         if (message.type === "system" && message.subtype === "init") {
           q.initialized = true;
           q.sessionId = message.session_id;
@@ -470,7 +475,7 @@ export function createClaudeBridge(options: {
           settle(q);
           if (message.error) {
             const detail = message.message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-            throw new Error(`Claude Code: ${message.error}${detail ? `\n${detail}` : ""}`);
+            throw new Error(typedClaudeError(message.error, detail, q.limitRejected === true));
           }
           // Completed assistant records echo the stream; they must never duplicate tool calls.
         }
@@ -492,7 +497,7 @@ export function createClaudeBridge(options: {
       }
       if (!q.stopped) throw new Error("Claude Code stream ended without a result");
     } catch (error) {
-      const message = normalizeClaudeError(error);
+      const message = queryError(error);
       if (message.startsWith(USAGE_CREDITS_ERROR)) {
         // A rate-limit event can arrive after toolUse ended the Pi stream.
         // Block rebuilding that query on the next tool-result continuation.
@@ -590,6 +595,7 @@ export function createClaudeBridge(options: {
     const main = !side && request.sessionId === options.sessionId() && ![...running].some((q) => q.main);
     const cwd = options.cwd();
     let promptMessages = messages;
+    let prefixCut: ClaudeSession | undefined;
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
     let fork = false;
@@ -621,6 +627,7 @@ export function createClaudeBridge(options: {
       const prefixed = cut && writePrefixSession(cut, history.slice(cut.size), model.id, request.env?.CLAUDE_CONFIG_DIR);
       if (prefixed) {
         resume = prefixed;
+        prefixCut = cut;
         options.trace?.("prefix: Pi history changed after a resume point");
       } else if (history.length) {
         const session = createSession({ projectPath: cwd, model: model.id, claudeDir: request.env?.CLAUDE_CONFIG_DIR });
@@ -638,7 +645,7 @@ export function createClaudeBridge(options: {
     const q: RunningQuery = {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
-      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, delivered: new Map(), requester: request.sessionId, point, replay: side, sessionId: resume,
+      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, delivered: new Map(), requester: request.sessionId, point, cut: prefixCut, replay: side, sessionId: resume,
       configDir: request.env?.CLAUDE_CONFIG_DIR, generation,
       // A side fork gets its id up front, so its file can be removed even before the CLI reports it.
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR, sessionId: randomUUID() } } : {}),
@@ -697,11 +704,11 @@ export function createClaudeBridge(options: {
         throw new Error("Claude Code billing: this provider requires a first-party subscription login. Run `claude auth login` with your Claude subscription account.");
       }
       void input.push(userMessage(prompt.length ? prompt as any : "Continue from the conversation and tool results above."))
-        .catch((error) => { if (!q.stopped) stop(q, error); });
+        .catch((error) => { if (!q.stopped) stop(q, new Error(queryError(error))); });
       consuming = true;
       void consume(q, names);
     } catch (error) {
-      stop(q, error instanceof Error ? error : new Error(String(error)));
+      stop(q, new Error(queryError(error)));
     } finally {
       // Without consume, wait here for the CLI to exit before removing a fork it created.
       if (!consuming && q.fork) void Promise.resolve(q.query?.return(undefined)).catch(() => {}).finally(() => removeFork(q));
