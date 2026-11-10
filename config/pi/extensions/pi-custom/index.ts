@@ -648,28 +648,30 @@ interface PreferencesPanelActions {
   showFullHistory(): void;
 }
 
+const PREFERENCE_ROWS: PreferencePanelRow[] = [
+  {
+    field: "fast",
+    group: "Codex",
+    label: "Fast mode",
+    description: "Use OpenAI priority service tier with the openai-codex provider.",
+  },
+  {
+    field: "transcriptOptimization",
+    group: "Transcript",
+    label: "Optimization",
+    description: "Improve transcript rendering performance in long sessions.",
+  },
+  {
+    field: "transcriptHistory",
+    group: "Transcript",
+    label: "History",
+    description: "Show older conversation history without changing model context.",
+  },
+];
+
 export class PreferencesPanel implements Component {
   private selected = 0;
-  private readonly rows: PreferencePanelRow[] = [
-    {
-      field: "fast",
-      group: "Codex",
-      label: "Fast mode",
-      description: "Use OpenAI priority service tier with the openai-codex provider.",
-    },
-    {
-      field: "transcriptOptimization",
-      group: "Transcript",
-      label: "Optimization",
-      description: "Improve transcript rendering performance in long sessions.",
-    },
-    {
-      field: "transcriptHistory",
-      group: "Transcript",
-      label: "History",
-      description: "Show older conversation history without changing model context.",
-    },
-  ];
+  private readonly rows = PREFERENCE_ROWS;
   private readonly listTheme = getSettingsListTheme();
   private readonly topBorder = new DynamicBorder();
   private readonly bottomBorder = new DynamicBorder();
@@ -791,15 +793,16 @@ function registerCustomSettings(
   transcriptHistory: TranscriptHistoryPanelControl,
 ): void {
   const summary = () => {
+    // Mirrors the panel: its groups, labels, values and scopes.
     const settings = preferences.get();
-    const fast = codexControl.isDesired()
-      ? codexControl.isActive() ? "on" : "requested (openai-codex only)"
-      : "off";
-    return [
-      `Fast mode: ${fast} (${settings.fast.scope})`,
-      `Transcript optimization: ${settings.transcriptOptimization.value ? "on" : "off"} (${settings.transcriptOptimization.scope})`,
-      `Transcript history: ${transcriptHistory.getStatus()}`,
-    ].join("; ");
+    return PREFERENCE_ROWS.map((row) => {
+      if (row.field === "transcriptHistory") return `${row.group} · ${row.label}: ${transcriptHistory.getStatus()}`;
+      const setting = settings[row.field];
+      const value = row.field === "fast" && codexControl.isDesired() && !codexControl.isActive()
+        ? "Requested (openai-codex only)"
+        : setting.value ? "On" : "Off";
+      return `${row.group} · ${row.label}: ${value} [${setting.scope}]`;
+    }).join("; ");
   };
 
   const toggleSession = (field: CustomSetting): void => {
