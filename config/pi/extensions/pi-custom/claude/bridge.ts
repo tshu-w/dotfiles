@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
 import {
@@ -19,6 +19,8 @@ export interface ClaudeSession {
   cwd: string;
   prefix: string[];
   lastUuid?: string;
+  // The tool calls the prefix ends with were answered in the CC session (an interrupted tool use).
+  answered?: boolean;
 }
 
 function digest(value: unknown): string {
@@ -64,6 +66,14 @@ function continues(point: ClaudeSession, messages: any[], incoming: string[]): b
     && suffix.slice(calls.length).every(isInput);
 }
 
+// Messages after the point that Claude Code has not seen.
+function unseen(point: ClaudeSession, messages: any[]): any[] {
+  const suffix = messages.slice(point.prefix.length);
+  if (!point.answered) return suffix;
+  const start = suffix.findIndex((m) => m.role !== "toolResult");
+  return start < 0 ? [] : suffix.slice(start);
+}
+
 function outputFor(model: Model<any>): AssistantMessage {
   return {
     role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id,
@@ -101,7 +111,11 @@ interface RunningQuery {
   // A checkpoint waits until Claude Code has recorded these tool uses or results.
   expect?: { ids: Set<string>; prefix: string[]; gap: boolean };
   // Claude Code marks tool uses as interrupted when their query ends, which drops the turn on resume.
-  gap?: { point: ClaudeSession; previous?: ClaudeSession };
+  gap?: { point: ClaudeSession; previous?: ClaudeSession; ids: string[] };
+  // A withdrawn tool-gap point, re-anchored at CC's interrupted tool result once the CLI exits.
+  interrupted?: { point: ClaudeSession; previous?: ClaudeSession; ids: string[] };
+  configDir?: string;
+  generation: number;
   // The point this query resumed or forked from.
   point?: ClaudeSession;
   recorded: { uses: Set<string>; results: Set<string> };
@@ -170,7 +184,7 @@ export function createClaudeBridge(options: {
     if (!q.expect || disposed || !q.sessionId || [...q.expect.ids].some((id) => !recorded.has(id))) return;
     const previous = saved;
     checkpoint(q, q.expect.prefix);
-    if (q.expect.gap) q.gap = { point: saved!, previous };
+    if (q.expect.gap) q.gap = { point: saved!, previous, ids: [...q.expect.ids] };
     q.expect = undefined;
   }
 
@@ -179,6 +193,7 @@ export function createClaudeBridge(options: {
     q.stopped = true;
     if (q.gap && saved === q.gap.point) {
       points = points.filter((point) => point !== q.gap!.point);
+      q.interrupted = q.gap;
       saved = q.gap.previous;
       if (saved) options.save(saved);
       else options.clear?.();
@@ -343,7 +358,25 @@ export function createClaudeBridge(options: {
     } finally {
       // Leaving the loop waits for the CLI to exit, after it wrote its final records to the fork.
       removeFork(q);
+      reanchor(q);
     }
+  }
+
+  // Claude Code answers the tool uses of a stopped query with an interrupted result, which resumes.
+  function reanchor(q: RunningQuery) {
+    const gap = q.interrupted;
+    if (!gap || disposed || q.generation !== generation || saved !== gap.previous || !q.sessionId) return;
+    let record: any;
+    try {
+      record = readFileSync(getSessionPath(q.sessionId, q.cwd, q.configDir), "utf8").trim().split("\n").map((line) => JSON.parse(line))
+        .findLast((r) => r.type === "user" && Array.isArray(r.message?.content)
+          && r.message.content.some((b: any) => b.type === "tool_result" && gap.ids.includes(b.tool_use_id)));
+    } catch { return; }
+    if (!record?.uuid) return;
+    q.lastUuid = record.uuid;
+    checkpoint(q, gap.point.prefix);
+    saved!.answered = true;
+    options.save(saved!);
   }
 
   async function start(model: Model<any>, context: TranscriptContext, request: SimpleStreamOptions, stream: AssistantMessageEventStream) {
@@ -428,7 +461,7 @@ export function createClaudeBridge(options: {
       point = [...points, ...options.forkSources?.() ?? []].sort((a, b) => b.prefix.length - a.prefix.length).find(usable);
     }
     if (point) {
-      promptMessages = messages.slice(point.prefix.length);
+      promptMessages = unseen(point, messages);
       resume = point.sessionId;
       resumeSessionAt = point.lastUuid;
       options.trace?.(fork ? "fork: unchanged main history" : "resume: unchanged history");
@@ -455,6 +488,7 @@ export function createClaudeBridge(options: {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
       cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, sessionId: resume,
+      configDir: request.env?.CLAUDE_CONFIG_DIR, generation,
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR } } : {}),
     };
     running.add(q);
