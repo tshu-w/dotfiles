@@ -16,7 +16,7 @@ import {
 import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { execFile, spawn } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -134,7 +134,7 @@ interface CustomRuntimeState {
 
 const PACKAGE_UPDATE_STATUS_KEY = "pi-custom-package-update";
 const PACKAGE_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const PACKAGE_UPDATE_STALE_LOCK_MS = 2 * 60 * 60 * 1000;
+const PACKAGE_UPDATE_STALE_LOCK_MS = 60 * 1000;
 
 type PackageUpdateCheck = () => Promise<unknown[]>;
 
@@ -193,33 +193,27 @@ function writePackageUpdateState(path: string, state: PackageUpdateState): void 
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
 }
 
-function acquirePackageUpdateLock(path: string): string | undefined {
-  const token = `${process.pid}:${Date.now()}:${Math.random()}`;
-  try {
-    writeFileSync(path, `${token}\n`, { flag: "wx" });
-    return token;
-  } catch {
+// Claim the next update, so two Pi instances starting together don't both run it. The lock is
+// held only while lastAttempt is read and written; an older lock was left by a crash in between.
+export function claimPackageUpdate(statePath: string, lockPath: string, now: number): boolean {
+  const lock = () => { try { writeFileSync(lockPath, "", { flag: "wx" }); return true; } catch { return false; } };
+  if (!lock()) {
     try {
-      if (Date.now() - statSync(path).mtimeMs <= PACKAGE_UPDATE_STALE_LOCK_MS) return undefined;
-      // Atomic takeover: only one process can rename the stale lock away, so
-      // a slower competitor cannot delete the winner's fresh lock.
-      const claimed = `${path}.${process.pid}.stale`;
-      renameSync(path, claimed);
-      rmSync(claimed, { force: true });
-      writeFileSync(path, `${token}\n`, { flag: "wx" });
-      return token;
-    } catch {
-      return undefined;
-    }
+      if (now - statSync(lockPath).mtimeMs < PACKAGE_UPDATE_STALE_LOCK_MS) return false;
+    } catch { /* released meanwhile */ }
+    rmSync(lockPath, { force: true });
+    if (!lock()) return false;
   }
-}
-
-function releasePackageUpdateLock(path: string, token: string): void {
   try {
-    // A long-running updater may have lost a stale-lock takeover race. Never
-    // remove the successor generation's lock in its late completion path.
-    if (readFileSync(path, "utf8").trim() === token) rmSync(path, { force: true });
-  } catch { /* stale lock expires */ }
+    const state = readPackageUpdateState(statePath);
+    if (state.lastAttempt && now - state.lastAttempt < PACKAGE_UPDATE_INTERVAL_MS) return false;
+    writePackageUpdateState(statePath, { ...state, lastAttempt: now });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(lockPath, { force: true });
+  }
 }
 
 const PACKAGE_UPDATE_COMMANDS = [
@@ -299,18 +293,7 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
     mkdirSync(cacheDir, { recursive: true });
     const statePath = join(cacheDir, "package-update.json");
     const lockPath = join(cacheDir, "package-update.lock");
-    const state = readPackageUpdateState(statePath);
-    const now = Date.now();
-    if (state.lastAttempt && now - state.lastAttempt < PACKAGE_UPDATE_INTERVAL_MS) return;
-    const lockToken = acquirePackageUpdateLock(lockPath);
-    if (!lockToken) return;
-
-    try {
-      writePackageUpdateState(statePath, { ...state, lastAttempt: now });
-    } catch {
-      releasePackageUpdateLock(lockPath, lockToken);
-      return;
-    }
+    if (!claimPackageUpdate(statePath, lockPath, Date.now())) return;
     // ctx becomes stale after session replacement/reload; UI updates are best-effort.
     const safeUi = (fn: () => void) => { try { fn(); } catch { /* stale ctx */ } };
     safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, "pkg update…"));
@@ -328,12 +311,10 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         code = await runUpdateCommand(update.command, update.args, ctx.cwd);
         if (code !== 0) break;
       }
-      releasePackageUpdateLock(lockPath, lockToken);
       const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (extensions skipped)" : "pkg updated";
       safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, statusText));
       setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     })().catch(() => {
-      releasePackageUpdateLock(lockPath, lockToken);
       safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
       setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     });
