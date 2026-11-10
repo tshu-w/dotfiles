@@ -637,6 +637,26 @@ test("unknown tool names are left to Claude Code instead of ending the turn", { 
   assert.ok(Math.abs(answer.usage.cost.cacheRead - 2 * single.cacheRead) < 1e-12);
 });
 
+test("a tool gap with an unknown tool name is not a resume point until the results are recorded", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const first = h.stream([user("run both")]);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.begin();
+  for (const [index, id, name] of [[0, "call-a", "mcp__pi__echo"], [1, "call-x", "mcp:pi__echo"]]) {
+    q.event({ type: "content_block_start", index, content_block: { type: "tool_use", id, name, input: {} } });
+    q.event({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify({ value: id }) } });
+    q.event({ type: "content_block_stop", index });
+  }
+  q.event({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 5 } });
+  q.event({ type: "message_stop" });
+  q.record(["call-a", "call-x"]);
+  const answer = await first.result();
+  assert.equal(answer.stopReason, "toolUse");
+  await tick(); await tick();
+  assert.equal(h.saved.length, 0);
+});
+
 test("SDK errors, early abort and malformed schemas terminate rather than hang", { timeout: 10000 }, async (t) => {
   const h = harness(t), controller = new AbortController(); controller.abort();
   assert.equal((await h.stream([user("abort")], { signal: controller.signal }).result()).stopReason, "aborted");

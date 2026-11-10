@@ -118,6 +118,8 @@ interface RunningQuery {
   stopped: boolean;
   sawMessage: boolean;
   responded?: boolean;
+  // The current API message has a tool use Claude Code answers itself, after its message_stop.
+  skipped?: boolean;
   // Earlier API calls of this Pi turn (Claude Code may call the API several times per turn).
   prior?: { output: number; cost: AssistantMessage["usage"]["cost"] };
   callOutput: number;
@@ -265,6 +267,7 @@ export function createClaudeBridge(options: {
       }
       q.sawMessage = true;
       q.responded = true;
+      q.skipped = false;
       q.output.responseId = event.message.id;
       q.output.responseModel = event.message.model;
       usage(q, event.message.usage);
@@ -278,7 +281,7 @@ export function createClaudeBridge(options: {
       else if (b.type === "tool_use") {
         const name = names.get(b.name);
         // Claude Code answers unknown tool names with its own error result, so the model can retry.
-        if (!name) { q.blocks.set(event.index, null); return; }
+        if (!name) { q.blocks.set(event.index, null); q.skipped = true; return; }
         block = { type: "toolCall", id: b.id, name, arguments: b.input ?? {} };
         q.ids.add(b.id);
         kind = "toolcall";
@@ -315,7 +318,8 @@ export function createClaudeBridge(options: {
       if (reason) q.output.stopReason = reason === "tool_use" ? "toolUse" : reason === "max_tokens" ? "length" : "stop";
     } else if (event.type === "message_stop" && q.output.content.some((b) => b.type === "toolCall")) {
       q.history.push(structuredClone(q.output));
-      if (q.main) { q.expect = { ids: new Set(q.ids), prefix: hashes(q.history), gap: true }; settle(q); }
+      // With a skipped tool use, the gap lacks Claude Code's result for it; the results checkpoint follows.
+      if (q.main && !q.skipped) { q.expect = { ids: new Set(q.ids), prefix: hashes(q.history), gap: true }; settle(q); }
       terminal(q, "toolUse");
     }
   }
