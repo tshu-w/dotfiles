@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
 import {
@@ -137,6 +137,39 @@ function interruption(sessionId: string, cwd: string, configDir: string | undefi
     uuid = r.uuid;
   }
   return answered.size === ids.length ? uuid : undefined;
+}
+
+// A cut there would separate tool uses from their results, which the import then drops.
+function endsWithToolCalls(message: any): boolean {
+  return message?.role === "assistant" && message.content.some((b: any) => b.type === "toolCall");
+}
+
+// Claude Code's own request records, which a copied prefix leaves out.
+const REQUEST_RECORDS = new Set(["api-request", "api-request-shape", "api-request-blob"]);
+
+// A new session holding Claude Code's records up to the point verbatim, then `tail` imported from Pi,
+// so a changed tail keeps the cached prefix. The cut also keeps records that follow the point's
+// record on its chain before the next message, such as the prompt snapshot.
+function writePrefixSession(point: ClaudeSession, tail: any[], model: string, configDir: string | undefined): string | undefined {
+  let records: any[];
+  try {
+    records = readFileSync(getSessionPath(point.sessionId, point.cwd, configDir), "utf8").split("\n")
+      .filter((line) => line.trim()).map((line) => JSON.parse(line)).filter((r) => !REQUEST_RECORDS.has(r.type));
+  } catch {
+    return undefined;
+  }
+  let end = records.findIndex((r) => r.uuid === point.lastUuid);
+  if (end < 0) return undefined;
+  let cut = point.lastUuid!;
+  for (let i = end + 1; i < records.length && records[i].type !== "user" && records[i].type !== "assistant"; i++) {
+    if (records[i].parentUuid === cut && typeof records[i].uuid === "string") { cut = records[i].uuid; end = i; }
+  }
+  const session = createSession({ projectPath: point.cwd, model, claudeDir: configDir });
+  session.importMessages(convertPiMessages(tail).anthropicMessages);
+  const kept = records.slice(0, end + 1).map((r) => r.sessionId ? { ...r, sessionId: session.sessionId } : r);
+  const imported = session.records.map((r, index) => index === 0 ? { ...r, parentUuid: cut } : r);
+  writeFileSync(session.jsonlPath, [...kept, ...imported].map((r) => JSON.stringify(r) + "\n").join(""), { flag: "wx" });
+  return session.sessionId;
 }
 
 function outputFor(model: Model<any>): AssistantMessage {
@@ -581,14 +614,22 @@ export function createClaudeBridge(options: {
       const split = messages.findLastIndex((m) => !isInput(m)) + 1;
       const history = messages.slice(0, split);
       promptMessages = messages.slice(split);
-      if (history.length) {
+      // The longest point the history still extends is kept verbatim; only the changed tail is imported.
+      const cut = main ? [...points, ...options.forkSources()].sort((a, b) => b.size - a.size).find((candidate) =>
+        candidate.size > 0 && candidate.size < split && !candidate.answered && !failedPoints.has(candidate)
+        && candidate.cwd === cwd && extendsPoint(candidate, tips) && !endsWithToolCalls(messages[candidate.size - 1])) : undefined;
+      const prefixed = cut && writePrefixSession(cut, history.slice(cut.size), model.id, request.env?.CLAUDE_CONFIG_DIR);
+      if (prefixed) {
+        resume = prefixed;
+        options.trace?.("prefix: Pi history changed after a resume point");
+      } else if (history.length) {
         const session = createSession({ projectPath: cwd, model: model.id, claudeDir: request.env?.CLAUDE_CONFIG_DIR });
         const { anthropicMessages } = convertPiMessages(history);
         session.importMessages(anthropicMessages);
         session.save();
         resume = session.sessionId;
-      }
-      options.trace?.(history.length ? "rebuild: Pi history changed or no saved session" : "start: empty history");
+        options.trace?.("rebuild: Pi history changed or no saved session");
+      } else options.trace?.("start: empty history");
     }
     const { anthropicMessages } = convertPiMessages(promptMessages);
     if (anthropicMessages.some((m) => m.role !== "user")) throw new Error("Claude Code resume suffix contains non-user history");

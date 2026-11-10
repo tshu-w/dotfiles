@@ -754,6 +754,36 @@ test("/tree, a restart and a fork resume an earlier point instead of rebuilding"
   }
 });
 
+test("a history changed after a resume point keeps Claude Code's records up to it", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const turn = async (messages, i) => {
+    const stream = h.stream(messages);
+    await until(() => h.calls.length === i + 1);
+    h.calls[i].text(`answer ${i}`); h.calls[i].finish();
+    return stream.result();
+  };
+  const u1 = user("first"), a1 = await turn([u1], 0);
+  const u2 = user("second"); await turn([u1, a1, u2], 1);
+  const first = h.saved.find((state) => state.size === 2);
+  // The second answer was edited: no point continues, but the first one is still a prefix.
+  const edited = { ...a1, content: [{ type: "text", text: "edited answer" }] };
+  const next = h.stream([u1, a1, u2, edited, user("third")]);
+  await until(() => h.calls.length === 3 && h.calls[2].prompts.length === 1);
+  const options = h.calls[2].options;
+  assert.notEqual(options.resume, first.sessionId);
+  assert.equal(options.resumeSessionAt, undefined);
+  assert.equal(options.forkSession, undefined);
+  const records = readFileSync(sessions.getSessionPath(options.resume, directory), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const at = records.findIndex((r) => r.uuid === first.lastUuid);
+  assert.ok(at >= 0, "the kept prefix ends at the point's record");
+  assert.deepEqual(records.slice(at + 1).map((r) => r.message?.content).filter(Boolean).map((c) => JSON.stringify(c)).join(" ").match(/second|edited answer/g), ["second", "edited answer"]);
+  assert.equal(records[at + 1].parentUuid, first.lastUuid);
+  assert.ok(records.every((r) => !r.sessionId || r.sessionId === options.resume));
+  assert.deepEqual(h.calls[2].prompts[0].message.content, [{ type: "text", text: "third" }]);
+  h.calls[2].text("done"); h.calls[2].finish();
+  await next.result();
+});
+
 test("an Agent forked with the caller's context starts from the caller's CC session", { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);
