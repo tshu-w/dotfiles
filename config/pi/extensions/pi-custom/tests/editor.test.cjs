@@ -30,7 +30,7 @@ async function main() {
 		ui: { theme: { fg: (_color, text) => text } },
 		sessionManager: { getSessionName: () => "Session" },
 	};
-	const editor = new TopBorderEditor({}, ctx, {}, tui, theme, kb);
+	const editor = new TopBorderEditor({ getThinkingLevel: () => "off" }, ctx, {}, tui, theme, kb);
 	const native = new CustomEditor(tui, theme, kb, { embedWorkingStatus: true });
 	assert.equal(editor.embedWorkingStatus, true);
 	assert.match(editor.render(80)[0], /project — Session/);

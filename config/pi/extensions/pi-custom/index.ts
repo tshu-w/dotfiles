@@ -333,7 +333,7 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
     }
     // ctx becomes stale after session replacement/reload; UI updates are best-effort.
     const safeUi = (fn: () => void) => { try { fn(); } catch { /* stale ctx */ } };
-    safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update…"));
+    safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, "pkg update…"));
 
     void (async () => {
       const dirty = await findDirtyGitPackages(join(getAgentDir(), "git"));
@@ -366,8 +366,8 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
       });
       releasePackageUpdateLock(lockPath, lockToken);
       const statusText = code !== 0 ? "pkg update failed" : dirty.length ? "pkg updated (extensions skipped)" : "pkg updated";
-      safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, statusText));
-      setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
+      safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, statusText));
+      setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     })().catch((error: unknown) => {
       // Best-effort bookkeeping: a throw here would itself become an
       // unhandled rejection.
@@ -379,8 +379,8 @@ function registerPackageAutoUpdate(pi: ExtensionAPI): void {
         });
       } catch { /* state file is advisory */ }
       releasePackageUpdateLock(lockPath, lockToken);
-      safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
-      setTimeout(() => safeUi(() => ctx.ui.setStatus?.(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
+      safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, "pkg update failed"));
+      setTimeout(() => safeUi(() => ctx.ui.setStatus(PACKAGE_UPDATE_STATUS_KEY, undefined)), 15_000).unref();
     });
   });
 
@@ -445,7 +445,7 @@ export class TopBorderEditor extends CustomEditor {
     const left = statusLeft ?? ` ${dim(locationStr)} `;
 
     const model = this.ctx.model;
-    const thinking = this.pi.getThinkingLevel?.() ?? "off";
+    const thinking = this.pi.getThinkingLevel();
     const parts: string[] = [];
     if (model) {
       const modelStr = thinking !== "off"

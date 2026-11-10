@@ -38,7 +38,7 @@ export function registerCodex(
 
   const isActive = () => desired && isCodexModel(model);
   const syncStatus = () => {
-    ui?.setStatus?.(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
+    ui?.setStatus(FAST_STATUS_KEY, isActive() ? "fast" : undefined);
     runtime.activeTui?.requestRender();
   };
   const setDesired = (value: boolean) => {
@@ -53,7 +53,7 @@ export function registerCodex(
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
-    ctx.ui.setStatus?.(FAST_STATUS_KEY, undefined);
+    ctx.ui.setStatus(FAST_STATUS_KEY, undefined);
     ui = undefined;
   });
 
