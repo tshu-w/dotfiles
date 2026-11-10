@@ -1,13 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 export const CUSTOM_SETTINGS_ENTRY_TYPE = "pi-custom:settings";
 const SETTINGS_DOCUMENT_KEY = "pi-custom";
@@ -73,71 +64,24 @@ export function readGlobalSettings(path: string): PiCustomSettings {
   return { ...DEFAULT_CUSTOM_SETTINGS };
 }
 
-export function acquireSettingsLock(path: string): () => void {
-  // Pi's FileSettingsStorage uses proper-lockfile, whose on-disk protocol is
-  // an atomic `<settings>.lock` directory. Sharing that protocol makes this
-  // read-modify-write serialize with both Pi core and other Pi processes.
-  const lockPath = `${path}.lock`;
-  mkdirSync(dirname(path), { recursive: true });
-  let lastError: unknown;
-  let attempts = 0;
-  while (attempts < 10) {
-    try {
-      mkdirSync(lockPath);
-      // Capture this generation's identity: after a stale takeover the same
-      // path holds the successor's directory, which must never be released
-      // by the previous owner.
-      const acquired = statSync(lockPath);
-      return () => {
-        try {
-          const current = statSync(lockPath);
-          if (current.dev === acquired.dev && current.ino === acquired.ino) rmdirSync(lockPath);
-        } catch { /* already replaced or removed by a stale takeover */ }
-      };
-    } catch (error) {
-      const code = isRecord(error) && typeof error.code === "string" ? error.code : undefined;
-      if (code !== "EEXIST") throw error;
-      lastError = error;
-      // proper-lockfile's default stale threshold is 10s. Atomically claim an
-      // abandoned directory before removing it so we never delete a new lock.
-      try {
-        if (Date.now() - statSync(lockPath).mtimeMs > 10_000) {
-          const stalePath = `${lockPath}.${process.pid}.${Date.now()}.stale`;
-          renameSync(lockPath, stalePath);
-          rmdirSync(stalePath);
-          continue;
-        }
-      } catch { /* another waiter won the race */ }
-      attempts++;
-      const start = Date.now();
-      while (Date.now() - start < 20) { /* match Pi's synchronous lock retry */ }
-    }
-  }
-  throw lastError ?? new Error(`Failed to acquire settings lock: ${lockPath}`);
-}
-
 function writeGlobalSetting<K extends CustomSetting>(
   path: string,
   field: K,
   value: PiCustomSettings[K],
 ): PiCustomSettings {
-  const release = acquireSettingsLock(path);
-  try {
-    // Read and merge while holding the same lock as Pi core. Throws instead
-    // of clobbering settings.json when it cannot be parsed.
-    const document = existsSync(path) ? readSettingsDocument(path) : {};
-    const current = isRecord(document[SETTINGS_DOCUMENT_KEY])
-      ? parseGlobalSettings(document[SETTINGS_DOCUMENT_KEY])
-      : { ...DEFAULT_CUSTOM_SETTINGS };
-    const settings = { ...current, [field]: value };
-    document[SETTINGS_DOCUMENT_KEY] = settings;
-    const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`);
-    renameSync(temporary, path);
-    return settings;
-  } finally {
-    release();
-  }
+  // Read and merge just before writing; a concurrent writer's last write wins.
+  // Throws instead of clobbering settings.json when it cannot be parsed.
+  const document = existsSync(path) ? readSettingsDocument(path) : {};
+  const current = isRecord(document[SETTINGS_DOCUMENT_KEY])
+    ? parseGlobalSettings(document[SETTINGS_DOCUMENT_KEY])
+    : { ...DEFAULT_CUSTOM_SETTINGS };
+  const settings = { ...current, [field]: value };
+  document[SETTINGS_DOCUMENT_KEY] = settings;
+  // Rename into place, so Pi never reads a half-written file.
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`);
+  renameSync(temporary, path);
+  return settings;
 }
 
 export function restoreSessionSettings(entries: unknown[]): SessionCustomSettings {
@@ -215,8 +159,6 @@ export function createCustomPreferences(
     },
     saveGlobal: (field) => {
       const value = resolveCustomSettings(global, session)[field].value;
-      // The helper holds Pi core's settings lock across read-modify-write, so
-      // concurrent processes saving different fields cannot lose updates.
       global = writeGlobalSetting(options.path, field, value);
       session = { ...session };
       delete session[field];
