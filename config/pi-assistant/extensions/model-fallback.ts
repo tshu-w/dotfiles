@@ -17,7 +17,7 @@ export default function (pi: ExtensionAPI) {
 			tried.add(key(model));
 			if (!(await pi.setModel(model))) continue;
 			// Omit the failed reply, as Pi's own retry does, so the run resumes without repeating work.
-			return { entries: [{ type: "context_edit", targetId: failed.sourceEntry.id, replacement: null }], continue: true };
+			return { entries: [...event.entries, { type: "context_edit", targetId: failed.sourceEntry.id, replacement: null }], continue: true };
 		}
 	});
 

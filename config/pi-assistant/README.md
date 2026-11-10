@@ -33,7 +33,7 @@ After restart, unstarted messages resume; interrupted work is reported for you t
 Runs are non-interactive, so extensions cannot prompt; the `questionnaire` tool is disabled.
 
 When a run still fails after Pi's retries, `extensions/model-fallback.ts` continues it
-with the next model in global `enabledModels`, then restores the default model.
+with the next scoped model (`enabledModels` or `--models`), then restores the model in use before the failure.
 
 ## Tests
 

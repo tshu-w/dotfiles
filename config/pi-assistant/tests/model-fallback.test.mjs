@@ -19,7 +19,7 @@ function setup({ unavailable = [] } = {}) {
     },
   });
   const failure = (outcome = "error", role = "assistant") => handlers.agent_before_settle({
-    outcome, context: { contextEntries: [{ sourceEntry: { id: "user" }, messages: [{ role: "user" }] }, { sourceEntry: { id: "failed" }, messages: [{ role }] }] },
+    outcome, entries: [], context: { contextEntries: [{ sourceEntry: { id: "user" }, messages: [{ role: "user" }] }, { sourceEntry: { id: "failed" }, messages: [{ role }] }] },
   }, ctx);
   return { handlers, selected, ctx, failure };
 }
