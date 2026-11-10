@@ -833,11 +833,7 @@ function registerCustomSettings(
 
   pi.registerCommand("preferences", {
     description: "Configure personal runtime preferences",
-    handler: async (args, ctx) => {
-      if (args.trim()) {
-        ctx.ui.notify("Usage: /preferences", "error");
-        return;
-      }
+    handler: async (_args, ctx) => {
       await showPanel(ctx);
     },
   });
