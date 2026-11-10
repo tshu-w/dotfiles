@@ -27,11 +27,6 @@ const fixtures = [
     expected: 'export API_TOKEN="[REDACTED]"\n  API_PASSWORD=[REDACTED]\nSAFE=visible',
   },
   {
-    name: "shell environment references remain visible",
-    actual: scrubOutput('export API_TOKEN="${API_TOKEN}"', envOptions),
-    expected: 'export API_TOKEN="${API_TOKEN}"',
-  },
-  {
     name: "empty assignments do not consume the next line",
     actual: scrubOutput('API_TOKEN=\nconst PACKAGE_UPDATE_STATUS_KEY = "pkg-update";', envOptions),
     expected: 'API_TOKEN=\nconst PACKAGE_UPDATE_STATUS_KEY = "pkg-update";',
@@ -65,11 +60,6 @@ const fixtures = [
     name: "URL password is always redacted",
     actual: scrubOutput(urlWithPassword),
     expected: "postgres://alice:[REDACTED]@example.com/db",
-  },
-  {
-    name: "env assignment preserves quotes when enabled",
-    actual: scrubOutput('OPENAI_API_KEY="example-value"', envOptions),
-    expected: 'OPENAI_API_KEY="[REDACTED]"',
   },
   {
     name: "environment references stay visible",
@@ -120,6 +110,21 @@ for (const fixture of fixtures) {
   assert.equal(fixture.actual, fixture.expected, fixture.name);
 }
 
+// Config keys carry vendor prefixes and suffixes.
+for (const line of [
+  '"exaApiKey": "exa-abcdef123456"',
+  '"ANTHROPIC_API_KEY": "abcdef123456"',
+  "aws_secret_access_key = wJalrXUtnFEMIKEXAMPLEKEY",
+  "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIKEXAMPLEKEY",
+  "refresh_token: abcdef123456",
+]) {
+  assert.match(scrubOutput(line, configOptions), /\[REDACTED\]/, line);
+}
+// A lowercase letter right after the keyword continues a different word.
+for (const line of ["tokenizer: sentencepiece", "tokenizer_path: /mnt/models/ling", "max_tokens: 128000", "secretariat: geneva-office"]) {
+  assert.equal(scrubOutput(line, configOptions), line);
+}
+
 for (const path of [".env", ".env.local", "config.json", "values.yaml", "app.toml", ".npmrc"]) {
   assert.equal(isConfigLikePath(path), true, `${path} should be config-like`);
 }
@@ -127,4 +132,4 @@ for (const path of ["main.py", "types.ts", "README.md", "script.sh", "notes.txt"
   assert.equal(isConfigLikePath(path), false, `${path} should not be config-like`);
 }
 
-console.log(`secret-guard-redact: ${fixtures.length} redaction cases and 11 path cases passed`);
+console.log("secret-guard-redact: redaction and config path cases passed");

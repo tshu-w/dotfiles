@@ -1,16 +1,16 @@
 /**
  * Secret Guard blocks model tool access to credential files and redacts secrets from tool output.
  *
- * User `!` commands are not intercepted. This is a practical guard, not a complete DLP solution.
+ * User `!` commands are not intercepted.
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isConfigLikePath, scrubOutput } from "./redact.js";
 
-// Credential files — read/write/edit/grep/bash all blocked
 const REDACTION_NOTICE = "[Secret Guard redacted sensitive values. Do not copy [REDACTED] back into files.]";
 
+// Credential files: read, write, edit, grep, and bash are all blocked.
 const BLOCKED_PATHS = [
   ".authinfo.gpg",
   ".authinfo",
@@ -37,7 +37,7 @@ function matchedPath(p: string, shellCommand = false) {
 }
 
 export default function (pi: ExtensionAPI) {
-  // Layer 1: block file access and bash references to credential paths
+  // Block file tools and bash commands that reference credential paths.
   pi.on("tool_call", async (event) => {
     const path = (event.input as { path?: string }).path;
 
@@ -56,10 +56,8 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Layer 2+3: keep source code intact while applying stronger field heuristics to config files.
+  // Redact secrets from tool output: keep source code intact and apply stronger field heuristics to config files.
   pi.on("tool_result", async (event) => {
-    if (!event.content) return;
-
     const path = event.toolName === "read" ? (event.input as { path?: string }).path : undefined;
     const configLikeRead = isConfigLikePath(path);
     const options = {
