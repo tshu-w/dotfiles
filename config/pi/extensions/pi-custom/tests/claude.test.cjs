@@ -444,6 +444,45 @@ test("abort during the tool gap releases MCP and retry rebuilds from Pi history"
   assert.equal((await retry.result()).stopReason, "stop");
 });
 
+for (const failure of ["abort", "error"]) test(`a continuation ended by ${failure} before its results are recorded withdraws the tool-gap point`, { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tool")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.tools(["call-a"]); q.record(["call-a"]);
+  const answer = await first.result();
+  await until(() => h.saved.length === 1);
+  const controller = new AbortController(), continued = [...history, answer, result("call-a", "done")];
+  const second = h.stream(continued, { signal: controller.signal });
+  await tick();
+  if (failure === "abort") controller.abort();
+  else q.emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["transport failed"] });
+  assert.equal((await second.result()).stopReason, failure === "abort" ? "aborted" : "error");
+  const retry = h.stream([...continued, user("again")]);
+  await until(() => h.calls.length === 2);
+  assert.notEqual(h.calls[1].options.resume, q.sessionId);
+  h.calls[1].text("recovered"); h.calls[1].finish();
+  await retry.result();
+});
+
+test("a resume that fails before any response rebuilds on the next request", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("hello")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  h.calls[0].text("hello back"); h.calls[0].finish();
+  const answer = await first.result(), state = h.saved[0];
+  const failed = h.stream([...history, answer, user("again")]);
+  await until(() => h.calls.length === 2);
+  assert.equal(h.calls[1].options.resume, state.sessionId);
+  h.calls[1].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["No message found"] });
+  assert.equal((await failed.result()).stopReason, "error");
+  const retry = h.stream([...history, answer, user("again")]);
+  await until(() => h.calls.length === 3);
+  assert.notEqual(h.calls[2].options.resume, state.sessionId);
+  h.calls[2].text("rebuilt"); h.calls[2].finish();
+  await retry.result();
+});
+
 test("history rewrites use a new imported session and leave the old session untouched", { timeout: 10000 }, async (t) => {
   const h = harness(t);
   const first = h.stream([user("old secret")]);

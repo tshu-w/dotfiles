@@ -94,6 +94,7 @@ interface RunningQuery {
   cwd: string;
   stopped: boolean;
   sawMessage: boolean;
+  responded?: boolean;
   // Earlier API calls of this Pi turn (Claude Code may call the API several times per turn).
   prior?: { output: number; cost: AssistantMessage["usage"]["cost"] };
   callOutput: number;
@@ -101,9 +102,14 @@ interface RunningQuery {
   expect?: { ids: Set<string>; prefix: string[]; gap: boolean };
   // Claude Code marks tool uses as interrupted when their query ends, which drops the turn on resume.
   gap?: { point: ClaudeSession; previous?: ClaudeSession };
+  // The point this query resumed or forked from.
+  point?: ClaudeSession;
   recorded: { uses: Set<string>; results: Set<string> };
   removeAbort?: () => void;
 }
+
+// Points a resume failed from, shared because bridges fork from each other's points.
+const failedPoints = new WeakSet<ClaudeSession>();
 
 export function createClaudeBridge(options: {
   cwd: () => string;
@@ -171,14 +177,17 @@ export function createClaudeBridge(options: {
   function stop(q: RunningQuery, error: Error, aborted = false) {
     if (q.stopped) return;
     q.stopped = true;
-    // Keep the resume point after an abort or a mid-stream error; the next turn resumes by prefix.
-    // A request that failed before any response may have failed to resume, so it rebuilds.
-    if (q.main && !aborted && !q.sawMessage) saved = undefined;
     if (q.gap && saved === q.gap.point) {
       points = points.filter((point) => point !== q.gap!.point);
       saved = q.gap.previous;
       if (saved) options.save(saved);
       else options.clear?.();
+    }
+    // Keep the resume point after an abort or a mid-stream error; the next turn resumes by prefix.
+    // A query that failed before any response may have failed to resume, so it rebuilds.
+    if (!aborted && !q.responded) {
+      if (q.point) failedPoints.add(q.point);
+      if (q.main) { saved = undefined; options.clear?.(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
     release(q, error.message);
@@ -225,6 +234,7 @@ export function createClaudeBridge(options: {
         q.callOutput = 0;
       }
       q.sawMessage = true;
+      q.responded = true;
       q.output.responseId = event.message.id;
       q.output.responseModel = event.message.model;
       usage(q, event.message.usage);
@@ -386,7 +396,6 @@ export function createClaudeBridge(options: {
       attach(owner, stream, request.signal);
       if (owner.stopped) return;
       owner.history = structuredClone(messages);
-      owner.gap = undefined;
       owner.expect = owner.main && !delta.some(isInput) ? { ids: new Set(results.map((m) => m.toolCallId)), prefix: incoming, gap: false } : undefined;
       // The stdin write must precede releasing MCP results, so steering reaches this turn.
       for (const message of convertPiMessages(delta.filter(isInput)).anthropicMessages) {
@@ -409,7 +418,7 @@ export function createClaudeBridge(options: {
     let resume: string | undefined;
     let resumeSessionAt: string | undefined;
     let fork = false;
-    const usable = (point: ClaudeSession) => point.cwd === cwd && continues(point, messages, incoming)
+    const usable = (point: ClaudeSession) => !failedPoints.has(point) && point.cwd === cwd && continues(point, messages, incoming)
       && existsSync(getSessionPath(point.sessionId, cwd, request.env?.CLAUDE_CONFIG_DIR));
     let point = main && saved?.piSessionId === options.sessionId() && usable(saved) ? saved : undefined;
     // Requests that extend a main history at an earlier or another Session's point fork that CC session
@@ -445,7 +454,7 @@ export function createClaudeBridge(options: {
     const q: RunningQuery = {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
-      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, sessionId: resume,
+      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, sessionId: resume,
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR } } : {}),
     };
     running.add(q);
