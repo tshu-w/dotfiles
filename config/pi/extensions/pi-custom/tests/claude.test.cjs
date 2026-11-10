@@ -490,11 +490,17 @@ test("other requests extending the main history fork its CC session and remove t
   assert.equal(h.saved.length, 1);
   assert.equal(existsSync(sessions.getSessionPath(h.calls[1].sessionId, directory)), false);
   assert.equal(existsSync(sessions.getSessionPath(state.sessionId, directory)), true);
-  const next = h.stream([...history, answer, user("again")]);
+  const warm = h.stream([...history, answer, user("again")], { disableContinuation: true });
   await until(() => h.calls.length === 3);
-  assert.equal(h.calls[2].options.resume, state.sessionId);
-  assert.equal(h.calls[2].options.forkSession, undefined);
-  h.calls[2].text("again back"); h.calls[2].finish();
+  assert.equal(h.calls[2].options.forkSession, true);
+  h.calls[2].text("warm"); h.calls[2].finish();
+  await warm.result();
+  assert.equal(h.saved.length, 1);
+  const next = h.stream([...history, answer, user("again")]);
+  await until(() => h.calls.length === 4);
+  assert.equal(h.calls[3].options.resume, state.sessionId);
+  assert.equal(h.calls[3].options.forkSession, undefined);
+  h.calls[3].text("again back"); h.calls[3].finish();
   await next.result();
 });
 

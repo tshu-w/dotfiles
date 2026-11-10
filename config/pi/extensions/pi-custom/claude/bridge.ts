@@ -371,7 +371,9 @@ export function createClaudeBridge(options: {
     const configuration = digest([model.id, systemPrompt, tools, reasoning, maxTokens, request.thinkingBudgets, request.env, request.headers, request.cacheRetention]);
     const incoming = hashes(messages);
     const resultIds = new Set(messages.filter((m) => m.role === "toolResult").map((m) => m.toolCallId));
-    const owner = [...running].find((q) => !q.stream && q.requester === request.sessionId
+    // Replays such as cache warming must neither continue nor record the main conversation.
+    const side = (request as { disableContinuation?: boolean }).disableContinuation === true;
+    const owner = side ? undefined : [...running].find((q) => !q.stream && q.requester === request.sessionId
       && [...q.ids].some((id) => resultIds.has(id)));
     if (owner && owner.configuration === configuration && startsWith(incoming, hashes(owner.history))) {
       const delta = messages.slice(owner.history.length);
@@ -401,7 +403,7 @@ export function createClaudeBridge(options: {
     }
     if (owner) stop(owner, new Error("Pi context changed; rebuilding Claude Code context"));
 
-    const main = request.sessionId === options.sessionId() && ![...running].some((q) => q.main);
+    const main = !side && request.sessionId === options.sessionId() && ![...running].some((q) => q.main);
     const cwd = options.cwd();
     let promptMessages = messages;
     let resume: string | undefined;

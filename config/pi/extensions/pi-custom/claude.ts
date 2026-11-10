@@ -61,6 +61,8 @@ export function registerClaude(pi: ExtensionAPI) {
       input: model.input,
       cost: model.cost,
       contextWindow: model.contextWindow,
+      // Claude Code writes 1-hour caches for subscription conversations.
+      promptCache: { short: 3600, long: 3600 },
       maxTokens: model.maxTokens,
     })),
     streamSimple: (model, transcript, request) =>
