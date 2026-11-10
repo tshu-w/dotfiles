@@ -38,3 +38,13 @@ test("one Pi instance claims each package update and a crashed claim expires", (
 	utimesSync(lock, new Date(later - 120_000), new Date(later - 120_000));
 	assert.equal(custom.claimPackageUpdate(state, lock, later), true);
 });
+
+test("only git package clones with local work are reported", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pi-custom-git-"));
+	const { mkdirSync } = require("node:fs");
+	for (const repo of ["dirty", "clean", "plain"]) mkdirSync(join(root, "host", "owner", repo), { recursive: true });
+	writeFileSync(join(root, "README"), "not a host directory");
+	for (const repo of ["dirty", "clean"]) execFileSync("git", ["init", "-q", join(root, "host", "owner", repo)]);
+	writeFileSync(join(root, "host", "owner", "dirty", "notes.txt"), "local work");
+	assert.deepEqual(await custom.findDirtyGitPackages(root), ["owner/dirty"]);
+});

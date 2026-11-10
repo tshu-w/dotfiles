@@ -224,32 +224,13 @@ const PACKAGE_UPDATE_COMMANDS = [
 // Skip `pi update --extensions` while any git package clone has work that its
 // `git reset --hard` and `git clean -fdx` would lose: changes, untracked files,
 // unpushed commits, or a jj repo (`.jj` is deleted) not at its remote's head.
-async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
+export async function findDirtyGitPackages(gitRoot: string): Promise<string[]> {
   const dirty: string[] = [];
-  let hosts: string[];
-  try {
-    hosts = await readdir(gitRoot);
-  } catch {
-    return dirty;
-  }
-  for (const host of hosts) {
-    const hostDir = join(gitRoot, host);
-    let owners: string[];
-    try {
-      owners = await readdir(hostDir);
-    } catch {
-      continue;
-    }
-    for (const owner of owners) {
-      const ownerDir = join(hostDir, owner);
-      let repos: string[];
-      try {
-        repos = await readdir(ownerDir);
-      } catch {
-        continue;
-      }
-      for (const repo of repos) {
-        const repoDir = join(ownerDir, repo);
+  const list = (dir: string) => readdir(dir).catch(() => [] as string[]);
+  for (const host of await list(gitRoot)) {
+    for (const owner of await list(join(gitRoot, host))) {
+      for (const repo of await list(join(gitRoot, host, owner))) {
+        const repoDir = join(gitRoot, host, owner, repo);
         if (!existsSync(join(repoDir, ".git"))) continue;
         const git = (...args: string[]) => new Promise<string | undefined>((resolveGit) => {
           execFile("git", ["-C", repoDir, ...args], { encoding: "utf8", timeout: 30_000 }, (error, stdout) => {
