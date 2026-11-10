@@ -128,7 +128,6 @@ function fitBorder(
 interface CustomRuntimeState {
   activeTui?: TUI;
   envLocation?: string;
-  presetLabel?: string;
 }
 
 // ─── Package auto-update ──────────────────────────────────────────────────────
@@ -438,7 +437,6 @@ export class TopBorderEditor extends CustomEditor {
   private topBorder(width: number, statusLeft?: string): string {
     const theme = this.ctx.ui.theme;
     const dim = (s: string) => theme.fg("dim", s);
-    const accent = (s: string) => theme.fg("accent", s);
     const border = (s: string) => this.borderColor(s);
 
     const location = this.runtime.envLocation ?? formatCwd(this.ctx.cwd);
@@ -449,7 +447,6 @@ export class TopBorderEditor extends CustomEditor {
     const model = this.ctx.model;
     const thinking = this.pi.getThinkingLevel?.() ?? "off";
     const parts: string[] = [];
-    if (this.runtime.presetLabel) parts.push(accent(this.runtime.presetLabel));
     if (model) {
       const modelStr = thinking !== "off"
         ? `${model.provider}/${model.id}:${thinking}`
@@ -501,14 +498,11 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
         render(width: number): string[] {
           const statuses = footerData.getExtensionStatuses();
 
-          // Sync the pi-env location and preset label into shared state for the editor
+          // Sync the pi-exec location into shared state for the editor
           const rawEnv = statuses.get("env");
           const newEnv = rawEnv ? sanitize(stripAnsi(rawEnv)).replace(/^(SSH|Docker):\s*/i, (_, kind) => `${kind.toLowerCase()}:`) : undefined;
           if (newEnv !== runtime.envLocation) { runtime.envLocation = newEnv; runtime.activeTui?.requestRender(); }
 
-          const rawPreset = statuses.get("preset");
-          const newPreset = rawPreset ? stripAnsi(sanitize(rawPreset)).replace(/^preset:/, "") : undefined;
-          if (newPreset !== runtime.presetLabel) { runtime.presetLabel = newPreset; runtime.activeTui?.requestRender(); }
 
           // Left: token stats + cost + context%
           const dim = (s: string) => theme.fg("dim", s);
@@ -568,13 +562,11 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
           // Right: unconsumed extension statuses + subscription status
           const fg = (color: "dim" | "warning" | "error", s: string) => theme.fg(color, s);
           const subUsage = statuses.get("sub-status:usage");
-          const subBar = sanitize(statuses.get("sub-bar") ?? "");
           const showSubscriptionStatus = model?.provider === "claude-code"
             || (usingSubscription && (model?.provider === "openai" || model?.provider === "openai-codex" || model?.provider === "anthropic"));
           const subStr = !showSubscriptionStatus ? ""
-            : subUsage ? formatSubscriptionStatus(subUsage, fg)
-            : subBar ? dim(subBar) : "";
-          const consumedStatuses = new Set(["env", "preset", "sub-status:usage", "sub-bar"]);
+            : subUsage ? formatSubscriptionStatus(subUsage, fg) : "";
+          const consumedStatuses = new Set(["env", "sub-status:usage"]);
           const extensionStatuses = [...statuses.entries()]
             .filter(([key, value]) => !consumedStatuses.has(key) && sanitize(value).length > 0)
             .map(([, value]) => dim(sanitize(value)));
