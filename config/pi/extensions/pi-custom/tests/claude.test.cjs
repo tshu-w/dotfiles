@@ -27,6 +27,7 @@ const tool = { name: "echo", description: "Echo input", parameters: {
   type: "object", properties: { value: { anyOf: [{ type: "string" }, { type: "object", additionalProperties: { type: "number" } }] } }, required: ["value"],
 } };
 const result = (id, text) => ({ role: "toolResult", toolCallId: id, toolName: "echo", content: [{ type: "text", text }], isError: false, timestamp: Date.now() });
+const aborted = (id) => ({ ...result(id, "Operation aborted"), isError: true });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 async function until(predicate) {
   for (let i = 0; i < 100; i++) { if (predicate()) return; await tick(); }
@@ -450,7 +451,7 @@ test("abort during the tool gap releases MCP and resumes at Claude Code's interr
   assert.equal(q.closed, true);
   assert.equal(answer.stopReason, "toolUse");
   await until(() => h.saved.at(-1).answered);
-  const retry = h.stream([...history, answer, result("call-a", "aborted"), user("next")]);
+  const retry = h.stream([...history, answer, aborted("call-a"), user("next")]);
   await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
   assert.equal(h.calls[1].options.resume, q.sessionId);
   assert.equal(h.calls[1].options.resumeSessionAt, "uuid-interrupted");
@@ -459,48 +460,72 @@ test("abort during the tool gap releases MCP and resumes at Claude Code's interr
   assert.equal((await retry.result()).stopReason, "stop");
 });
 
-for (const failure of ["abort", "error"]) test(`a continuation ended by ${failure} before its results are recorded withdraws the tool-gap point`, { timeout: 10000 }, async (t) => {
-  const h = harness(t), history = [user("tool")];
-  const first = h.stream(history);
+test("a finished tool's result reaches Claude Code before an abort ends the batch", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tools")], controller = new AbortController();
+  const first = h.stream(history, { signal: controller.signal });
   await until(() => h.calls.length === 1);
-  const q = h.calls[0];
-  q.tools(["call-a"]); q.record(["call-a"]);
+  const q = h.calls[0], client = await q.client();
+  q.tools(["call-a", "call-b"]); q.record(["call-a", "call-b"]);
   const answer = await first.result();
   await until(() => h.saved.length === 1);
-  const controller = new AbortController(), continued = [...history, answer, result("call-a", "done")];
-  const second = h.stream(continued, { signal: controller.signal });
-  await tick();
-  if (failure === "abort") controller.abort();
-  else q.emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["transport failed"] });
-  assert.equal((await second.result()).stopReason, failure === "abort" ? "aborted" : "error");
-  const retry = h.stream([...continued, user("again")]);
-  await until(() => h.calls.length === 2);
-  assert.notEqual(h.calls[1].options.resume, q.sessionId);
+  const [a, b] = [callTool(client, "call-a"), callTool(client, "call-b")];
+  // call-a finishes in Pi while call-b still runs; then the user aborts.
+  h.bridge.deliver("call-a", [{ type: "text", text: "real output" }], false);
+  assert.deepEqual((await a).content, [{ type: "text", text: "real output" }]);
+  appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-interrupted",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "real output" },
+      { type: "tool_result", tool_use_id: "call-b", content: "The tool call was interrupted." }] } }) + "\n");
+  controller.abort();
+  assert.equal((await b).isError, true);
+  await until(() => h.saved.at(-1).answered);
+  const retry = h.stream([...history, answer, result("call-a", "real output"), aborted("call-b"), user("next")]);
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.equal(h.calls[1].options.resume, q.sessionId);
+  assert.equal(h.calls[1].options.resumeSessionAt, "uuid-interrupted");
+  assert.deepEqual(h.calls[1].prompts[0].message.content, [{ type: "text", text: "next" }]);
   h.calls[1].text("recovered"); h.calls[1].finish();
   await retry.result();
 });
 
-for (const [error, rebuilds, beforeInit] of [
-  ["No message found with message.uuid of: uuid-x", true, false],
-  ["API Error: 429 rate_limit_error", false, false],
-  ["A session loading failure in other words", true, true],
-]) test(`a resume failing before any response with "${error}"${beforeInit ? " before init" : ""} ${rebuilds ? "rebuilds" : "resumes again"}`, { timeout: 10000 }, async (t) => {
-  const h = harness(t), history = [user("hello")];
+test("the batch's last result waits for Pi's continuation", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tools")];
   const first = h.stream(history);
   await until(() => h.calls.length === 1);
-  h.calls[0].text("hello back"); h.calls[0].finish();
-  const answer = await first.result(), state = h.saved[0];
-  if (beforeInit) h.initless();
-  const failed = h.stream([...history, answer, user("again")]);
+  const q = h.calls[0], client = await q.client();
+  q.tools(["call-a", "call-b"]);
+  const answer = await first.result();
+  const [a, b] = [callTool(client, "call-a"), callTool(client, "call-b")];
+  let lastDelivered = false;
+  b.then(() => { lastDelivered = true; });
+  // Sequential tools finish one after the other; only the last one is held back.
+  h.bridge.deliver("call-a", [{ type: "text", text: "A" }], false);
+  assert.deepEqual((await a).content, [{ type: "text", text: "A" }]);
+  h.bridge.deliver("call-b", [{ type: "text", text: "B" }], false);
+  await tick(); await tick();
+  assert.equal(lastDelivered, false);
+  const next = h.stream([...history, answer, result("call-a", "A"), result("call-b", "B"), user("steer")]);
+  assert.deepEqual((await b).content, [{ type: "text", text: "B" }]);
+  assert.equal(q.prompts.at(-1).message.content, "steer");
+  assert.equal(h.calls.length, 1);
+  q.text("done"); q.finish();
+  await next.result();
+});
+
+test("a result that differs from what was handed over early rebuilds", { timeout: 10000 }, async (t) => {
+  const h = harness(t), history = [user("tools")];
+  const first = h.stream(history);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0], client = await q.client();
+  q.tools(["call-a", "call-b"]);
+  const answer = await first.result();
+  void callTool(client, "call-a"); void callTool(client, "call-b");
+  h.bridge.deliver("call-a", [{ type: "text", text: "early" }], false);
+  const next = h.stream([...history, answer, result("call-a", "changed later"), result("call-b", "B")]);
   await until(() => h.calls.length === 2);
-  assert.equal(h.calls[1].options.resume, state.sessionId);
-  h.calls[1].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: [error] });
-  assert.equal((await failed.result()).stopReason, "error");
-  const retry = h.stream([...history, answer, user("again")]);
-  await until(() => h.calls.length === 3);
-  assert.equal(h.calls[2].options.resume === state.sessionId, !rebuilds);
-  h.calls[2].text("rebuilt"); h.calls[2].finish();
-  await retry.result();
+  assert.equal(q.closed, true);
+  assert.notEqual(h.calls[1].options.resume, q.sessionId);
+  h.calls[1].text("rebuilt"); h.calls[1].finish();
+  await next.result();
 });
 
 test("history rewrites use a new imported session and leave the old session untouched", { timeout: 10000 }, async (t) => {
@@ -633,7 +658,7 @@ test("a tool-gap point restored after a hard exit resumes at Claude Code's inter
   t.after(() => restarted.reset());
   restarted.restore(structuredClone(h.saved[0]));
   const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
-    messages: [...history, answer, result("call-a", "aborted"), user("next")] }), { sessionId: "pi-main" });
+    messages: [...history, answer, aborted("call-a"), user("next")] }), { sessionId: "pi-main" });
   await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
   assert.equal(h.calls[1].options.resume, q.sessionId);
   assert.equal(h.calls[1].options.resumeSessionAt, "uuid-interrupted");

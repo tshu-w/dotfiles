@@ -127,6 +127,7 @@ export function registerClaude(pi: ExtensionAPI) {
     restore(event, ctx);
   });
   pi.on("session_tree", restore);
+  pi.on("tool_execution_end", (event) => bridge.deliver(event.toolCallId, event.result?.content ?? [], event.isError));
   pi.on("session_shutdown", () => {
     bridge.reset();
     release();

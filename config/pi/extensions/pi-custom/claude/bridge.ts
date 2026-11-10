@@ -21,6 +21,8 @@ export interface ClaudeSession {
   lastUuid?: string;
   // The tool calls the prefix ends with were answered in the CC session (an interrupted tool use).
   answered?: boolean;
+  // Digests of the tool results handed to Claude Code as each tool finished, by tool call id.
+  delivered?: Record<string, string>;
   // A tool-gap point waits on these tool calls; Claude Code marks them interrupted once its query ends.
   pending?: string[];
 }
@@ -63,6 +65,13 @@ function continues(point: ClaudeSession, messages: any[], incoming: string[]): b
   const last = messages[point.prefix.length - 1];
   const calls: string[] = last?.role === "assistant" ? last.content.filter((b: any) => b.type === "toolCall").map((b: any) => b.id) : [];
   const suffix = messages.slice(point.prefix.length);
+  if (point.answered) {
+    // Claude Code already answered every call; Pi may lack some results, as after a crash.
+    const start = suffix.findIndex((m) => m.role !== "toolResult");
+    const results = start < 0 ? suffix : suffix.slice(0, start);
+    return results.every((m) => calls.includes(m.toolCallId) && matchesDelivered(point.delivered, m))
+      && suffix.slice(results.length).every(isInput);
+  }
   const results = suffix.slice(0, calls.length);
   return results.every((m) => m.role === "toolResult") && calls.every((id) => results.some((m) => m.toolCallId === id))
     && suffix.slice(calls.length).every(isInput);
@@ -74,6 +83,16 @@ function unseen(point: ClaudeSession, messages: any[]): any[] {
   if (!point.answered) return suffix;
   const start = suffix.findIndex((m) => m.role !== "toolResult");
   return start < 0 ? [] : suffix.slice(start);
+}
+
+// What Pi stored for a tool call; a result handed to Claude Code early must match it.
+function resultDigest(content: unknown, isError: boolean | undefined): string {
+  return digest({ content, isError: !!isError });
+}
+
+function matchesDelivered(delivered: Record<string, string> | undefined, message: any): boolean {
+  const early = delivered?.[message.toolCallId];
+  return early === undefined || early === resultDigest(message.content, message.isError);
 }
 
 // The last record of Claude Code's own results for `ids`, written when a query stopped at their tool gap.
@@ -149,6 +168,7 @@ interface RunningQuery {
   // The point this query resumed or forked from.
   point?: ClaudeSession;
   recorded: { uses: Set<string>; results: Set<string> };
+  delivered: Map<string, string>;
   removeAbort?: () => void;
 }
 
@@ -204,7 +224,9 @@ export function createClaudeBridge(options: {
   }
 
   function checkpoint(q: RunningQuery, prefix: string[], pending?: string[]) {
-    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, prefix, lastUuid: q.lastUuid, ...pending ? { pending } : {} };
+    // A tool-gap point also keeps the results already handed over, in case a deliver came first.
+    const delivered = pending && q.delivered.size ? { delivered: Object.fromEntries(q.delivered) } : {};
+    saved = { piSessionId: options.sessionId(), sessionId: q.sessionId!, cwd: q.cwd, prefix, lastUuid: q.lastUuid, ...pending ? { pending } : {}, ...delivered };
     points = [...points.slice(-15), saved];
     options.save(saved);
   }
@@ -408,6 +430,7 @@ export function createClaudeBridge(options: {
     q.lastUuid = uuid;
     checkpoint(q, gap.point.prefix);
     saved!.answered = true;
+    if (q.delivered.size) saved!.delivered = Object.fromEntries(q.delivered);
     options.save(saved!);
   }
 
@@ -449,7 +472,9 @@ export function createClaudeBridge(options: {
     const side = (request as { disableContinuation?: boolean }).disableContinuation === true;
     const owner = side ? undefined : [...running].find((q) => !q.stream && q.requester === request.sessionId
       && [...q.ids].some((id) => resultIds.has(id)));
-    if (owner && owner.configuration === configuration && startsWith(incoming, hashes(owner.history))) {
+    if (owner && owner.configuration === configuration && startsWith(incoming, hashes(owner.history))
+      && messages.every((m) => m.role !== "toolResult" || !owner.delivered.has(m.toolCallId)
+        || owner.delivered.get(m.toolCallId) === resultDigest(m.content, m.isError))) {
       const delta = messages.slice(owner.history.length);
       const results = delta.filter((m) => m.role === "toolResult");
       if (!results.length || [...owner.ids].some((id) => !results.some((m) => m.toolCallId === id))) {
@@ -467,6 +492,7 @@ export function createClaudeBridge(options: {
       }
       owner.ids.clear();
       for (const message of results) {
+        if (owner.delivered.has(message.toolCallId)) continue;
         const result = { content: toolResultToMcpContent(message.content), isError: message.isError };
         const resolve = owner.handlers.get(message.toolCallId);
         if (resolve) { owner.handlers.delete(message.toolCallId); resolve(result); }
@@ -519,7 +545,7 @@ export function createClaudeBridge(options: {
     const q: RunningQuery = {
       input, output: outputFor(model), model, history: structuredClone(messages), configuration,
       ids: new Set(), handlers: new Map(), results: new Map(), blocks: new Map(),
-      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, requester: request.sessionId, point, replay: side, sessionId: resume,
+      cwd, main, stopped: false, sawMessage: false, callOutput: 0, recorded: { uses: new Set(), results: new Set() }, delivered: new Map(), requester: request.sessionId, point, replay: side, sessionId: resume,
       configDir: request.env?.CLAUDE_CONFIG_DIR, generation,
       // A side fork gets its id up front, so its file can be removed even before the CLI reports it.
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR, sessionId: randomUUID() } } : {}),
@@ -616,6 +642,22 @@ export function createClaudeBridge(options: {
       points = state ? [state] : [];
     },
     points: () => points,
+    // Hand a finished tool's result to Claude Code at once, so an abort later in the batch keeps it.
+    // The batch's last result waits for Pi's continuation request, which writes steering input first.
+    deliver(toolCallId: string, content: any[], isError: boolean) {
+      const q = [...running].find((candidate) => !candidate.stream && candidate.ids.has(toolCallId));
+      if (!q || q.delivered.has(toolCallId)) return;
+      if ([...q.ids].every((id) => id === toolCallId || q.delivered.has(id))) return;
+      q.delivered.set(toolCallId, resultDigest(content, isError));
+      if (q.gap && saved === q.gap.point) {
+        saved.delivered = Object.fromEntries(q.delivered);
+        options.save(saved);
+      }
+      const result = { content: toolResultToMcpContent(content), isError };
+      const resolve = q.handlers.get(toolCallId);
+      if (resolve) { q.handlers.delete(toolCallId); resolve(result); }
+      else q.results.set(toolCallId, result);
+    },
     reset() {
       generation++;
       // Stopping first lets a query at a tool gap withdraw its persisted checkpoint.
