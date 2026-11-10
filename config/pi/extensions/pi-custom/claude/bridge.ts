@@ -157,7 +157,6 @@ export function createClaudeBridge(options: {
   let saved: ClaudeSession | undefined;
   // Recent resume points of the main CC sessions; other requests fork from the longest one they extend.
   let points: ClaudeSession[] = [];
-  let disposed = false;
   let generation = 0;
   let billingError: string | undefined;
 
@@ -198,7 +197,7 @@ export function createClaudeBridge(options: {
   // While the main query runs, its CC session is a resume point once a tool step is recorded.
   function settle(q: RunningQuery) {
     const recorded = q.expect?.gap ? q.recorded.uses : q.recorded.results;
-    if (!q.expect || disposed || !q.sessionId || [...q.expect.ids].some((id) => !recorded.has(id))) return;
+    if (!q.expect || !q.sessionId || [...q.expect.ids].some((id) => !recorded.has(id))) return;
     const previous = saved;
     checkpoint(q, q.expect.prefix, q.expect.gap ? [...q.expect.ids] : undefined);
     if (q.expect.gap) q.gap = { point: saved!, previous, ids: [...q.expect.ids] };
@@ -357,7 +356,7 @@ export function createClaudeBridge(options: {
           }
           if (!q.stream || !q.sawMessage) throw new Error("Claude Code finished without a complete streamed response");
           q.history.push(structuredClone(q.output));
-          if (q.main && q.sessionId && !disposed) checkpoint(q, hashes(q.history));
+          if (q.main && q.sessionId) checkpoint(q, hashes(q.history));
           options.trace?.(`completed cacheRead=${q.output.usage.cacheRead} cacheWrite=${q.output.usage.cacheWrite} input=${q.output.usage.input}`);
           q.stopped = true;
           release(q, "Claude Code query completed");
@@ -384,7 +383,7 @@ export function createClaudeBridge(options: {
   // Claude Code answers the tool uses of a stopped query with an interrupted result, which resumes.
   function reanchor(q: RunningQuery) {
     const gap = q.interrupted;
-    if (!gap || disposed || q.generation !== generation || saved !== gap.previous || !q.sessionId) return;
+    if (!gap || q.generation !== generation || saved !== gap.previous || !q.sessionId) return;
     const uuid = interruption(q.sessionId, q.cwd, q.configDir, gap.ids);
     if (!uuid) return;
     q.lastUuid = uuid;
@@ -394,7 +393,6 @@ export function createClaudeBridge(options: {
   }
 
   async function start(model: Model<any>, context: TranscriptContext, request: SimpleStreamOptions, stream: AssistantMessageEventStream) {
-    if (disposed) throw new Error("Claude Code provider has been shut down");
     request.signal?.throwIfAborted();
     if (billingError) throw new Error(billingError);
     if (request.fetch) throw new Error("Claude Code uses an SDK subprocess and cannot accept a custom fetch");
@@ -422,7 +420,7 @@ export function createClaudeBridge(options: {
       ? await buildClaudeSystemPrompt(system, names)
       : effective.systemPrompt;
     request.signal?.throwIfAborted();
-    if (disposed || generation !== startedGeneration) throw new Error("Pi session context changed before the request started");
+    if (generation !== startedGeneration) throw new Error("Pi session context changed before the request started");
     if (billingError) throw new Error(billingError);
     const env = subscriptionEnvironment(request);
     const configuration = digest([model.id, systemPrompt, tools, reasoning, maxTokens, request.thinkingBudgets, request.env, request.headers, request.cacheRetention]);
@@ -597,11 +595,6 @@ export function createClaudeBridge(options: {
       for (const q of [...running]) stop(q, new Error("Pi session context changed"), true);
       saved = undefined;
       points = [];
-    },
-    dispose() {
-      generation++;
-      disposed = true;
-      for (const q of [...running]) stop(q, new Error("Pi session shut down"), true);
     },
   };
 }

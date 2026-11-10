@@ -100,7 +100,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
     return call;
   };
   const bridge = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save: (state) => saved.push(state), query, trace: (message) => traces.push(message) });
-  t.after(() => bridge.dispose());
+  t.after(() => bridge.reset());
   const stream = (messages, options = {}, tools = [tool]) => bridge.streamSimple(model,
     ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools, messages }), { sessionId: "pi-main", ...options });
   return { bridge, calls, saved, traces, stream, query };
@@ -583,7 +583,7 @@ test("a tool-gap point restored after a hard exit resumes at Claude Code's inter
   appendFileSync(sessions.getSessionPath(q.sessionId, directory), JSON.stringify({ type: "user", uuid: "uuid-interrupted",
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
   const restarted = createClaudeBridge({ cwd: () => directory, sessionId: () => "pi-main", save() {}, query: h.query });
-  t.after(() => restarted.dispose());
+  t.after(() => restarted.reset());
   restarted.restore(structuredClone(h.saved[0]));
   const next = restarted.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
     messages: [...history, answer, result("call-a", "aborted"), user("next")] }), { sessionId: "pi-main" });
@@ -603,7 +603,7 @@ test("an Agent forked with the caller's context starts from the caller's CC sess
   const answer = await first.result(), childSaved = [];
   const child = createClaudeBridge({ cwd: () => directory, sessionId: () => "child", save: (state) => childSaved.push(state),
     forkSources: () => h.bridge.points(), query: h.query });
-  t.after(() => child.dispose());
+  t.after(() => child.reset());
   const stream = child.streamSimple(model, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool],
     messages: [...history, answer, user("forked task")] }), { sessionId: "child" });
   await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
