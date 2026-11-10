@@ -4,10 +4,16 @@ import { getSystemMessageText, type SystemMessage } from "@earendil-works/pi-ai"
 // Pi's default docs guide and identity, matched by shape so wording from any Pi version is recognized.
 // Anthropic bills requests carrying this guide as a third-party app, outside the subscription.
 const DEFAULT_DOCS = /^<docs>\nPi documentation \([^\n]*\):\n(?:- [^\n]*\n)+<\/docs>$/;
-const DEFAULT_PREAMBLE = /^You are [^\n]* inside pi, a coding agent harness\./;
+// The default identity is two sentences on one line; a prompt that adds anything is custom and stays.
+const DEFAULT_PREAMBLE = /^You are [^\n]* inside pi, a coding agent harness\. (?:You help|Help) users [^.\n]*\.$/;
 
-export function isPiDefaultSection(name: string, value: string | null): boolean {
+function isPiDefaultSection(name: string, value: string | null): boolean {
   return value !== null && (name === "docs" ? DEFAULT_DOCS : name === "preamble" ? DEFAULT_PREAMBLE : undefined)?.test(value) === true;
+}
+
+// Each default section is dropped on its own, in the prompt and in later system patches alike.
+export function withoutPiDefaults<T extends string | null>(sections: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(sections).filter(([name, value]) => !isPiDefaultSection(name, value)));
 }
 
 function rewriteToolReferences(text: string, names: Map<string, string>): string {
@@ -26,12 +32,7 @@ function rewriteToolReferences(text: string, names: Map<string, string>): string
 export async function buildClaudeSystemPrompt(message: SystemMessage | undefined, names: Map<string, string>): Promise<Options["systemPrompt"]> {
   // Forced prompts and auxiliary requests are opaque, exact replacements.
   if (!message?.sections) return message ? getSystemMessageText(message) : "";
-  const sections = { ...message.sections };
-  // Custom prefixes omit the default docs; keep ambiguous/customized prompts intact.
-  if (isPiDefaultSection("docs", sections.docs)) {
-    if (isPiDefaultSection("preamble", sections.preamble)) delete sections.preamble;
-    delete sections.docs;
-  }
+  const sections = withoutPiDefaults(message.sections);
   for (const name of ["tools", "rules", "skills"]) {
     if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
   }

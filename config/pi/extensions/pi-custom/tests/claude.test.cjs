@@ -329,10 +329,15 @@ test("custom sections survive projection and full prompt overrides remain exact"
   } };
   const forced = buildSystemPromptState({ cwd: directory, forceSystemPrompt: "<docs>Use echo exactly as written.</docs>" });
   const explicitDefault = buildSystemPromptState({ cwd: directory, customPrompt: native.sections.preamble });
+  const extendedDefault = buildSystemPromptState({ cwd: directory, customPrompt: `${native.sections.preamble}\nKeep the customer's tone.` });
+  const appendedDefault = buildSystemPromptState({ cwd: directory, customPrompt: `${native.sections.preamble} Always answer in Chinese.` });
   const cases = [
     { state, retained: Object.values(state.sections) },
-    { state: explicitDefault, retained: [native.sections.preamble] },
-    { state: withDocsAddition, retained: [withDocsAddition.sections.docs, native.sections.preamble] },
+    // Pi's default identity is dropped on its own, also beside a custom docs section.
+    { state: explicitDefault, retained: [], stripped: [native.sections.preamble] },
+    { state: withDocsAddition, retained: [withDocsAddition.sections.docs], stripped: [native.sections.preamble] },
+    { state: extendedDefault, retained: [extendedDefault.sections.preamble] },
+    { state: appendedDefault, retained: [appendedDefault.sections.preamble] },
     { state: forced, exact: forced.content },
     { state: native, hook: (p) => { p.systemPrompt = "Exact payload-hook override."; }, exact: "Exact payload-hook override." },
   ];
@@ -347,6 +352,7 @@ test("custom sections survive projection and full prompt overrides remain exact"
     else {
       assert.equal(q.options.systemPrompt.preset, "claude_code");
       for (const text of fixture.retained) assert.ok(q.options.systemPrompt.append.includes(text), text);
+      for (const text of fixture.stripped ?? []) assert.ok(!q.options.systemPrompt.append.includes(text), text);
     }
     q.text("done"); q.finish();
     assert.equal((await stream.result()).stopReason, "stop");
