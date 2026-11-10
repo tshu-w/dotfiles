@@ -474,6 +474,23 @@ test("other requests extending the main history fork its CC session and remove t
   await next.result();
 });
 
+test("unknown tool names are left to Claude Code instead of ending the turn", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const stream = h.stream([user("run it")]);
+  await until(() => h.calls.length === 1);
+  const q = h.calls[0];
+  q.begin();
+  q.event({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call-x", name: "mcp:pi__echo", input: {} } });
+  q.event({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{}" } });
+  q.event({ type: "content_block_stop", index: 0 });
+  q.event({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 5 } });
+  q.event({ type: "message_stop" });
+  q.text("retried"); q.finish();
+  const answer = await stream.result();
+  assert.equal(answer.stopReason, "stop");
+  assert.deepEqual(answer.content, [{ type: "text", text: "retried" }]);
+});
+
 test("SDK errors, early abort and malformed schemas terminate rather than hang", { timeout: 10000 }, async (t) => {
   const h = harness(t), controller = new AbortController(); controller.abort();
   assert.equal((await h.stream([user("abort")], { signal: controller.signal }).result()).stopReason, "aborted");

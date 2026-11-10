@@ -73,7 +73,7 @@ interface RunningQuery {
   ids: Set<string>;
   handlers: Map<string, (result: McpResult) => void>;
   results: Map<string, McpResult>;
-  blocks: Map<number, { index: number; json: string }>;
+  blocks: Map<number, { index: number; json: string } | null>;
   sessionId?: string;
   lastUuid?: string;
   main: boolean;
@@ -172,7 +172,8 @@ export function createClaudeBridge(options: {
       else if (b.type === "redacted_thinking") { block = { type: "thinking", thinking: "", thinkingSignature: b.data, redacted: true }; kind = "thinking"; }
       else if (b.type === "tool_use") {
         const name = names.get(b.name);
-        if (!name) throw new Error(`Claude Code requested an unregistered tool: ${b.name}`);
+        // Claude Code answers unknown tool names with its own error result, so the model can retry.
+        if (!name) { q.blocks.set(event.index, null); return; }
         block = { type: "toolCall", id: b.id, name, arguments: b.input ?? {} };
         q.ids.add(b.id);
         kind = "toolcall";
@@ -182,6 +183,7 @@ export function createClaudeBridge(options: {
       q.stream.push({ type: `${kind}_start`, contentIndex: index, partial: q.output } as any);
     } else if (event.type === "content_block_delta") {
       const entry = q.blocks.get(event.index);
+      if (entry === null) return;
       if (!entry) throw new Error(`Missing Claude content block ${event.index}`);
       const block = q.output.content[entry.index] as any;
       const delta = event.delta;
@@ -194,7 +196,8 @@ export function createClaudeBridge(options: {
       else throw new Error(`Unsupported Claude content delta: ${delta.type}`);
       q.stream.push({ type: `${kind}_delta`, contentIndex: entry.index, delta: text, partial: q.output } as any);
     } else if (event.type === "content_block_stop") {
-      const entry = q.blocks.get(event.index)!;
+      const entry = q.blocks.get(event.index);
+      if (!entry) return;
       const block = q.output.content[entry.index];
       if (block.type === "toolCall") {
         if (entry.json) block.arguments = JSON.parse(entry.json);
