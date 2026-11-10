@@ -41,6 +41,7 @@ before(async () => {
 
 function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subscriptionType: "max" })) {
   const calls = [], saved = [], traces = [];
+  let initless = false;
   const query = ({ prompt, options }) => {
     const queue = [];
     let wake, closed = false;
@@ -95,7 +96,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
       },
     };
     calls.push(call);
-    call.emit({ type: "system", subtype: "init", session_id: call.sessionId });
+    if (!initless) call.emit({ type: "system", subtype: "init", session_id: call.sessionId });
     void (async () => { try { for await (const message of prompt) call.prompts.push(message); } catch {} })();
     return call;
   };
@@ -103,7 +104,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
   t.after(() => bridge.reset());
   const stream = (messages, options = {}, tools = [tool]) => bridge.streamSimple(model,
     ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools, messages }), { sessionId: "pi-main", ...options });
-  return { bridge, calls, saved, traces, stream, query };
+  return { bridge, calls, saved, traces, stream, query, initless: () => { initless = true; } };
 }
 
 const callTool = (client, id) => client.callTool({ name: "echo", arguments: { value: id }, _meta: { "claudecode/toolUseId": id } });
@@ -476,12 +477,17 @@ for (const failure of ["abort", "error"]) test(`a continuation ended by ${failur
   await retry.result();
 });
 
-for (const [error, rebuilds] of [["No message found with message.uuid of: uuid-x", true], ["API Error: 429 rate_limit_error", false]]) test(`a resume failing before any response with "${error}" ${rebuilds ? "rebuilds" : "resumes again"}`, { timeout: 10000 }, async (t) => {
+for (const [error, rebuilds, beforeInit] of [
+  ["No message found with message.uuid of: uuid-x", true, false],
+  ["API Error: 429 rate_limit_error", false, false],
+  ["A session loading failure in other words", true, true],
+]) test(`a resume failing before any response with "${error}"${beforeInit ? " before init" : ""} ${rebuilds ? "rebuilds" : "resumes again"}`, { timeout: 10000 }, async (t) => {
   const h = harness(t), history = [user("hello")];
   const first = h.stream(history);
   await until(() => h.calls.length === 1);
   h.calls[0].text("hello back"); h.calls[0].finish();
   const answer = await first.result(), state = h.saved[0];
+  if (beforeInit) h.initless();
   const failed = h.stream([...history, answer, user("again")]);
   await until(() => h.calls.length === 2);
   assert.equal(h.calls[1].options.resume, state.sessionId);

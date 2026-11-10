@@ -123,6 +123,9 @@ interface RunningQuery {
   main: boolean;
   // A replay such as cache warming, which is never continued.
   replay: boolean;
+  initialized?: boolean;
+  // An error result before system/init: the CLI failed while loading the session.
+  failedToLoad?: boolean;
   requester?: string;
   // Set for a fork of the main CC session; its session file is removed when the query ends.
   fork?: { configDir?: string; sessionId?: string };
@@ -228,7 +231,7 @@ export function createClaudeBridge(options: {
     }
     // Keep the resume point after an abort or another error, such as a rate limit; the next turn resumes by prefix.
     // Only a rejected resume invalidates it: other requests stop forking from it, and the main conversation rebuilds.
-    if (q.point && !q.responded && RESUME_FAILURE.test(error.message)) {
+    if (q.point && !q.responded && (q.failedToLoad || RESUME_FAILURE.test(error.message))) {
       failedPoints.add(q.point);
       if (q.main && saved === q.point) { saved = undefined; options.clear(); }
     }
@@ -346,6 +349,7 @@ export function createClaudeBridge(options: {
           throw new Error(USAGE_CREDITS_ERROR);
         }
         if (message.type === "system" && message.subtype === "init") {
+          q.initialized = true;
           q.sessionId = message.session_id;
           if (q.fork) q.fork.sessionId = message.session_id;
         }
@@ -366,6 +370,7 @@ export function createClaudeBridge(options: {
         if (message.type === "stream_event" && !message.parent_tool_use_id) streamEvent(q, message.event, names);
         if (message.type === "result") {
           if (message.subtype !== "success" || message.is_error) {
+            q.failedToLoad = !q.initialized;
             throw new Error(message.subtype === "success" ? message.result : message.errors.join("\n"));
           }
           if (!q.stream || !q.sawMessage) throw new Error("Claude Code finished without a complete streamed response");
