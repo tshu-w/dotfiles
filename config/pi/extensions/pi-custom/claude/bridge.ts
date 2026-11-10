@@ -208,13 +208,24 @@ export function createClaudeBridge(options: {
     q.stream = undefined;
   }
 
-  function release(q: RunningQuery, reason: string) {
-    q.input.fail(new Error(reason));
-    for (const resolve of q.handlers.values()) resolve({ content: [{ type: "text", text: reason }], isError: true });
-    q.handlers.clear();
-    q.results.clear();
+  function release(q: RunningQuery, reason: string, interrupt = false) {
+    const query = q.query;
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      query?.close();
+      q.input.fail(new Error(reason));
+      for (const resolve of q.handlers.values()) resolve({ content: [{ type: "text", text: reason }], isError: true });
+      q.handlers.clear();
+      q.results.clear();
+    };
+    // A stopped CLI that sees its tool calls fail goes on to another API call; interrupting it first ends the turn.
+    if (interrupt && query) {
+      const timer = setTimeout(settle, 2000);
+      void query.interrupt().catch(() => {}).finally(() => { clearTimeout(timer); settle(); });
+    } else settle();
     q.removeAbort?.();
-    q.query?.close();
     removeFork(q);
     running.delete(q);
   }
@@ -258,7 +269,7 @@ export function createClaudeBridge(options: {
       if (q.main && saved === q.point) { saved = undefined; options.clear(); }
     }
     terminal(q, aborted ? "aborted" : "error", error.message);
-    release(q, error.message);
+    release(q, error.message, true);
   }
 
   function attach(q: RunningQuery, stream: AssistantMessageEventStream, signal?: AbortSignal) {

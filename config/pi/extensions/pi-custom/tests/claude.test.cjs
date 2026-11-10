@@ -59,6 +59,7 @@ function harness(t, accountInfo = async () => ({ apiProvider: "firstParty", subs
       emit(message) { queue.push(message); wake?.(); wake = undefined; },
       event(event) { this.emit({ type: "stream_event", parent_tool_use_id: null, event }); },
       close() { closed = true; wake?.(); wake = undefined; },
+      async interrupt() {},
       async *[Symbol.asyncIterator]() {
         while (!closed) {
           if (!queue.length) await new Promise((resolve) => { wake = resolve; });
@@ -161,7 +162,7 @@ test("account verification precedes prompts and refuses non-subscription logins"
     const answer = await stream.result();
     assert.match(answer.errorMessage, /subscription login/);
     assert.equal(ai.isRetryableAssistantError(answer), false);
-    assert.equal(h.calls[0].closed, true);
+    await until(() => h.calls[0].closed);
   }
   let resolve;
   const h = harness(t, () => new Promise((done) => { resolve = done; }));
@@ -170,7 +171,7 @@ test("account verification precedes prompts and refuses non-subscription logins"
   await until(() => h.calls.length === 1);
   controller.abort();
   assert.equal((await stream.result()).stopReason, "aborted");
-  assert.equal(h.calls[0].closed, true);
+  await until(() => h.calls[0].closed);
   resolve({ apiProvider: "firstParty", subscriptionType: "max" });
   await tick();
   assert.equal(h.calls[0].prompts.length, 0);
@@ -189,7 +190,7 @@ test("streams text, usage and payload edits; resumes and restores unchanged hist
   assert.equal(answer.usage.totalTokens, 2059);
   assert.ok(answer.usage.cost.total > 0);
   assert.equal(answer.responseId, "msg-test");
-  assert.ok(h.calls[0].closed);
+  await until(() => h.calls[0].closed);
   assert.equal(h.saved.length, 1);
   const events = []; for await (const event of first) events.push(event.type);
   assert.deepEqual(events, ["start", "text_start", "text_delta", "text_end", "done"]);
@@ -378,7 +379,7 @@ test("changed extension constraints restart a paused query with the updated prom
     { role: "system", content: "", sections: { policy: "<policy>Require approval.</policy>" }, timestamp: 1 },
   ] }, { sessionId: "pi-main" });
   await until(() => h.calls.length === 2);
-  assert.ok(h.calls[0].closed);
+  await until(() => h.calls[0].closed);
   assert.match(h.calls[1].options.systemPrompt.append, /Require approval/);
   assert.doesNotMatch(h.calls[1].options.systemPrompt.append, /Read-only/);
   h.calls[1].text("awaiting approval"); h.calls[1].finish();
@@ -448,7 +449,7 @@ test("abort during the tool gap releases MCP and resumes at Claude Code's interr
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "The tool call was interrupted." }] } }) + "\n");
   await tick(); controller.abort();
   assert.equal((await pending).isError, true);
-  assert.equal(q.closed, true);
+  await until(() => q.closed);
   assert.equal(answer.stopReason, "toolUse");
   await until(() => h.saved.at(-1).answered);
   const retry = h.stream([...history, answer, aborted("call-a"), user("next")]);
@@ -522,7 +523,7 @@ test("a result that differs from what was handed over early rebuilds", { timeout
   h.bridge.deliver("call-a", [{ type: "text", text: "early" }], false);
   const next = h.stream([...history, answer, result("call-a", "changed later"), result("call-b", "B")]);
   await until(() => h.calls.length === 2);
-  assert.equal(q.closed, true);
+  await until(() => q.closed);
   assert.notEqual(h.calls[1].options.resume, q.sessionId);
   h.calls[1].text("rebuilt"); h.calls[1].finish();
   await next.result();
@@ -784,7 +785,7 @@ test("SDK errors, early abort and malformed schemas terminate rather than hang",
   await until(() => h.calls.length === 1);
   h.calls[0].emit({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["transport failed"] });
   assert.equal((await failed.result()).errorMessage, "transport failed");
-  assert.equal(h.calls[0].closed, true);
+  await until(() => h.calls[0].closed);
   assert.equal(h.saved.length, 0);
 });
 
@@ -847,7 +848,7 @@ test("usage-credit events stop generation and block later requests, including a 
     }
     q.emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed", isUsingOverage: true } });
     await tick();
-    assert.equal(q.closed, true);
+    await until(() => q.closed);
     if (pending) assert.equal((await pending).isError, true);
     else {
       answer = await stream.result();
@@ -894,7 +895,7 @@ test("credits_required refuses generation without waiting for an overage charge"
   const answer = await stream.result();
   assert.match(answer.errorMessage, /Claude Code billing/);
   assert.equal(ai.isRetryableAssistantError(answer), false);
-  assert.equal(h.calls[0].closed, true);
+  await until(() => h.calls[0].closed);
 });
 
 test("ordinary subscription rate-limit events do not stop responses", async (t) => {
@@ -912,7 +913,7 @@ test("changed tool declarations rebuild a paused query and none suppresses all t
   h.calls[0].tools(["call-a"]); const answer = await first.result();
   const next = h.stream([...history, answer, result("call-a", "done")], { toolChoice: "none" });
   await until(() => h.calls.length === 2);
-  assert.equal(h.calls[0].closed, true);
+  await until(() => h.calls[0].closed);
   assert.deepEqual(h.calls[1].options.mcpServers, {});
   h.calls[1].text("done"); h.calls[1].finish();
   assert.equal((await next.result()).stopReason, "stop");
