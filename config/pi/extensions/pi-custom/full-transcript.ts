@@ -1,4 +1,4 @@
-// TUI-only transcript history paging for pi 0.80.6. InteractiveMode renders
+// TUI-only transcript history paging. InteractiveMode renders
 // only compaction-aware entries by default. This scoped patch keeps that fast
 // recent view, while allowing older compaction intervals or the full active
 // branch to be loaded temporarily without changing model context construction.

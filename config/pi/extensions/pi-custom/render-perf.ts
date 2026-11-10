@@ -1,6 +1,5 @@
-// Transcript render performance for long sessions — private-API workaround for
-// pi 0.80.6+ (upstream issue earendil-works/pi#6478). Instance-level and
-// fail-open:
+// Transcript render performance for long sessions — private-API workaround
+// (upstream issue earendil-works/pi#6478). Instance-level and fail-open.
 //
 // applyLineResets memoization. Upstream rebuilds every line string on every
 // frame (normalize + reset suffix), which defeats the pointer-equality fast
@@ -8,11 +7,7 @@
 // length. A bounded two-generation memo returns stable string references,
 // so steady-state frames drop to pointer work. Scrollback stays complete.
 //
-// The former cold-rebuild windowing patch is gone: on pi 0.81.1 a full cold
-// rebuild of realistic transcripts measures 50–150ms, and its deferred full
-// reveal caused a visible top-to-bottom repaint of the terminal.
-//
-// Controlled through the pi-custom settings panel.
+// Controlled through the pi-custom preferences panel.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
