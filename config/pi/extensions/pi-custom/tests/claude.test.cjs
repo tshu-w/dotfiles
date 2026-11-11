@@ -984,7 +984,7 @@ test("Pi's timeout ends a silent Claude Code, but never inside an API message or
   const silent = h.stream([user("hang")], { timeoutMs: 50 });
   await until(() => h.calls.length === 1);
   const timedOut = await silent.result();
-  assert.equal(timedOut.errorMessage, "Claude Code timed out: no response for 0 seconds. Pi retries automatically; if this keeps happening, check your network connection.");
+  assert.equal(timedOut.errorMessage, "Claude Code timed out: no response for 0 seconds.");
   assert.equal(ai.isRetryableAssistantError(timedOut), true);
   // A long silence inside an API message (thinking) and in the tool gap is left alone.
   const thinking = h.stream([user("think")], { timeoutMs: 50 });

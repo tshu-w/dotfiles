@@ -292,7 +292,7 @@ export function createClaudeBridge(options: {
     clearTimeout(q.watchdog);
     if (!q.stream || q.streaming || !q.timeoutMs || q.stopped) return;
     const seconds = Math.round(q.timeoutMs / 1000);
-    q.watchdog = setTimeout(() => stop(q, new Error(`Claude Code timed out: no response for ${seconds} seconds. Pi retries automatically; if this keeps happening, check your network connection.`)), q.timeoutMs);
+    q.watchdog = setTimeout(() => stop(q, new Error(`Claude Code timed out: no response for ${seconds} seconds.`)), q.timeoutMs);
     q.watchdog.unref?.();
   }
 
