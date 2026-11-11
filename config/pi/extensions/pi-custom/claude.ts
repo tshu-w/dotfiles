@@ -71,15 +71,6 @@ function parentSessionId(sessionFile: string): string | undefined {
   }
 }
 
-// Temporary: Anthropic models added in Pi 1.5.1; drop this commit after upgrading Pi.
-const PI_1_5_1_MODELS = [{
-  id: "claude-fable-5-2", name: "Claude Fable 5.2", reasoning: true,
-  thinkingLevelMap: { off: null, xhigh: "xhigh", max: "max" },
-  compat: { forceAdaptiveThinking: true, supportsMidConvoEffort: true, supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true, supportsStrictTools: true,
-    allowedFallbackModels: [{ provider: "anthropic", model: "claude-opus-5", cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } }] },
-  input: ["text", "image"], cost: { input: 8, output: 40, cacheRead: 0.2, cacheWrite: 10 }, contextWindow: 1000000, maxTokens: 128000,
-}] as unknown as ReturnType<typeof getModels>;
-
 type Bridge = ReturnType<typeof createClaudeBridge>;
 
 // Once per process: the first Session's start cleans up after sessions deleted since.
@@ -106,8 +97,7 @@ export function registerClaude(pi: ExtensionAPI) {
     api: PROVIDER_ID,
     baseUrl: "https://api.anthropic.com",
     apiKey: "claude-code-managed",
-    models: [...getModels("anthropic"), ...PI_1_5_1_MODELS.filter((extra) => !getModels("anthropic").some((model) => model.id === extra.id))]
-      .filter((model) => !/-\d{8}$/.test(model.id)).map((model) => ({
+    models: getModels("anthropic").filter((model) => !/-\d{8}$/.test(model.id)).map((model) => ({
       id: model.id,
       name: model.name.replace(/ \(latest\)$/, ""),
       reasoning: model.reasoning,
