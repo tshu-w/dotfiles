@@ -40,6 +40,10 @@ export function queryError(error: unknown): string {
 export function subscriptionEnvironment(request: SimpleStreamOptions) {
   const env = { ...process.env, ...request.env };
   delete env.ANTHROPIC_API_KEY;
+  // Claude Code must neither wait and retry by itself nor change the request body.
+  delete env.CLAUDE_CODE_RETRY_WATCHDOG;
+  delete env.CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS;
+  delete env.CLAUDE_CODE_EXTRA_BODY;
   const conflicts = ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_FOUNDRY_API_KEY"]
     .filter((name) => env[name]);
   for (const backend of ["BEDROCK", "VERTEX", "FOUNDRY", "ANTHROPIC_AWS", "ANTHROPIC_GOOGLE_CLOUD", "MANTLE", "GATEWAY"]) {

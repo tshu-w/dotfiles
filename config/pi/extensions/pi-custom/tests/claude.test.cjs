@@ -123,6 +123,7 @@ test("subscription requests strip API keys without changing the parent environme
   const stream = h.stream([user("hello")], { env: {
     ANTHROPIC_API_KEY: "request-key", CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
     HTTPS_PROXY: "http://127.0.0.1:7890", CLAUDE_CODE_USE_BEDROCK: "false",
+    CLAUDE_CODE_RETRY_WATCHDOG: "1", CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS: "600000", CLAUDE_CODE_EXTRA_BODY: "{}",
   } });
   await until(() => h.calls.length === 1);
   const env = h.calls[0].options.env;
@@ -130,7 +131,8 @@ test("subscription requests strip API keys without changing the parent environme
   assert.equal(process.env.ANTHROPIC_API_KEY, "parent-key");
   assert.equal(env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
   assert.equal(env.HTTPS_PROXY, "http://127.0.0.1:7890");
-  assert.deepEqual([env.CLAUDE_CODE_SILENT_TURN_REMINDER, env.CLAUDE_CODE_ELEGANT_MEADOW, env.CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH], ["0", "0", "16384"]);
+  assert.deepEqual([env.CLAUDE_CODE_SILENT_TURN_REMINDER, env.CLAUDE_CODE_TOTAL_TOKENS_REMINDER, env.CLAUDE_CODE_ELEGANT_MEADOW, env.CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH], ["0", "off", "0", "16384"]);
+  assert.deepEqual([env.CLAUDE_CODE_RETRY_WATCHDOG, env.CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS, env.CLAUDE_CODE_EXTRA_BODY], [undefined, undefined, undefined]);
   h.calls[0].text("hello"); h.calls[0].finish();
   assert.equal((await stream.result()).stopReason, "stop");
 });
@@ -922,6 +924,20 @@ test("a resume rejected before init retries by rebuilding, never at the same poi
     assert.equal(ai.isRetryableAssistantError(answer), true, answer.errorMessage);
   }
   assert.equal(new Set(resumes).size, 3);
+});
+
+test("a prompt that looks like a Claude Code command reaches the model as text", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const first = h.stream([user("/cost")]);
+  await until(() => h.calls.length === 1 && h.calls[0].prompts.length === 1);
+  assert.deepEqual(h.calls[0].prompts[0].message.content, [{ type: "text", text: "\u200b/cost" }]);
+  h.calls[0].text("ok"); h.calls[0].finish();
+  const answer = await first.result();
+  const next = h.stream([user("/cost"), answer, user("see /cost above")]);
+  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
+  assert.deepEqual(h.calls[1].prompts[0].message.content, [{ type: "text", text: "see /cost above" }]);
+  h.calls[1].text("ok"); h.calls[1].finish();
+  await next.result();
 });
 
 test("refusals and safety stops end as errors Pi does not retry; a full context window ends as length", async (t) => {
