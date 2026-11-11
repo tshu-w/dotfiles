@@ -50,7 +50,8 @@ function toolResultContent(
   return blocks;
 }
 
-export function convertPiMessages(messages: PiMessage[]): { anthropicMessages: SessionMessage[] } {
+/** Thinking keeps its signature only for the model that signed it, as pi-ai replays it. */
+export function convertPiMessages(messages: PiMessage[], modelId: string): { anthropicMessages: SessionMessage[] } {
   const anthropicMessages: SessionMessage[] = [];
   const sanitizedIds = new Map<string, string>();
   let turnResults: { role: "user"; content: ToolResultBlock[] } | null = null;
@@ -83,7 +84,7 @@ export function convertPiMessages(messages: PiMessage[]): { anthropicMessages: S
           blocks.push({ type: "text", text: block.text });
         } else if (block.type === "thinking") {
           const sig = block.thinkingSignature;
-          if (msg.provider === PROVIDER_ID && sig) {
+          if (msg.provider === PROVIDER_ID && msg.model === modelId && sig) {
             blocks.push(block.redacted
               ? { type: "redacted_thinking", data: sig } as unknown as ContentBlock
               : { type: "thinking", thinking: block.thinking ?? "", signature: sig });

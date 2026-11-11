@@ -165,7 +165,7 @@ function writePrefixSession(point: ClaudeSession, tail: any[], model: string, co
     if (records[i].parentUuid === cut && typeof records[i].uuid === "string") { cut = records[i].uuid; end = i; }
   }
   const session = createSession({ projectPath: point.cwd, model, claudeDir: configDir });
-  session.importMessages(convertPiMessages(tail).anthropicMessages);
+  session.importMessages(convertPiMessages(tail, model).anthropicMessages);
   const kept = records.slice(0, end + 1).map((r) => r.sessionId ? { ...r, sessionId: session.sessionId } : r);
   const imported = session.records.map((r, index) => index === 0 ? { ...r, parentUuid: cut } : r);
   writeFileSync(session.jsonlPath, [...kept, ...imported].map((r) => JSON.stringify(r) + "\n").join(""), { flag: "wx" });
@@ -610,7 +610,7 @@ export function createClaudeBridge(options: {
       owner.history = structuredClone(messages);
       owner.expect = owner.main && !delta.some(isInput) ? { ids: new Set(results.map((m) => m.toolCallId)), prefix: incoming, gap: false } : undefined;
       // The stdin write must precede releasing MCP results, so steering reaches this turn.
-      for (const message of convertPiMessages(delta.filter(isInput)).anthropicMessages) {
+      for (const message of convertPiMessages(delta.filter(isInput), owner.model.id).anthropicMessages) {
         await owner.input.push(userMessage(message.content as any, "next"));
       }
       owner.ids.clear();
@@ -664,14 +664,14 @@ export function createClaudeBridge(options: {
         options.trace?.("prefix: Pi history changed after a resume point");
       } else if (history.length) {
         const session = createSession({ projectPath: cwd, model: model.id, claudeDir: request.env?.CLAUDE_CONFIG_DIR });
-        const { anthropicMessages } = convertPiMessages(history);
+        const { anthropicMessages } = convertPiMessages(history, model.id);
         session.importMessages(anthropicMessages);
         session.save();
         resume = session.sessionId;
         options.trace?.("rebuild: Pi history changed or no saved session");
       } else options.trace?.("start: empty history");
     }
-    const { anthropicMessages } = convertPiMessages(promptMessages);
+    const { anthropicMessages } = convertPiMessages(promptMessages, model.id);
     if (anthropicMessages.some((m) => m.role !== "user")) throw new Error("Claude Code resume suffix contains non-user history");
     const prompt = anthropicMessages.flatMap((m) => typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content);
     const input = makePromptStream();

@@ -725,8 +725,17 @@ test("an empty tool result is imported with Claude Code's no-output placeholder"
   const { anthropicMessages } = convertPiMessages([
     { role: "assistant", provider: "claude-code", content: [{ type: "toolCall", id: "call-a", name: "bash", arguments: {} }] },
     { role: "toolResult", toolCallId: "call-a", toolName: "bash", content: [], isError: true },
-  ]);
+  ], "claude-sonnet-5-5");
   assert.deepEqual(anthropicMessages[1].content, [{ type: "tool_result", tool_use_id: "call-a", content: "(mcp__pi__bash completed with no output)", is_error: true }]);
+});
+
+test("thinking keeps its signature only for the model that signed it", async () => {
+  const { convertPiMessages } = await jiti.import(join(CUSTOM, "claude/convert.ts"));
+  const answer = (model) => ({ role: "assistant", provider: "claude-code", model, content: [
+    { type: "thinking", thinking: "plan", thinkingSignature: "signed" }, { type: "text", text: "done" }] });
+  const { anthropicMessages } = convertPiMessages([user("a"), answer("claude-sonnet-5-5"), user("b"), answer("claude-opus-5-5"), user("c")], "claude-opus-5-5");
+  assert.deepEqual(anthropicMessages[1].content, [{ type: "text", text: "done" }]);
+  assert.deepEqual(anthropicMessages[3].content, [{ type: "thinking", thinking: "plan", signature: "signed" }, { type: "text", text: "done" }]);
 });
 
 test("/tree, a restart and a fork resume an earlier point instead of rebuilding", { timeout: 10000 }, async (t) => {
