@@ -218,8 +218,8 @@ export class Assistant {
   }
   async text(chat, text) { await this.api("sendMessage", { chat_id: chat, text }); }
   async recover() {
-    for (const [chat, message] of Object.entries(this.state.running)) {
-      await this.text(chat, `⚠️ 上次任务（消息 ${message.message_id}）已中断，不会自动重做。需要继续时请发消息。`).catch(this.log);
+    for (const chat of Object.keys(this.state.running)) {
+      await this.text(chat, "⚠️ 上次任务已中断。需要继续时请重新发送。").catch(this.log);
       delete this.state.running[chat];
       this.save();
     }
@@ -306,7 +306,7 @@ export class Assistant {
         await run.done;
       } catch (error) {
         this.log(error);
-        if (!this.closing && !active.stopped) await this.text(chat, "🔴 处理失败，不会自动重做。请重新发消息，或用 /logs 查看错误。").catch(this.log);
+        if (!this.closing && !active.stopped) await this.text(chat, "🔴 处理失败。请重新发送，或用 /logs 查看错误。").catch(this.log);
       } finally {
         await active.run?.close();
         active.run = undefined;
@@ -333,7 +333,7 @@ export class Assistant {
       return this.text(chat, text || "暂无日志。");
     }
     if (command === "/restart") {
-      await this.text(chat, "♻️ 正在重启。会话会保留，执行中的任务不会自动重做。");
+      await this.text(chat, "♻️ 正在重启。执行中的任务会中断，需要时请重新发送。");
       process.kill(process.pid, "SIGTERM");
       return;
     }
@@ -342,7 +342,7 @@ export class Assistant {
     this.state.pending = this.state.pending.filter((item) => String(item.chat.id) !== chat);
     this.save();
     await active?.run?.stop();
-    await this.text(chat, "🛑 已停止当前任务，并取消排队消息。会话保留。");
+    await this.text(chat, "🛑 已停止当前任务，并取消排队消息。");
   }
   async shutdown() {
     this.closing = true;

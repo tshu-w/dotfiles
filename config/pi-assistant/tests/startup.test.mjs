@@ -290,7 +290,7 @@ test("stop and shutdown cancel a /new in progress, which then reports nothing", 
       await idle(assistant);
       assert.equal(aborted, true);
       assert.equal(prompts.length, 0);
-      assert.deepEqual(calls.map((call) => call.args.text).filter(Boolean), ending === "stop" ? ["🛑 已停止当前任务，并取消排队消息。会话保留。"] : []);
+      assert.deepEqual(calls.map((call) => call.args.text).filter(Boolean), ending === "stop" ? ["🛑 已停止当前任务，并取消排队消息。"] : []);
     });
   }
 });
@@ -388,7 +388,7 @@ test("restart restores queued messages but never replays interrupted work", asyn
   await idle(assistant);
   assert.equal(prompts.length, 1);
   assert.match(prompts[0].message, /not started/);
-  assert.match(calls.find((call) => call.method === "sendMessage").args.text, /不会自动重做/);
+  assert.match(calls.find((call) => call.method === "sendMessage").args.text, /上次任务已中断/);
   assert.deepEqual(assistant.state.running, {});
 });
 
