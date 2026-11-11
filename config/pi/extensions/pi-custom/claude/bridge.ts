@@ -714,7 +714,8 @@ export function createClaudeBridge(options: {
     const sdkOptions: Options = {
       cwd, model: model.id, tools: [], mcpServers: tools.length ? { pi: server } : {},
       allowedTools: [...names.keys()], permissionMode: "dontAsk",
-      systemPrompt, includePartialMessages: true,
+      // Pi's text is sent as written: no "/" command dispatch and no "@path" file expansion.
+      systemPrompt, includePartialMessages: true, verbatimPrompts: true,
       settingSources: [], skills: [], settings: { autoMemoryEnabled: false, claudeMdExcludes: ["**/CLAUDE.md", "**/.claude/rules/**"] },
       env: { ...env,
         CLAUDE_CODE_MAX_RETRIES: "0",

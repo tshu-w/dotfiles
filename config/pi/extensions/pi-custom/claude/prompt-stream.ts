@@ -55,19 +55,10 @@ export function makePromptStream(): PromptStream {
   };
 }
 
-// Claude Code runs a prompt whose last text block starts with "/" as its own command, even with slash commands
-// disabled; a leading zero-width space keeps Pi's text a message to the model.
-const COMMAND = /^\s*\//;
-function literal(content: SDKUserMessage["message"]["content"]): SDKUserMessage["message"]["content"] {
-  if (typeof content === "string") return COMMAND.test(content) ? `\u200b${content}` : content;
-  const last = content.at(-1);
-  return last?.type === "text" && COMMAND.test(last.text) ? [...content.slice(0, -1), { ...last, text: `\u200b${last.text}` }] : content;
-}
-
 export function userMessage(content: SDKUserMessage["message"]["content"], priority?: SDKUserMessage["priority"]): SDKUserMessage {
   return {
     type: "user",
-    message: { role: "user", content: literal(content) } as SDKUserMessage["message"],
+    message: { role: "user", content } as SDKUserMessage["message"],
     parent_tool_use_id: null,
     ...(priority ? { priority } : {}),
   };

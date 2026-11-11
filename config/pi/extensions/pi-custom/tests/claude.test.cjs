@@ -935,18 +935,14 @@ test("a resume rejected before init retries by rebuilding, never at the same poi
   assert.equal(new Set(resumes).size, 3);
 });
 
-test("a prompt that looks like a Claude Code command reaches the model as text", { timeout: 10000 }, async (t) => {
+test("Pi's text reaches Claude Code verbatim, without command dispatch or file expansion", { timeout: 10000 }, async (t) => {
   const h = harness(t);
-  const first = h.stream([user("/cost")]);
+  const stream = h.stream([user("/cost @/etc/hosts")]);
   await until(() => h.calls.length === 1 && h.calls[0].prompts.length === 1);
-  assert.deepEqual(h.calls[0].prompts[0].message.content, [{ type: "text", text: "\u200b/cost" }]);
+  assert.equal(h.calls[0].options.verbatimPrompts, true);
+  assert.deepEqual(h.calls[0].prompts[0].message.content, [{ type: "text", text: "/cost @/etc/hosts" }]);
   h.calls[0].text("ok"); h.calls[0].finish();
-  const answer = await first.result();
-  const next = h.stream([user("/cost"), answer, user("see /cost above")]);
-  await until(() => h.calls.length === 2 && h.calls[1].prompts.length === 1);
-  assert.deepEqual(h.calls[1].prompts[0].message.content, [{ type: "text", text: "see /cost above" }]);
-  h.calls[1].text("ok"); h.calls[1].finish();
-  await next.result();
+  await stream.result();
 });
 
 test("refusals and safety stops end as errors Pi does not retry; a full context window ends as length", async (t) => {
