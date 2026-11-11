@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict");
 const { test, before } = require("node:test");
 const { execFileSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 const { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, utimesSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
-const { dirname, join } = require("node:path");
+const { dirname, join, relative } = require("node:path");
 const { pathToFileURL } = require("node:url");
 // Keep the once-per-process orphan cleanup away from the real state directory.
 globalThis[Symbol.for("pi-custom:claude-orphans-removed")] = true;
@@ -13,6 +14,7 @@ const PI_PACKAGE = join(PI_PREFIX, "libexec/lib/node_modules/@earendil-works/pi-
 const CUSTOM = join(__dirname, "..");
 const directory = mkdtempSync(join(tmpdir(), "pi-claude-test-"));
 process.env.CLAUDE_CONFIG_DIR = join(directory, "claude");
+process.env.XDG_STATE_HOME = join(directory, "state");
 const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"));
 const jiti = createJiti(__filename, {
   alias: {
@@ -694,29 +696,53 @@ test("a restored tool-gap point with only part of the batch interrupted rebuilds
   await next.result();
 });
 
+test("restoring legacy state records the absolute Pi session file path", async () => {
+  const { registerClaude } = await jiti.import(join(CUSTOM, "claude.ts"));
+  const id = "review-main", piSessionFile = join(directory, "relative-session.jsonl");
+  const stateDir = join(process.env.XDG_STATE_HOME, "pi", "claude-bridge");
+  mkdirSync(stateDir, { recursive: true });
+  const path = join(stateDir, `${createHash("sha256").update(id).digest("hex")}.json`);
+  writeFileSync(path, JSON.stringify({ piSessionId: id, sessionId: "fixture-cc", cwd: directory, prefix: [] }));
+  writeFileSync(piSessionFile, "");
+  const handlers = new Map();
+  registerClaude({ registerProvider() {}, on: (name, handler) => handlers.set(name, handler) });
+  const ctx = { cwd: directory, sessionManager: { getSessionId: () => id, getSessionFile: () => relative(process.cwd(), piSessionFile) } };
+  handlers.get("session_start")({ reason: "startup" }, ctx);
+  const stored = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(stored.piSessionFile, piSessionFile);
+  assert.equal(stored.sessionId, "fixture-cc");
+  assert.equal(stored.size, 0);
+  assert.equal(stored.points[0].piSessionFile, undefined);
+  handlers.get("session_shutdown")();
+});
+
 test("state of deleted Pi sessions is removed with a Claude Code session no other state uses", async () => {
   const { removeOrphanedStates } = await jiti.import(join(CUSTOM, "claude.ts"));
-  const root = mkdtempSync(join(tmpdir(), "pi-claude-orphans-")), sessionsDir = join(root, "sessions"), stateDir = join(root, "state");
-  mkdirSync(join(sessionsDir, "--cwd--", "subagents"), { recursive: true }); mkdirSync(stateDir);
+  const root = mkdtempSync(join(tmpdir(), "pi-claude-orphans-")), stateDir = join(root, "state");
+  mkdirSync(join(root, "custom-sessions"), { recursive: true }); mkdirSync(stateDir);
   const live = "01a00000-0000-7000-8000-00000000000a";
-  writeFileSync(join(sessionsDir, "--cwd--", "subagents", `2026-11-01T00-00-00-000Z_${live}.jsonl`), "");
+  const liveFile = join(root, "custom-sessions", `2026-11-01T00-00-00-000Z_${live}.jsonl`);
+  const namedFile = join(root, "2026-11-01T00-00-00-000Z_review-main.jsonl");
+  writeFileSync(liveFile, ""); writeFileSync(namedFile, "");
   const cc = (id) => { const s = sessions.createSession({ projectPath: directory, sessionId: id }); s.addUserMessage("x"); s.save(); return sessions.getSessionPath(id, directory); };
   const [shared, own, recent, parent] = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"].map((id) => ({ id, path: cc(id) }));
   const now = Date.now(), old = new Date(now - 120_000);
-  const state = (name, piSessionId, sessionId, mtime = old, points = []) => {
+  const state = (name, piSessionId, sessionId, mtime = old, points = [], piSessionFile = join(root, `${piSessionId}.jsonl`)) => {
     const path = join(stateDir, `${name}.json`);
-    writeFileSync(path, JSON.stringify({ piSessionId, sessionId, cwd: directory, size: 0, tip: "", points }));
+    writeFileSync(path, JSON.stringify({ piSessionId, piSessionFile: piSessionFile ?? undefined, sessionId, cwd: directory, size: 0, tip: "", points }));
     utimesSync(path, mtime, mtime);
     return path;
   };
   // The live Session was forked from a deleted one and still holds a point into its CC session.
-  const kept = state("live", live, shared.id, old, [{ piSessionId: "01a00000-0000-7000-8000-00000000000e", sessionId: parent.id, cwd: directory, size: 1, tip: "t" }]);
+  const kept = state("live", live, shared.id, old, [{ piSessionId: "01a00000-0000-7000-8000-00000000000e", sessionId: parent.id, cwd: directory, size: 1, tip: "t" }], liveFile);
+  const named = state("named", "review-main", shared.id, old, [], namedFile);
+  const legacy = state("legacy", "legacy-id", recent.id, old, [], null);
   const forkedFrom = state("parent", "01a00000-0000-7000-8000-00000000000e", parent.id);
   const sharing = state("sharing", "01a00000-0000-7000-8000-00000000000b", shared.id);
   const orphan = state("orphan", "01a00000-0000-7000-8000-00000000000c", own.id);
   const fresh = state("fresh", "01a00000-0000-7000-8000-00000000000d", recent.id, new Date(now));
-  removeOrphanedStates(sessionsDir, stateDir, now);
-  assert.deepEqual([kept, sharing, orphan, fresh, forkedFrom].map(existsSync), [true, false, false, true, false]);
+  removeOrphanedStates(stateDir, now);
+  assert.deepEqual([kept, named, legacy, sharing, orphan, fresh, forkedFrom].map(existsSync), [true, true, true, false, false, true, false]);
   assert.deepEqual([shared.path, own.path, recent.path, parent.path].map(existsSync), [true, false, true, true]);
 });
 

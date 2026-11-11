@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getSessionPath } from "cc-session-io";
 import { createClaudeBridge, type BridgeState } from "./claude/bridge.js";
 import { PROVIDER_ID } from "./claude/convert.js";
@@ -15,39 +15,45 @@ function statePath(piSessionId: string): string {
   return join(STATE_DIR, `${createHash("sha256").update(piSessionId).digest("hex")}.json`);
 }
 
-function saveState(state: BridgeState) {
+type StoredState = BridgeState & { piSessionFile?: string };
+
+function saveState(state: BridgeState, piSessionFile: string | undefined) {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
   const path = statePath(state.piSessionId), temp = `${path}.${process.pid}.tmp`;
-  writeFileSync(temp, JSON.stringify(state), { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ ...state, piSessionFile: piSessionFile ? resolve(piSessionFile) : undefined }), { mode: 0o600 });
   renameSync(temp, path);
 }
 
 function loadState(piSessionId: string): BridgeState | undefined {
   try {
-    return JSON.parse(readFileSync(statePath(piSessionId), "utf8"));
+    const { piSessionFile: _file, ...state } = JSON.parse(readFileSync(statePath(piSessionId), "utf8")) as StoredState;
+    return state;
   } catch {
     return undefined;
   }
 }
 
-// Remove the state of Pi sessions whose session file is gone, with the Claude Code session it
-// pointed to unless another state still uses it. A state written in the last minute may belong to a
-// session whose file Pi has not flushed yet. Older Claude Code sessions are left to Claude Code's expiry.
-export function removeOrphanedStates(sessionsDir = join(getAgentDir(), "sessions"), stateDir = STATE_DIR, now = Date.now()) {
-  const live = new Set<string>();
-  for (const name of readdirSync(sessionsDir, { recursive: true }) as string[]) {
-    const id = /_([0-9a-f-]{36})\.jsonl$/.exec(name)?.[1];
-    if (id) live.add(id);
-  }
+// Remove state only when its recorded Pi session file is gone; legacy states without a path stay.
+// A state written in the last minute may belong to a session whose file Pi has not flushed yet.
+// Keep Claude Code sessions another state still uses; older ones are left to Claude Code's expiry.
+export function removeOrphanedStates(stateDir = STATE_DIR, now = Date.now()) {
   const states = readdirSync(stateDir).filter((name) => name.endsWith(".json")).flatMap((name) => {
     const path = join(stateDir, name);
     try {
-      return [{ path, state: JSON.parse(readFileSync(path, "utf8")) as BridgeState, mtime: statSync(path).mtimeMs }];
+      return [{ path, state: JSON.parse(readFileSync(path, "utf8")) as StoredState, mtime: statSync(path).mtimeMs }];
     } catch {
       return [];
     }
   });
-  const orphaned = states.filter(({ state, mtime }) => !live.has(state.piSessionId) && now - mtime > 60_000);
+  const orphaned = states.filter(({ state, mtime }) => {
+    if (!state.piSessionFile || now - mtime <= 60_000) return false;
+    try {
+      statSync(state.piSessionFile);
+      return false;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    }
+  });
   // A forked Session's state may point into its parent's Claude Code session.
   const sessions = (state: BridgeState) => [state, ...state.points ?? []].flatMap((point) => point.sessionId ? [point] : []);
   const kept = new Set(states.filter((entry) => !orphaned.includes(entry)).flatMap(({ state }) => sessions(state).map((point) => point.sessionId)));
@@ -86,7 +92,7 @@ export function registerClaude(pi: ExtensionAPI) {
   const bridge = createClaudeBridge({
     cwd: () => context!.cwd,
     sessionId: () => context!.sessionManager.getSessionId(),
-    save: saveState,
+    save: (state) => saveState(state, context!.sessionManager.getSessionFile()),
     clear: () => rmSync(statePath(context!.sessionManager.getSessionId()), { force: true }),
     // Agents forked with the caller's context start from the caller's CC session.
     forkSources: () => [...bridges.values()].filter((other) => other !== bridge).flatMap((other) => other.points()),
