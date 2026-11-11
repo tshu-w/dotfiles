@@ -7,7 +7,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
-import { Assistant, commandPreview, payloadFor, piArgs, PiRun, ProgressReporter, ProgressState, promptFor } from "../startup.mjs";
+import { Assistant, commandPreview, payloadFor, piArgs, PiRun, ProgressReporter, ProgressState, promptFor, runPd } from "../startup.mjs";
 
 function mockChild(onInput = () => {}) {
   const child = new EventEmitter();
@@ -100,11 +100,13 @@ function offlinePd(t) {
   for (const key of Object.keys(env)) if (/_API_KEY$|_TOKEN$|^PI_SESSION_|^PI_AGENTS_HOST|^PI_CODING_AGENT_SESSION_DIR$/.test(key)) delete env[key];
   const calls = [];
   const systemPrompts = [];
+  const offline = ["--offline", "--model", "offline/unreachable"];
   const assistant = new Assistant({
-    stateFile: path.join(directory, "state.json"), mainsFile: path.join(agentsDir, "main.json"), allowedUsers: [1], progressDelay: 60000, log: () => {},
+    stateFile: path.join(directory, "state.json"), allowedUsers: [1], progressDelay: 60000, log: () => {},
     api: async (method, args) => { calls.push({ method, args }); return { message_id: 100 }; },
+    pd: (args, signal) => runPd(args.includes("--new") ? [...args, ...offline] : args, env, signal),
     createPi: (chat, message, onEvent) => {
-      const child = spawn("pd", [...piArgs(chat), "--offline", "--model", "offline/unreachable"], { cwd: homedir(), env, stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn("pd", [...piArgs(chat), ...offline], { cwd: homedir(), env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.resume();
       child.stdin.end(message);
       return new PiRun(child, (event) => {
@@ -113,25 +115,29 @@ function offlinePd(t) {
       });
     },
   });
-  return { assistant, calls, systemPrompts };
+  const sessions = path.join(agentDir, "sessions");
+  const sessionFile = (id) => path.join(sessions, readdirSync(sessions, { recursive: true }).find((file) => file.endsWith(`_${id}.jsonl`)));
+  return { assistant, calls, systemPrompts, sessionFile };
 }
 
 test("real pd keeps a chat in its home-directory main Agent named after its entry with Milo's resources, also after /new", { timeout: 120000 }, async (t) => {
-  const { assistant, calls, systemPrompts } = offlinePd(t);
+  const { assistant, calls, systemPrompts, sessionFile } = offlinePd(t);
   const entries = (file) => readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   const name = (file) => entries(file).findLast((entry) => entry.type === "session_info")?.name;
   const texts = (file) => entries(file).filter((entry) => entry.type === "message" && entry.message.role === "user")
     .map((entry) => parsePrompt(entry.message.content[0].text).text);
   assistant.accept([update(1, "first"), update(2, "second")]);
   await idle(assistant);
-  const first = assistant.mainSession("123");
+  const firstId = await assistant.mainSession("123");
+  const first = sessionFile(firstId);
   assert.equal(name(first), "telegram:123");
   assert.deepEqual(texts(first), ["first", "second"]);
   assistant.accept([update(3, "/new"), update(4, "third")]);
   const prompted = systemPrompts.length;
   await idle(assistant);
-  const second = assistant.mainSession("123");
-  assert.notEqual(second, first);
+  const secondId = await assistant.mainSession("123");
+  assert.notEqual(secondId, firstId);
+  const second = sessionFile(secondId);
   assert.equal(entries(second)[0].cwd, homedir());
   const prompt = JSON.parse(systemPrompts.at(-1)).sections;
   assert.ok(systemPrompts.length > prompted);
@@ -143,7 +149,7 @@ test("real pd keeps a chat in its home-directory main Agent named after its entr
   assert.ok(calls.some((call) => call.method === "sendMessage" && /已开启新会话/.test(call.args.text)));
   assistant.accept([update(5, "/status")]);
   await idle(assistant);
-  assert.ok(calls.at(-1).args.text.includes(`会话: ${path.basename(second, ".jsonl").split("_").at(-1)}`));
+  assert.ok(calls.at(-1).args.text.includes(`会话: ${secondId}`));
 });
 
 test("progress preserves phases and steps and redacts bash command previews", () => {
@@ -162,26 +168,33 @@ function fixture(t, run = async () => {}) {
   const calls = [];
   const prompts = [];
   const runs = [];
-  const mainsFile = path.join(directory, "main.json");
-  const mains = () => existsSync(mainsFile) ? JSON.parse(readFileSync(mainsFile, "utf8")) : {};
+  const pds = [];
+  // As pd main: a message without a session, or --new, starts the entry's next session.
+  const mains = {};
+  let sessions = 0;
   const assistant = new Assistant({
-    stateFile: path.join(directory, "state.json"), mainsFile, allowedUsers: [1], progressDelay: 60000,
+    stateFile: path.join(directory, "state.json"), allowedUsers: [1], progressDelay: 60000,
     log: (error) => { throw error; },
     api: async (method, args) => { calls.push({ method, args }); return { message_id: 100 }; },
-    // As pd main: a message without an entry creates the entry's session.
+    pd: async (args) => {
+      pds.push(args);
+      const entry = args[args.indexOf("--name") + 1];
+      if (args.includes("--new")) mains[entry] = `session-${sessions++}`;
+      return args.includes("--id") && !mains[entry] ? { code: 1, stdout: "", stderr: "" } : { code: 0, stdout: args.includes("--id") ? `${mains[entry]}\n` : "", stderr: "" };
+    },
     createPi: (chat, message, onEvent) => {
       const entry = `telegram:${chat}`;
-      if (!mains()[entry]) writeFileSync(mainsFile, JSON.stringify({ ...mains(), [entry]: `session-${runs.length}` }));
+      mains[entry] ??= `session-${sessions++}`;
       const pi = { stopped: false };
       pi.stop = async () => { pi.stopped = true; pi.finish?.(); };
       pi.close = async () => {};
-      prompts.push({ message, sessionId: mains()[entry] });
+      prompts.push({ message, sessionId: mains[entry] });
       pi.done = run(pi, message, onEvent);
       runs.push(pi);
       return pi;
     },
   });
-  return { assistant, calls, prompts, runs, mainsFile };
+  return { assistant, calls, prompts, runs, pds };
 }
 const update = (id, text, extra = {}, chat = 123) => ({ update_id: id, message: { message_id: id, text, from: { id: 1 }, chat: { id: chat, type: "private" }, ...extra } });
 async function idle(assistant) {
@@ -248,14 +261,38 @@ test("accepted messages and offset are saved together; unauthorized updates are 
   assert.equal(prompts.length, 1);
 });
 
-test("manual new removes only the chat's entry so the next message starts a new session", async (t) => {
-  const { assistant, prompts, calls, mainsFile } = fixture(t);
-  writeFileSync(mainsFile, JSON.stringify({ main: "other" }));
-  assistant.accept([update(1, "/new"), update(2, "first"), update(3, "/new", { reply_to_message: { message_id: 2 } }), update(4, "second")]);
+test("manual new starts the chat's next session with pd main --new, and status shows its ID", async (t) => {
+  const { assistant, prompts, calls, pds } = fixture(t);
+  assistant.accept([update(1, "/status")]);
+  await idle(assistant);
+  assert.match(calls.at(-1).args.text, /会话: 尚未开始/);
+  assistant.accept([update(2, "first"), update(3, "/new", { reply_to_message: { message_id: 2 } }), update(4, "second")]);
   await idle(assistant);
   assert.deepEqual(prompts.map((prompt) => prompt.sessionId), ["session-0", "session-1"]);
-  assert.deepEqual(JSON.parse(readFileSync(mainsFile, "utf8")), { main: "other", "telegram:123": "session-1" });
-  assert.equal(calls.filter((call) => call.method === "sendMessage" && /已开启新会话/.test(call.args.text)).length, 2);
+  assert.deepEqual(pds.at(-1), [...piArgs("123"), "--new"]);
+  assert.equal(calls.filter((call) => call.method === "sendMessage" && /已开启新会话/.test(call.args.text)).length, 1);
+  assistant.accept([update(5, "/status")]);
+  await idle(assistant);
+  assert.deepEqual(pds.at(-1), ["main", "--name", "telegram:123", "--id"]);
+  assert.match(calls.at(-1).args.text, /会话: session-1\n/);
+});
+
+test("stop and shutdown cancel a /new in progress, which then reports nothing", async (t) => {
+  for (const ending of ["stop", "shutdown"]) {
+    await t.test(ending, async (t) => {
+      const { assistant, calls, prompts } = fixture(t);
+      let aborted = false;
+      assistant.pd = (args, signal) => new Promise((resolve) => signal.addEventListener("abort", () => { aborted = true; resolve({ code: null, stdout: "", stderr: "" }); }));
+      assistant.accept([update(1, "/new"), update(2, "queued")]);
+      await new Promise(setImmediate);
+      if (ending === "stop") assistant.accept([update(3, "/stop")]);
+      else await assistant.shutdown();
+      await idle(assistant);
+      assert.equal(aborted, true);
+      assert.equal(prompts.length, 0);
+      assert.deepEqual(calls.map((call) => call.args.text).filter(Boolean), ending === "stop" ? ["🛑 已停止当前任务，并取消排队消息。会话保留。"] : []);
+    });
+  }
 });
 
 test("stop terminates active work, cancels queued messages and retains the session", async (t) => {

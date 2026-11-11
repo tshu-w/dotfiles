@@ -57,6 +57,16 @@ export const piArgs = (chat) => ["main", "--name", `telegram:${chat}`, "--mode",
   "--append-system-prompt", path.join(root, "milo.md"), "--skill", path.join(root, "skills/telegram"),
   ...["env.ts", "model-fallback.ts"].flatMap((file) => ["--extension", path.join(root, "extensions", file)])];
 
+// Runs `pd` without input, for its output and exit code; `signal` terminates it, and it resolves once pd has exited.
+export const runPd = (args, env, signal) => new Promise((resolve, reject) => {
+  const child = spawn("pd", args, { cwd: homedir(), env, stdio: ["ignore", "pipe", "pipe"], signal });
+  let stdout = "", stderr = "";
+  child.stdout.on("data", (data) => { stdout += data; });
+  child.stderr.on("data", (data) => { stderr += data; });
+  child.on("error", (error) => { if (error.name !== "AbortError") reject(error); });
+  child.on("close", (code) => resolve({ code, stdout, stderr }));
+});
+
 // One `pd` client per message: the prompt goes to stdin and progress arrives as JSON events.
 export class PiRun {
   constructor(child, onEvent = () => {}, killTimeoutMs = 5000) {
@@ -186,9 +196,9 @@ export class ProgressReporter {
 }
 
 export class Assistant {
-  constructor({ stateFile, mainsFile, api, allowedUsers, createPi, log = console.error, progressDelay = 1000 }) {
+  constructor({ stateFile, api, allowedUsers, createPi, pd, log = console.error, progressDelay = 1000 }) {
     this.stateFile = stateFile;
-    this.mainsFile = mainsFile;
+    this.pd = pd;
     this.api = api;
     this.allowedUsers = new Set(allowedUsers);
     this.createPi = createPi;
@@ -250,19 +260,15 @@ export class Assistant {
       });
     }
   }
-  // The chat's session file, as pi-agents records it in main.json.
-  mainSession(chat) {
-    return existsSync(this.mainsFile) ? JSON.parse(readFileSync(this.mainsFile, "utf8"))[`telegram:${chat}`] : undefined;
+  // The chat's session ID; `pd main --id` exits with 1 when the entry has none.
+  async mainSession(chat) {
+    const { code, stdout } = await this.pd(["main", "--name", `telegram:${chat}`, "--id"]);
+    return code === 0 ? stdout.trim() : undefined;
   }
-  // Without an entry, the next `pd main` starts a new session and pi-agents records it; the old host idles out.
-  // pi-agents rewrites main.json too, so it is read right before being replaced at once.
-  newSession(chat) {
-    if (!this.mainSession(chat)) return;
-    const mains = JSON.parse(readFileSync(this.mainsFile, "utf8"));
-    delete mains[`telegram:${chat}`];
-    const temporary = `${this.mainsFile}.${process.pid}`;
-    writeFileSync(temporary, JSON.stringify(mains), { mode: 0o600 });
-    renameSync(temporary, this.mainsFile);
+  // Starts the chat's next session with Milo's options, without a message; later `pd main` uses it and the old host idles out.
+  async newSession(chat, signal) {
+    const { code, stderr } = await this.pd([...piArgs(chat), "--new"], signal);
+    if (code !== 0) throw new Error(`pd main --new exited (${code}): ${stderr.trim()}`);
   }
   async processChat(chat, active) {
     while (!this.closing && !active.stopped) {
@@ -271,8 +277,16 @@ export class Assistant {
       const [message] = this.state.pending.splice(index, 1);
       if (this.command(message) === "/new") {
         this.save();
-        this.newSession(chat);
-        await this.text(chat, "🆕 已开启新会话。后续消息会沿用它。").catch(this.log);
+        // Stoppable like a message run, by /stop and shutdown, which then report nothing.
+        const controller = new AbortController();
+        const done = this.newSession(chat, controller.signal);
+        active.run = { stop: () => { controller.abort(); return done.catch(() => {}); } };
+        let failure;
+        try { await done; } catch (error) { failure = error; }
+        active.run = undefined;
+        if (this.closing || active.stopped) break;
+        if (failure) this.log(failure);
+        await this.text(chat, failure ? "🔴 开启新会话失败。请重试，或用 /logs 查看错误。" : "🆕 已开启新会话。后续消息会沿用它。").catch(this.log);
         continue;
       }
       this.state.running[chat] = message;
@@ -311,7 +325,7 @@ export class Assistant {
     if (command === "/ping") return this.text(chat, "🏓 Pong!");
     if (command === "/help") return this.text(chat, "/ping — 检查状态\n/status — 运行与会话信息\n/new — 手动开启新会话（当前任务结束后按顺序执行）\n/stop — 停止当前任务，并取消本聊天排队消息\n/logs — 最近服务日志\n/restart — 重启服务，保留会话\n/help — 帮助");
     if (command === "/status") {
-      return this.text(chat, `状态: ${this.active.has(chat) ? "运行中" : "空闲"}\n会话: ${this.mainSession(chat)?.match(/_([^_]+)\.jsonl$/)?.[1] || "尚未开始"}\n排队消息: ${this.state.pending.filter((item) => String(item.chat.id) === chat).length}`);
+      return this.text(chat, `状态: ${this.active.has(chat) ? "运行中" : "空闲"}\n会话: ${await this.mainSession(chat) || "尚未开始"}\n排队消息: ${this.state.pending.filter((item) => String(item.chat.id) === chat).length}`);
     }
     if (command === "/logs") {
       const logFile = path.join(path.dirname(this.stateFile), "pi-assistant.log");
@@ -365,12 +379,12 @@ export async function main() {
     return;
   }
   const agentDir = path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "pi");
-  const agentsDir = process.env.PI_AGENTS_STATE_DIR || path.join(process.env.XDG_STATE_HOME || path.join(homedir(), ".local/state"), "pi/agents");
+  const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
+  for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
   const assistant = new Assistant({
-    stateFile: path.join(stateDir, "state.json"), mainsFile: path.join(agentsDir, "main.json"), api, allowedUsers, log,
+    stateFile: path.join(stateDir, "state.json"), api, allowedUsers, log,
+    pd: (args, signal) => runPd(args, env, signal),
     createPi: (chat, message, onEvent) => {
-      const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
-      for (const key of Object.keys(env)) if (key.startsWith("PI_SESSION_")) delete env[key];
       const child = spawn("pd", piArgs(chat), { cwd: homedir(), env, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.setEncoding("utf8");
       // pd warns on every message to a running host that it keeps the host's options.
