@@ -2,6 +2,9 @@ import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 
 export const USAGE_CREDITS_ERROR = "Claude Code billing: this provider only allows subscription usage. Some requests may already have been charged. Check claude.ai/settings/usage and ensure usage credits are disabled, then reload Pi before retrying.";
 
+/** A turn the model ended on purpose, such as a refusal; retrying the same request does not help. */
+export class ClaudeStop extends Error {}
+
 export function normalizeClaudeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith(USAGE_CREDITS_ERROR) || message.startsWith("Claude Code quota exceeded") || message.startsWith("context_length_exceeded:")) return message;
@@ -29,6 +32,7 @@ export function typedClaudeError(type: string, detail: string, limitRejected: bo
 /** A running query's failure that is neither named (a typed error or a stream the bridge cannot convert)
  *  nor a quota, billing or context error is transient: a dropped connection, a process exit or an incomplete stream. */
 export function queryError(error: unknown): string {
+  if (error instanceof ClaudeStop) return error.message;
   const message = normalizeClaudeError(error);
   return /^(?:Claude Code(?:: | billing| quota exceeded)|context_length_exceeded:)/.test(message) ? message : `Claude Code: server_error\n${message}`;
 }

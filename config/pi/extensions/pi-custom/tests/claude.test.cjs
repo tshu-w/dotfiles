@@ -924,6 +924,60 @@ test("a resume rejected before init retries by rebuilding, never at the same poi
   assert.equal(new Set(resumes).size, 3);
 });
 
+test("refusals and safety stops end as errors Pi does not retry; a full context window ends as length", async (t) => {
+  const h = harness(t);
+  const stopWith = async (reason, details) => {
+    const response = h.stream([user(reason)]);
+    const index = h.calls.length;
+    await until(() => h.calls.length === index + 1);
+    const q = h.calls[index];
+    q.begin();
+    q.event({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
+    q.event({ type: "content_block_stop", index: 0 });
+    q.event({ type: "message_delta", delta: { stop_reason: reason, ...details && { stop_details: details } }, usage: { output_tokens: 1 } });
+    q.event({ type: "message_stop" });
+    q.finish();
+    return response.result();
+  };
+  const refused = await stopWith("refusal", { type: "refusal", explanation: "This request asks for harmful content." });
+  assert.equal(refused.stopReason, "error");
+  assert.equal(refused.errorMessage, "Claude declined to answer: This request asks for harmful content. Rephrase the request or choose another model.");
+  assert.equal(ai.isRetryableAssistantError(refused), false);
+  const retryWords = await stopWith("refusal", { type: "refusal", explanation: "I cannot help bypass rate limits." });
+  assert.equal(retryWords.errorMessage, "Claude declined to answer this request. Rephrase the request or choose another model.");
+  assert.equal(ai.isRetryableAssistantError(retryWords), false);
+  const bare = await stopWith("refusal");
+  assert.equal(bare.errorMessage, "Claude declined to answer this request. Rephrase the request or choose another model.");
+  const flagged = await stopWith("sensitive");
+  assert.equal(flagged.errorMessage, "Claude stopped because a safety filter flagged the content. Rephrase the request or choose another model.");
+  assert.equal(ai.isRetryableAssistantError(flagged), false);
+  assert.equal((await stopWith("model_context_window_exceeded")).stopReason, "length");
+});
+
+test("Pi's timeout ends a silent Claude Code, but never inside an API message or the tool gap", { timeout: 10000 }, async (t) => {
+  const h = harness(t);
+  const silent = h.stream([user("hang")], { timeoutMs: 50 });
+  await until(() => h.calls.length === 1);
+  const timedOut = await silent.result();
+  assert.equal(timedOut.errorMessage, "Claude Code timed out: no response for 0 seconds. Pi retries automatically; if this keeps happening, check your network connection.");
+  assert.equal(ai.isRetryableAssistantError(timedOut), true);
+  // A long silence inside an API message (thinking) and in the tool gap is left alone.
+  const thinking = h.stream([user("think")], { timeoutMs: 50 });
+  await until(() => h.calls.length === 2);
+  const q = h.calls[1];
+  q.begin();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  q.event({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call-a", name: "mcp__pi__echo", input: {} } });
+  q.event({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{}" } });
+  q.event({ type: "content_block_stop", index: 0 });
+  q.event({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 5 } });
+  q.event({ type: "message_stop" });
+  const toolUse = await thinking.result();
+  assert.equal(toolUse.stopReason, "toolUse");
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(q.closed, false);
+});
+
 test("context errors enable compaction instead of retrying unchanged history", async (t) => {
   const h = harness(t), stream = h.stream([user("large")]);
   await until(() => h.calls.length === 1);

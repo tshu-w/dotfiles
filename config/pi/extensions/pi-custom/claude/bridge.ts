@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { query, type Query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { createSession, getSessionPath } from "cc-session-io";
 import {
-  calculateCost, createAssistantMessageEventStream, getInitialSystemMessage, getSystemMessageText, getCurrentTools, resolveTranscript,
+  calculateCost, createAssistantMessageEventStream, getInitialSystemMessage, getSystemMessageText, getCurrentTools, isRetryableAssistantError, resolveTranscript,
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { convertPiMessages } from "./convert.js";
@@ -11,7 +11,7 @@ import { createToolServer } from "./mcp-server.js";
 import { makePromptStream, userMessage, type PromptStream } from "./prompt-stream.js";
 import { toolResultToMcpContent, type McpResult } from "./extract-tool-results.js";
 import { buildClaudeSystemPrompt } from "./system-prompt.js";
-import { normalizeClaudeError, queryError, subscriptionEnvironment, typedClaudeError, USAGE_CREDITS_ERROR } from "./subscription.js";
+import { ClaudeStop, normalizeClaudeError, queryError, subscriptionEnvironment, typedClaudeError, USAGE_CREDITS_ERROR } from "./subscription.js";
 
 export interface ClaudeSession {
   piSessionId: string;
@@ -204,6 +204,12 @@ interface RunningQuery {
   // The point a prefix session was cut at; a rejected load stops later requests from cutting there.
   cut?: ClaudeSession;
   limitRejected?: boolean;
+  // A refusal or safety stop of the current turn, reported when its result arrives.
+  stopError?: string;
+  // Inside an API message, whose silence Claude Code's own stream timeout covers.
+  streaming?: boolean;
+  timeoutMs?: number;
+  watchdog?: ReturnType<typeof setTimeout>;
   requester?: string;
   // Set for a fork of the main CC session; its session file is removed when the query ends.
   fork?: { configDir?: string; sessionId?: string };
@@ -278,6 +284,16 @@ export function createClaudeBridge(options: {
     }
     q.stream.end();
     q.stream = undefined;
+    watch(q);
+  }
+
+  // Pi's request timeout bounds Claude Code's silence while Pi waits, outside an API message and the tool gap.
+  function watch(q: RunningQuery) {
+    clearTimeout(q.watchdog);
+    if (!q.stream || q.streaming || !q.timeoutMs || q.stopped) return;
+    const seconds = Math.round(q.timeoutMs / 1000);
+    q.watchdog = setTimeout(() => stop(q, new Error(`Claude Code timed out: no response for ${seconds} seconds. Pi retries automatically; if this keeps happening, check your network connection.`)), q.timeoutMs);
+    q.watchdog.unref?.();
   }
 
   function release(q: RunningQuery, reason: string, interrupt = false) {
@@ -350,8 +366,10 @@ export function createClaudeBridge(options: {
     release(q, error.message, true);
   }
 
-  function attach(q: RunningQuery, stream: AssistantMessageEventStream, signal?: AbortSignal) {
+  function attach(q: RunningQuery, stream: AssistantMessageEventStream, signal?: AbortSignal, timeoutMs?: number) {
     q.removeAbort?.();
+    q.timeoutMs = timeoutMs;
+    q.stopError = undefined;
     q.output = outputFor(q.model);
     q.stream = stream;
     q.blocks.clear();
@@ -363,6 +381,7 @@ export function createClaudeBridge(options: {
     signal?.addEventListener("abort", abort, { once: true });
     q.removeAbort = () => signal?.removeEventListener("abort", abort);
     if (signal?.aborted) abort();
+    watch(q);
   }
 
   function usage(q: RunningQuery, value: any) {
@@ -440,7 +459,15 @@ export function createClaudeBridge(options: {
     } else if (event.type === "message_delta") {
       usage(q, event.usage);
       const reason = event.delta?.stop_reason;
-      if (reason) q.output.stopReason = reason === "tool_use" ? "toolUse" : reason === "max_tokens" ? "length" : "stop";
+      if (reason) q.output.stopReason = reason === "tool_use" ? "toolUse" : reason === "max_tokens" || reason === "model_context_window_exceeded" ? "length" : "stop";
+      if (reason === "refusal") {
+        const fixed = "Claude declined to answer this request. Rephrase the request or choose another model.";
+        const explained = `Claude declined to answer: ${event.delta.stop_details?.explanation} Rephrase the request or choose another model.`;
+        // The model's own words must not read as a transient failure to Pi's retry rules.
+        q.stopError = event.delta.stop_details?.explanation && !isRetryableAssistantError({ ...q.output, stopReason: "error", errorMessage: explained }) ? explained : fixed;
+      } else if (reason === "sensitive") {
+        q.stopError = "Claude stopped because a safety filter flagged the content. Rephrase the request or choose another model.";
+      }
     } else if (event.type === "message_stop" && q.output.content.some((b) => b.type === "toolCall")) {
       q.history.push(structuredClone(q.output));
       // With a skipped tool use, the gap lacks Claude Code's result for it; the results checkpoint follows.
@@ -455,6 +482,11 @@ export function createClaudeBridge(options: {
     try {
       for await (const message of q.query!) {
         if (q.stopped) return;
+        if (message.type === "stream_event" && !message.parent_tool_use_id) {
+          if (message.event.type === "message_start") q.streaming = true;
+          else if (message.event.type === "message_stop") q.streaming = false;
+        }
+        watch(q);
         if (message.type === "rate_limit_event" && (message.rate_limit_info.isUsingOverage === true
           || message.rate_limit_info.errorCode === "credits_required")) {
           throw new Error(USAGE_CREDITS_ERROR);
@@ -485,6 +517,7 @@ export function createClaudeBridge(options: {
             q.failedToLoad = !q.initialized;
             throw new Error(message.subtype === "success" ? message.result : message.errors.join("\n"));
           }
+          if (q.stopError) throw new ClaudeStop(q.stopError);
           if (!q.stream || !q.sawMessage) throw new Error("Claude Code finished without a complete streamed response");
           q.history.push(structuredClone(q.output));
           if (q.main && q.sessionId) checkpoint(q, anchor(hashes(q.history)));
@@ -572,7 +605,7 @@ export function createClaudeBridge(options: {
         stop(owner, error);
         throw error;
       }
-      attach(owner, stream, request.signal);
+      attach(owner, stream, request.signal, request.timeoutMs);
       if (owner.stopped) return;
       owner.history = structuredClone(messages);
       owner.expect = owner.main && !delta.some(isInput) ? { ids: new Set(results.map((m) => m.toolCallId)), prefix: incoming, gap: false } : undefined;
@@ -651,7 +684,7 @@ export function createClaudeBridge(options: {
       ...(fork && !main ? { fork: { configDir: request.env?.CLAUDE_CONFIG_DIR, sessionId: randomUUID() } } : {}),
     };
     running.add(q);
-    attach(q, stream, request.signal);
+    attach(q, stream, request.signal, request.timeoutMs);
     if (q.stopped) return;
     const server = createToolServer("pi", tools.map((tool) => ({
       name: tool.name, description: tool.description, inputSchema: tool.parameters,
