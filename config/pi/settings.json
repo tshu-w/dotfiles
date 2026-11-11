@@ -66,9 +66,7 @@
   "theme": "system",
   "treeFilterMode": "all",
   "doubleEscapeAction": "tree",
-  "retry": {
-    "maxRetries": 5
-  },
+  "retry": {},
   "terminal": {
     "showTerminalProgress": true
   },
