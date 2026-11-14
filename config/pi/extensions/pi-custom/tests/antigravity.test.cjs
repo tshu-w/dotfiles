@@ -118,8 +118,8 @@ test("a thinking-only or empty ACP completion is an explicit error, not a silent
   }
 });
 
-test("unchanged history reuses its session and sends only the new user input", { timeout: 3000 }, async (t) => {
-  const h = harness(t), history = [user("first")];
+test("a prompt at the text budget can continue without counting prior history again", { timeout: 3000 }, async (t) => {
+  const h = harness(t), history = [user("x".repeat(185_000))];
   const { stream, connection } = await started(h, history);
   connection.chunk("answer"); connection.finish();
   const answer = await stream.result();
@@ -130,6 +130,22 @@ test("unchanged history reuses its session and sends only the new user input", {
   assert.deepEqual(connection.prompts[1].params, { sessionId: "session-1", prompt: [{ type: "text", text: "next" }] });
   connection.chunk("done"); connection.finish();
   assert.equal((await second.result()).stopReason, "stop");
+});
+
+test("oversized UTF-8 input and reconstructed history fail without prompting or retrying", async (t) => {
+  for (const messages of [
+    [user("x".repeat(184_998) + "界")],
+    [user("x".repeat(100_000)), { role: "assistant", content: [{ type: "text", text: "y".repeat(90_000) }], stopReason: "stop" }, user("next")],
+  ]) {
+    const h = harness(t);
+    const answer = await h.stream(messages).result();
+    assert.equal(answer.stopReason, "error");
+    assert.match(answer.errorMessage, /185 KB.*Compact/);
+    assert.equal(ai.isContextOverflow(answer), false);
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+    assert.equal(h.connections[0].prompts.length, 0);
+    assert.equal(h.connections[0].closed, true);
+  }
 });
 
 test("policy changes open a new session and replay the full history as a resource", { timeout: 3000 }, async (t) => {

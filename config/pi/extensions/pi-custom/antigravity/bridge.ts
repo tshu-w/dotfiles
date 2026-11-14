@@ -6,6 +6,8 @@ import {
 import { createAcpConnection } from "./transport.js";
 
 export const PROVIDER_ID = "antigravity";
+// Leave room for agy's serialization around the supplied text.
+const MAX_PROMPT_TEXT_BYTES = 185_000;
 const ROUTING = "Use only the pi_ tools supplied by the pi-bridge MCP server for user tasks. Native tools are disabled. Report missing capabilities instead of substituting a native tool.";
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -258,6 +260,11 @@ export function createAntigravityBridge(options: {
     let response: any;
     try {
       const prompt = promptContent(unseen, reconstruction);
+      const textBytes = prompt.reduce((sum, block) => sum + Buffer.byteLength(
+        block.type === "text" ? block.text : block.type === "resource" ? block.resource.text : "", "utf8"), 0);
+      if (textBytes > MAX_PROMPT_TEXT_BYTES) {
+        throw new Error("Antigravity input exceeds 185 KB. Compact the conversation or switch providers.");
+      }
       const capabilities = connection.initialized.agentCapabilities.promptCapabilities;
       if (prompt.some((block) => block.type === "image") && capabilities?.image !== true) {
         throw new Error("Antigravity ACP does not support image prompts");
