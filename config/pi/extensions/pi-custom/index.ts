@@ -28,6 +28,7 @@ import {
 } from "./custom-settings.ts";
 import { type CodexControl, registerCodex } from "./codex.ts";
 import { registerClaude } from "./claude.ts";
+import { registerAntigravity } from "./antigravity.ts";
 import {
   installTranscriptHistory,
   type TranscriptHistoryControl,
@@ -835,6 +836,7 @@ export default async function piCustom(pi: ExtensionAPI) {
   registerFooter(pi, runtime);
   const codexControl = registerCodex(pi, runtime, { fast: initial.fast.value });
   registerClaude(pi);
+  registerAntigravity(pi);
   registerClampedOutput(pi);
   const applyPreferences = () => {
     const settings = preferences.get();
