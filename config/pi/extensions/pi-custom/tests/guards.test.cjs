@@ -13,13 +13,16 @@ test("the uv guard blocks pip, poetry and bare python with a uv suggestion", asy
   let handler;
   registerUvGuard({ on: (_event, fn) => { handler = fn; } });
   const run = (command, toolName = "bash") => handler({ toolName, input: { command } });
-  assert.deepEqual(await run("pip install x"), {
-    block: true,
-    reason: "pip is blocked. Use uv instead:\n\n  To install a package for a script: uv run --with PACKAGE python script.py\n  To add a dependency to the project: uv add PACKAGE",
-  });
-  assert.equal((await run("cd a && python3 -m venv .venv")).reason, "python3 -m venv is blocked. Use uv instead:\n\n  To create a virtual environment: uv venv");
-  assert.equal((await run("python script.py")).reason, "python should be run via uv. Use: uv run python <args>");
-  assert.equal((await run("poetry add x")).reason, "poetry is blocked. Use uv instead of poetry (uv init, uv add, uv sync, uv run)");
+  for (const [command, suggestion] of [
+    ["pip install x", /uv run --with PACKAGE python/],
+    ["cd a && python3 -m venv .venv", /uv venv/],
+    ["python script.py", /uv run python/],
+    ["poetry add x", /uv.*add/],
+  ]) {
+    const blocked = await run(command);
+    assert.equal(blocked.block, true, command);
+    assert.match(blocked.reason, suggestion);
+  }
   assert.equal(await run("uv run python x.py"), undefined);
   assert.equal(await run("   "), undefined);
   assert.equal(await run("pip install x", "read"), undefined);

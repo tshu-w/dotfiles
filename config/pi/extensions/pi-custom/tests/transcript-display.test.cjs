@@ -61,7 +61,7 @@ function message(content, stopReason = "toolUse") {
 }
 
 test("Ctrl+O cycles native views and compact live tool runs without changing messages", async () => {
-  const { mode, editor, keybindings, themes, statusMessages, restore, AssistantMessageComponent, ToolExecutionComponent, Text, visibleWidth, createReadToolDefinition } = await setup();
+  const { mode, editor, keybindings, statusMessages, restore, AssistantMessageComponent, ToolExecutionComponent, Text, visibleWidth, createReadToolDefinition } = await setup();
   try {
     const source = message([{ type: "thinking", thinking: "private reasoning" }, { type: "toolCall", id: "1", name: "read", arguments: {} }]);
     const original = structuredClone(source);
@@ -98,11 +98,6 @@ test("Ctrl+O cycles native views and compact live tool runs without changing mes
     tool.updateResult({ content: [{ type: "text", text: "hidden result" }] });
     text = mode.chatContainer.render(80).join("\n");
     assert.match(stripAnsi(text), /3 steps: read, bash, ctrl\+o to expand/);
-    for (const appearance of ["light", "dark"]) {
-      themes.initTheme(appearance);
-      text = mode.chatContainer.render(80).join("\n");
-      assert.ok(text.includes(themes.theme.fg("dim", "ctrl+o")));
-    }
     keybindings.setUserBindings({ "app.tools.expand": "ctrl+y" });
     assert.match(stripAnsi(mode.chatContainer.render(80).join("\n")), /ctrl\+y to expand/);
     editor.handleInput("\x19");

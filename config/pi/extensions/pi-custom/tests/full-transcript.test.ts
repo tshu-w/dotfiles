@@ -52,17 +52,6 @@ function createFixture() {
   return { prototype, mode, compacted, full };
 }
 
-test("starts with the compact transcript", () => {
-  const { prototype, mode, compacted } = createFixture();
-  const control = installTranscriptHistory(prototype);
-
-  prototype.renderInitialMessages.call(mode);
-
-  assert.deepEqual(mode.rendered, compacted);
-  assert.ok(control.getStatus().trim());
-  control.restore();
-});
-
 test("loads one older compaction interval at a time", () => {
   const { prototype, mode, full } = createFixture();
   const control = installTranscriptHistory(prototype);
@@ -87,6 +76,7 @@ test("switches between full and recent without changing model context", () => {
   const originalBuilder = mode.sessionManager.buildContextEntries;
   const control = installTranscriptHistory(prototype);
   prototype.renderInitialMessages.call(mode);
+  assert.deepEqual(mode.rendered, compacted);
   const recentStatus = control.getStatus();
 
   control.showFull();

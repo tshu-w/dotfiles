@@ -36,6 +36,8 @@ type AssistantView = {
   markdownTransformers: ConstructorParameters<typeof AssistantMessageComponent>[5];
 };
 
+type CustomView = { message: { timestamp?: number; details?: { user?: boolean } } };
+
 const FAILED = ["error", "aborted", "length"];
 
 // A turn's start and the end of its last assistant message, in milliseconds; only replies set `end`.
@@ -53,7 +55,7 @@ function isUserInput(child: Component): boolean {
   if (child instanceof UserMessageComponent) return true;
   // pi-agents marks the user's own input, which shows as a user message.
   return child instanceof CustomMessageComponent
-    && (child as unknown as { message: { details?: { user?: boolean } } }).message.details?.user === true;
+    && (child as unknown as CustomView).message.details?.user === true;
 }
 
 // A failure is recovered when its turn goes on before the next user input.
@@ -94,7 +96,7 @@ function compactTranscript(mode: DisplayMode, getTheme: () => Theme): () => void
       // notifications before a reply share its turn.
       if (isUserInput(child) || (ended && last.end !== undefined && child instanceof CustomMessageComponent)) {
         finish();
-        const stamp = child instanceof CustomMessageComponent ? child.message.timestamp : (child as unknown as { timestamp?: string | number }).timestamp;
+        const stamp = child instanceof CustomMessageComponent ? (child as unknown as CustomView).message.timestamp : (child as unknown as { timestamp?: string | number }).timestamp;
         last = { start: stamp === undefined ? undefined : new Date(stamp).getTime() };
         starts.set(index, last);
         ended = false;
