@@ -137,6 +137,35 @@ defaults write NSGlobalDomain ApplePressAndHoldEnabled -bool false
 defaults write NSGlobalDomain KeyRepeat -int 1
 defaults write NSGlobalDomain InitialKeyRepeat -int 15
 
+# Use ABC and Squirrel Simplified Chinese instead of U.S.
+# Squirrel must be installed and registered in the current login session.
+swift - <<'SWIFT' || :
+import Carbon
+
+let sources = TISCreateInputSourceList(nil, true).takeRetainedValue() as! [TISInputSource]
+for (id, operation) in [
+    ("com.apple.keylayout.ABC", TISEnableInputSource),
+    ("com.apple.keylayout.ABC", TISSelectInputSource),
+    ("im.rime.inputmethod.Squirrel", TISEnableInputSource),
+    ("im.rime.inputmethod.Squirrel.Hans", TISEnableInputSource),
+    ("com.apple.keylayout.US", TISDisableInputSource),
+] {
+    guard let source = sources.first(where: {
+        let value = TISGetInputSourceProperty($0, kTISPropertyInputSourceID)!
+        return Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String == id
+    }) else {
+        if id == "com.apple.keylayout.US" { continue }
+        fputs("Input source not registered: \(id)\n", stderr)
+        exit(1)
+    }
+    let status = operation(source)
+    guard status == noErr else {
+        fputs("Failed to configure input source \(id): \(status)\n", stderr)
+        exit(1)
+    }
+}
+SWIFT
+
 # Set language and text formats
 # Note: if you’re in the US, replace `EUR` with `USD`, `Centimeters` with
 # `Inches`, `en_GB` with `en_US`, and `true` with `false`.
@@ -154,8 +183,6 @@ launchctl bootout "gui/$UID/com.apple.rcd" 2> /dev/null || :
 ###############################################################################
 # Finder                                                                      #
 ###############################################################################
-
-# TODO: customize Finder sidebar items manually
 
 # Finder: allow quitting via ⌘ + Q; doing so will also hide desktop icons
 defaults write com.apple.finder QuitMenuItem -bool true
