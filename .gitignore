@@ -51,6 +51,9 @@ config/pi/npm/
 **/jupyter/migrated
 **/jupyter/serverconfig
 
+### Homebrew ###
+/config/homebrew/trust.json.lock
+
 ### Unison ###
 **/unison/*
 !**/unison/*.prf

@@ -8,5 +8,9 @@
     "specstoryai/tap",
     "tshu-w/malt",
     "zurawiki/brews"
+  ],
+  "trustedcasks": [
+    "diygod/tap/pinky",
+    "tshu-w/malt/font-monolisa-custom"
   ]
 }
