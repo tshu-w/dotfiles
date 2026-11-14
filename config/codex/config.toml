@@ -1,5 +1,6 @@
 model = "gpt-6-astra"
 model_reasoning_effort = "medium"
+model_verbosity = "low"
 web_search = "live"
 
 approval_policy = "never"
@@ -12,16 +13,8 @@ notify = ["/Users/wangtianshu/dotfiles/config/codex/computer-use/Codex Computer 
 apps = false
 chronicle = true
 memories = true
-multi_agent = true
+multi_agent_v2 = true
 prevent_idle_sleep = true
-shell_snapshot = true
-steer = true
-unified_exec = true
-workspace_dependencies = true
-
-[memories]
-generate_memories = true
-use_memories = true
 
 [sandbox_workspace_write]
 network_access = true
@@ -32,9 +25,11 @@ status_line = ["model-with-reasoning", "current-dir", "git-branch", "context-rem
 
 [desktop]
 avatar-overlay-pet-visible = false
+browser-show-full-url = true
 confirm-before-close = "never"
 conversationDetailMode = "STEPS_COMMANDS"
 defaultTerminalLocation = "right"
+dictationAlwaysShowLiveTranscription = true
 dock-icon-preference = "app-default"
 enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "persistent", "max"]
 external-agent-import-sync-enabled = true
@@ -42,10 +37,10 @@ followUpQueueMode = "steer"
 git-pull-request-merge-method = "squash"
 keepRemoteControlAwakeWhilePluggedIn = true
 mac-menu-bar-enabled = false
-preventSleepWhileRunning = false
+migratedFollowUpQueueToSteer = false
+preventSleepWhileRunning = true
 projectlessWorkspaceRoot = "/Users/wangtianshu/Developer/Codex"
 usePointerCursors = false
-migratedFollowUpQueueToSteer = false
 
 [projects."/Users/wangtianshu"]
 trust_level = "trusted"
@@ -98,7 +93,6 @@ enabled = true
 enabled = true
 
 [mcp_servers.node_repl]
-args = []
 command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
 env_vars = ["BROWSER_USE_ACCESS_EXECUTOR_ID", "BROWSER_USE_ACCESS_PIPE_PATH", "BROWSER_USE_ACCESS_VERIFYING_IDENTITY"]
 startup_timeout_sec = 120
