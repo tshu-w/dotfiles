@@ -41,6 +41,8 @@ path = Library/Preferences/com.haystacksoftware.ArqMonitor.plist
 ## Bartender
 path = Library/Preferences/com.surteesstudios.Bartender.plist
 path = Library/Application Support/Bartender/Bartender.BartenderPreferences
+## BetterDisplay
+path = Library/Preferences/pro.betterdisplay.BetterDisplay.plist
 ## Easydict
 path = Library/Preferences/com.izual.Easydict.plist
 ## Elfeed
@@ -68,7 +70,9 @@ path = Library/Application Support/LaunchBar/Configuration.plist
 path = Library/Application Support/LaunchBar/CustomShortcuts.plist
 atomic = Name *.lbaction
 ## LookAway
-# path = Library/Application Support/LookAway
+path = Library/Application Support/LookAway/paired-devices.json
+path = Library/Application Support/LookAway/com.mysticalbits.lookaway.plist
+path = Library/Application Support/LookAway/automations.json
 path = Library/Preferences/com.mysticalbits.lookaway.plist
 ## Loop
 path = Library/Preferences/com.MrKai77.Loop.plist
@@ -77,6 +81,10 @@ path = .config/pi/sessions
 path = .config/pi/tape
 path = .local/state/pi/agents
 ignore = Path .local/state/pi/agents/{runtime,mailboxes,*.log}
+## Pinky
+path = Library/Application Support/Pinky/settings.json
+path = Library/Application Support/Pinky/rules.yaml
+path = Library/Application Support/Pinky/apps.yaml
 ## Quicklook
 path = Library/Quicklook
 atomic = Name *.qlgenerator
