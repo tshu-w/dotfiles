@@ -16,11 +16,6 @@
 	squash-all = "!f(){ git reset $(git commit-tree HEAD^{tree} \"$@\");};f"
 [diff]
 	algorithm = histogram
-	tool = difftastic
-[difftool]
-    prompt = false
-[difftool "difftastic"]
-    cmd = difft "$LOCAL" "$REMOTE"
 [diff "gpg"]
 	textconv = gpg --no-tty --decrypt
 [filter "lfs"]
