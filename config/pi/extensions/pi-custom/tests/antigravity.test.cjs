@@ -38,7 +38,13 @@ before(async () => {
   model = { ...ai.getModel("anthropic", "claude-haiku-4-5"), id: "gemini-test", provider: "antigravity", api: "antigravity" };
 });
 
-function harness(t, initialized = { agentCapabilities: { _meta: { antigravity: { systemPrompt: { append: true } } } } }, session = {}) {
+const agentCapabilities = {
+  _meta: { antigravity: { systemPrompt: { append: true } } },
+  mcpCapabilities: { http: true },
+  promptCapabilities: { image: true, embeddedContext: true },
+};
+
+function harness(t, initialized = { agentCapabilities }, session = {}) {
   const connections = [];
   const bridge = createAntigravityBridge({ cwd: () => CUSTOM, connect: async (cwd, handlers, tools) => {
     const connection = {
@@ -78,7 +84,8 @@ async function started(h, messages, index = 0, settings = {}, systemPrompt) {
 }
 
 test("text and thinking chunks have balanced events and quota usage includes caches", { timeout: 3000 }, async (t) => {
-  const h = harness(t), { stream, connection } = await started(h, [user("hello")]);
+  const h = harness(t, { agentCapabilities: { ...agentCapabilities, promptCapabilities: undefined } });
+  const { stream, connection } = await started(h, [user("hello")]);
   assert.deepEqual(connection.tools, [tool]);
   const session = connection.calls[0];
   assert.equal(session.method, "session/new");
@@ -283,15 +290,45 @@ for (const action of ["abort", "reset"]) test(`${action} during the tool gap rej
   connection.finish();
 });
 
-test("unknown system-prompt capability fails closed without sending a prompt", { timeout: 3000 }, async (t) => {
-  for (const initialized of [{}, { agentCapabilities: { _meta: { antigravity: { systemPrompt: { append: false } } } } }]) {
+test("missing system-prompt or HTTP MCP support fails before session creation", { timeout: 3000 }, async (t) => {
+  for (const [initialized, error] of [
+    [{}, /systemPrompt\.append/],
+    [{ agentCapabilities: { _meta: { antigravity: { systemPrompt: { append: false } } } } }, /systemPrompt\.append/],
+    [{ agentCapabilities: { ...agentCapabilities, mcpCapabilities: undefined } }, /HTTP MCP/],
+    [{ agentCapabilities: { ...agentCapabilities, mcpCapabilities: { http: false } } }, /HTTP MCP/],
+  ]) {
     const h = harness(t, initialized);
     const answer = await h.stream([user("hello")]).result();
     assert.equal(answer.stopReason, "error");
-    assert.match(answer.errorMessage, /requires systemPrompt\.append support; upgrade agy/);
+    assert.match(answer.errorMessage, error);
     assert.equal(h.connections.length, 1);
     assert.equal(h.connections[0].closed, true);
     assert.deepEqual(h.connections[0].calls, []);
+  }
+});
+
+test("prompt capabilities are required only for the content actually sent", async (t) => {
+  const image = [user([{ type: "image", mimeType: "image/png", data: "IMAGE" }])];
+  const history = [user("first"), { role: "assistant", content: [{ type: "text", text: "answer" }], stopReason: "stop" }, user("next")];
+  for (const [messages, promptCapabilities, error] of [
+    [image, { embeddedContext: true }, /image prompts/],
+    [history, { image: true }, /embedded context/],
+    [image, { image: true }, null],
+    [history, { embeddedContext: true }, null],
+  ]) {
+    const h = harness(t, { agentCapabilities: { ...agentCapabilities, promptCapabilities } });
+    const stream = h.stream(messages);
+    if (error) {
+      const answer = await stream.result();
+      assert.equal(answer.stopReason, "error");
+      assert.match(answer.errorMessage, error);
+      assert.equal(h.connections[0].prompts.length, 0);
+      assert.equal(h.connections[0].closed, true);
+    } else {
+      await until(() => h.connections[0]?.prompts.length > 0);
+      h.connections[0].chunk("done"); h.connections[0].finish();
+      assert.equal((await stream.result()).stopReason, "stop");
+    }
   }
 });
 
@@ -421,7 +458,7 @@ test("initializes the verified CLI launch and serves authenticated, namespaced P
   }, tools);
   t.after(() => connection.close());
   assert.deepEqual(connection.initialized.received.clientCapabilities, {});
-  assert.deepEqual(connection.initialized.argv, ["acp", "--disable-telemetry", "--include-default-customizations=false"]);
+  assert.deepEqual(connection.initialized.argv, ["acp", "--process-per-session", "--disable-telemetry", "--include-default-customizations=false"]);
   assert.equal(connection.initialized.cwd, realpathSync(root));
   assert.equal(connection.initialized.home, process.env.HOME);
   assert.equal(connection.initialized.xdgConfig, process.env.XDG_CONFIG_HOME);

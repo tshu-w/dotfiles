@@ -18,6 +18,9 @@ export function sessionRequest(cwd: string, mcpServer: any, systemPrompt: string
   if (initialized?.agentCapabilities?._meta?.antigravity?.systemPrompt?.append !== true) {
     throw new Error("Antigravity ACP requires systemPrompt.append support; upgrade agy (tested with 1.5.6)");
   }
+  if (initialized.agentCapabilities.mcpCapabilities?.http !== true) {
+    throw new Error("Antigravity ACP does not support HTTP MCP servers");
+  }
   return {
     cwd, mcpServers: [mcpServer],
     _meta: { antigravity: {
@@ -254,7 +257,15 @@ export function createAntigravityBridge(options: {
     prompting = true;
     let response: any;
     try {
-      response = await connection.request("session/prompt", { sessionId, prompt: promptContent(unseen, reconstruction) }, { timeoutMs: settings.timeoutMs });
+      const prompt = promptContent(unseen, reconstruction);
+      const capabilities = connection.initialized.agentCapabilities.promptCapabilities;
+      if (prompt.some((block) => block.type === "image") && capabilities?.image !== true) {
+        throw new Error("Antigravity ACP does not support image prompts");
+      }
+      if (prompt.some((block) => block.type === "resource") && capabilities?.embeddedContext !== true) {
+        throw new Error("Antigravity ACP does not support embedded context");
+      }
+      response = await connection.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
       await queue;
     } catch (error) {
       if (epoch === generation) reset(error instanceof Error ? error : new Error(String(error)));

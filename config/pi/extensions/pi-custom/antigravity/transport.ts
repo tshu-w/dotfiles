@@ -99,7 +99,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   host = `127.0.0.1:${address.port}`;
   const mcpServer = { type: "http" as const, name: "pi-bridge", url: `http://${host}/mcp`, headers: [{ name: "Authorization", value: token }] };
   const env = { ...process.env, ...overrides };
-  const child = spawn(env.AGY_ACP_BIN || "agy", ["acp", "--disable-telemetry", "--include-default-customizations=false"], {
+  const child = spawn(env.AGY_ACP_BIN || "agy", ["acp", "--process-per-session", "--disable-telemetry", "--include-default-customizations=false"], {
     cwd, env, stdio: ["pipe", "pipe", "ignore"],
   });
   const lines = createInterface({ input: child.stdout });
