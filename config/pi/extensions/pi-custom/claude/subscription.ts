@@ -38,7 +38,7 @@ export function queryError(error: unknown): string {
 }
 
 export function subscriptionEnvironment(request: SimpleStreamOptions) {
-  const env = { ...process.env, ...request.env };
+  const env: Record<string, string | undefined> = { ...process.env, ...request.env, CLAUDE_CODE_ENTRYPOINT: "cli" };
   delete env.ANTHROPIC_API_KEY;
   // Claude Code must neither wait and retry by itself nor change the request body.
   delete env.CLAUDE_CODE_RETRY_WATCHDOG;

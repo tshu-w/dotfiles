@@ -258,7 +258,7 @@ const RESUME_FAILURE = /No conversation found|No message found with message\.uui
 export function createClaudeBridge(options: {
   cwd: () => string;
   sessionId: () => string;
-  save: (state: ClaudeSession) => void;
+  save: (state: BridgeState) => void;
   clear: () => void;
   // Checkpoints of other Sessions' bridges that this bridge may fork from.
   forkSources: () => ClaudeSession[];
@@ -768,7 +768,7 @@ export function createClaudeBridge(options: {
     // Load this Session's state; a forked Session also inherits its parent's points.
     restore(state?: BridgeState, inherited: ClaudeSession[] = []) {
       const { points: stored, ...top } = state ?? {};
-      let own = top.sessionId ? migrate(top as ClaudeSession) : undefined;
+      let own = "sessionId" in top && top.sessionId ? migrate(top as ClaudeSession) : undefined;
       // Pi exited at a tool gap without withdrawing it: resume at Claude Code's interrupted result, or rebuild.
       if (own?.pending) {
         const uuid = interruption(own.sessionId, own.cwd, undefined, own.pending);
