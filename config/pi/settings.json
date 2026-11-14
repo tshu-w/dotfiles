@@ -86,10 +86,11 @@
     }
   },
   "enabledModels": [
+    "claude-code/claude-opus-5-5",
     "openai/gpt-6-astra",
     "openai/gpt-6.1-sol",
     "claude-code/claude-fable-5-2",
-    "claude-code/claude-opus-5-5"
+    "antigravity/gemini-4-argon"
   ],
   "pi-custom": {
     "fast": false,
