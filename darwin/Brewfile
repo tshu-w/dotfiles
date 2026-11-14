@@ -1,5 +1,6 @@
 tap "d12frosted/emacs-plus", trusted: true
 tap "deb-sig/tap", trusted: true
+tap "diygod/tap"
 tap "tshu-w/malt", trusted: true
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
@@ -193,6 +194,8 @@ cask "microsoft-word"
 cask "onedrive"
 # Replacement for Docker Desktop
 cask "orbstack"
+# Let AI agents use your phone, with you in the loop
+cask "diygod/tap/pinky", trusted: true
 # PDF reader and note-taking application
 cask "skim"
 # Team communication and collaboration software

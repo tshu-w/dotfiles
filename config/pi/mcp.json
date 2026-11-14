@@ -11,9 +11,24 @@
       "description": "Control macOS apps through official ChatGPT Computer Use"
     },
     "fly-mcp": {
+      "enabled": false,
       "url": "https://mcp.fly.io",
       "exposure": "codemode",
       "description": "Manage Fly.io apps, Machines, volumes, secrets, Managed Postgres, and Sprites"
+    },
+    "pinky": {
+      "command": "/opt/homebrew/bin/pinkyctl",
+      "args": [
+        "mcp"
+      ],
+      "exposure": "codemode",
+      "description": "Operate phones through Pinky with human approvals"
+    },
+    "radius": {
+      "url": "https://radius.pi.dev/mcp",
+      "auth": {
+        "provider": "radius"
+      }
     }
   }
 }
