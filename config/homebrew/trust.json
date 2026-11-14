@@ -1,16 +1,13 @@
 {
   "trustedtaps": [
-    "ampcode/tap",
-    "d12frosted/emacs-plus",
-    "daviderestivo/emacs-head",
-    "deb-sig/tap",
-    "felixkratz/formulae",
-    "specstoryai/tap",
     "tshu-w/malt",
-    "zurawiki/brews"
+    "d12frosted/emacs-plus",
+    "daviderestivo/emacs-head"
   ],
   "trustedcasks": [
-    "diygod/tap/pinky",
-    "tshu-w/malt/font-monolisa-custom"
+    "diygod/tap/pinky"
+  ],
+  "trustedformulae": [
+    "deb-sig/tap/double-entry-generator"
   ]
 }

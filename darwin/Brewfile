@@ -1,7 +1,9 @@
 tap "d12frosted/emacs-plus", trusted: true
-tap "deb-sig/tap", trusted: true
+tap "deb-sig/tap"
 tap "diygod/tap"
 tap "tshu-w/malt", trusted: true
+# Native desktop automation CLI for AI agents
+brew "agent-desktop"
 # Open-source, cross-platform JavaScript runtime environment
 brew "node"
 # Secure and free password manager for all of your devices
@@ -12,8 +14,6 @@ brew "blueutil"
 brew "cloudflared"
 # GNU File, Shell, and Text utilities
 brew "coreutils"
-# Diff that understands syntax
-brew "difftastic"
 # Load/unload environment variables based on $PWD
 brew "direnv"
 # Spellchecker wrapping library
@@ -117,9 +117,11 @@ brew "zoxide"
 # GNU Emacs text editor
 brew "d12frosted/emacs-plus/emacs-plus@31", args: ["with-xwidgets"]
 # Rule-based double-entry bookkeeping importer (from Alipay/WeChat/Huobi to Beancount).
-brew "deb-sig/tap/double-entry-generator"
+brew "deb-sig/tap/double-entry-generator", trusted: true
 # Menu bar tool to limit maximum charging percentage
 cask "aldente"
+# Terminal interface for Antigravity agents
+cask "antigravity-cli"
 # Multi-cloud backup application
 cask "arq"
 # Menu bar icon organiser
@@ -128,11 +130,12 @@ cask "bartender"
 cask "betterdisplay"
 # OpenAI's official ChatGPT desktop app
 cask "chatgpt"
+# Anthropic's official Claude AI desktop app
+cask "claude"
 # Terminal-based AI coding assistant
 cask "claude-code"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
-cask "container"
 # Voice and text chat software
 cask "discord"
 # Client for the Dropbox cloud storage service
@@ -153,7 +156,7 @@ cask "font-ibm-plex-sans-sc"
 cask "font-ibm-plex-serif"
 cask "font-inter"
 cask "font-intone-mono-nerd-font"
-cask "tshu-w/malt/font-monolisa-custom", trusted: true
+cask "tshu-w/malt/font-monolisa-custom"
 cask "font-noto-sans-cjk-sc"
 cask "font-noto-serif-cjk-sc"
 cask "font-sauce-code-pro-nerd-font"
@@ -210,18 +213,15 @@ cask "tencent-meeting"
 cask "tor-browser"
 # Messaging and calling application
 cask "wechatwork"
-mas "Amphetamine", id: 937984704
 mas "Bitwarden", id: 1352778147
 mas "Feishu", id: 1551632588
 mas "Keynote", id: 409183694
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "Peek", id: 1554235898
-mas "QQ", id: 451108668
 mas "Surfingkeys", id: 1609752330
 mas "Userscripts", id: 1463298887
 mas "WeChat", id: 836500024
 npm "@browserbridge/bbx"
-npm "agent-desktop"
+npm "@tshu-w/pi-agents"
 npm "corepack"
-npm "pi-agents"
