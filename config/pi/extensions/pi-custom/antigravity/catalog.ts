@@ -1,3 +1,4 @@
+import { getModels } from "@earendil-works/pi-ai/compat";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { createAcpConnection } from "./transport.js";
 
@@ -5,7 +6,7 @@ type CatalogModel = Extract<ProviderModelConfig, { type?: "chat" }>;
 
 export function catalogModel(id: string): CatalogModel {
   return {
-    id, name: id, reasoning: false, input: ["text", "image"],
+    id, name: getModels("google").find((model) => model.id === id)?.name ?? id, reasoning: false, input: ["text", "image"],
     compat: { supportsMidConvoSystemMessages: false },
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     // ACP model choices do not advertise context or output limits.

@@ -674,27 +674,27 @@ test("offline startup restores the cached catalog without starting agy", async (
   const config = provider();
   await assert.rejects(config.refreshModels(context({ allowNetwork: true, signal: AbortSignal.abort() })), /abort/i);
   assert.deepEqual(config.models, []);
-  const cached = { id: "gemini-cached", name: "Cached", provider: "antigravity", api: "antigravity" };
+  const cached = { id: "gemini-4-argon", name: "Cached", provider: "antigravity", api: "antigravity" };
   const rejected = ["default", "claude-opus-5-5", "gpt-oss-120b-medium", "Gemini-test", "gemini-"];
   const restored = await config.refreshModels(context({ stored: { checkedAt: 0, models: [cached,
     ...rejected.map(id => ({ ...cached, id })), { ...cached, id: "gemini-wrong-provider", provider: "other" },
   ] } }));
-  assert.deepEqual(restored.map(model => model.id), ["gemini-cached"]);
+  assert.deepEqual(restored.map(model => [model.id, model.name]), [["gemini-4-argon", "Gemini 4 Argon"]]);
   assert.ok(restored.every(model => model.compat?.supportsMidConvoSystemMessages === false));
   assert.deepEqual(await config.refreshModels(context()), []);
 });
 
 test("refresh discovers grouped model choices, deduplicates IDs and persists metadata only", async (t) => {
   fixture(t, undefined, { sessionId: "discovery", configOptions: [{ id: "model_id", type: "select", category: "model", options: [
-    { value: "gemini-one", name: "First" }, { group: "Other", options: [{ value: "gemini-two", name: "Second" }, { value: "gemini-one", name: "Duplicate" }] },
+    { value: "gemini-4-argon", name: "First" }, { group: "Other", options: [{ value: "gemini-two", name: "Second" }, { value: "gemini-4-argon", name: "Duplicate" }] },
     ...["default", "claude-opus-5-5", "gpt-oss-120b-medium", "gemini-"].map(value => ({ value, name: value })),
   ] }], models: { availableModels: [{ modelId: "legacy", name: "Ignored" }] } });
   const publications = [];
   const models = await provider().refreshModels(context({ allowNetwork: true, publish: async value => { publications.push(value); return true; } }));
-  assert.deepEqual(models.map(model => [model.id, model.name]), [["gemini-one", "gemini-one"], ["gemini-two", "gemini-two"]]);
+  assert.deepEqual(models.map(model => [model.id, model.name]), [["gemini-4-argon", "Gemini 4 Argon"], ["gemini-two", "gemini-two"]]);
   assert.ok(models.every(model => model.compat?.supportsMidConvoSystemMessages === false));
   assert.equal(publications.length, 1);
-  assert.deepEqual(publications[0].persist.models.map(model => model.id), ["gemini-one", "gemini-two"]);
+  assert.deepEqual(publications[0].persist.models.map(model => model.id), ["gemini-4-argon", "gemini-two"]);
   assert.ok(publications[0].persist.models.every(model => model.provider === "antigravity" && model.api === "antigravity"));
   assert.ok(!JSON.stringify(publications).includes("discovery"));
 });
