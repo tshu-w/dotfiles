@@ -101,6 +101,7 @@ persistence="none"
 command=${JSON.stringify(resolved.client)}
 args=["mcp"]
 cwd=${JSON.stringify(work)}
+env={CODEX_HOME=${JSON.stringify(resolved.codexHome)}}
 startup_timeout_sec=30
 tool_timeout_sec=120
 `;

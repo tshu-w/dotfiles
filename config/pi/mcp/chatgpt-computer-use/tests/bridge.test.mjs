@@ -14,7 +14,7 @@ import { paths } from '../paths.mjs';
 
 async function fixture(t, capabilities = {}) {
   const state = await mkdtemp(join(tmpdir(), 'pi-cu-test-'));
-  const launch = async () => ({ state, codex: process.execPath, args: [fileURLToPath(new URL('./fake-app-server.mjs', import.meta.url))], client: '/unused-client' });
+  const launch = async () => ({ state, codex: process.execPath, args: [fileURLToPath(new URL('./fake-app-server.mjs', import.meta.url))], client: '/unused-client', codexHome: '/codex-home' });
   const { server, broker } = createBridge({ launch });
   const client = new Client({ name: 'test', version: '1' }, { capabilities });
   const [a, b] = InMemoryTransport.createLinkedPair();
@@ -24,14 +24,16 @@ async function fixture(t, capabilities = {}) {
   return { client, broker, state };
 }
 
-test('XDG empty values use home defaults and Pi config override is respected', () => {
-  const defaults = paths({ XDG_CONFIG_HOME: '', XDG_STATE_HOME: '', PI_CODING_AGENT_DIR: '' }, '/home/test');
+test('XDG empty values use home defaults and Pi and Codex overrides are respected', () => {
+  const defaults = paths({ XDG_CONFIG_HOME: '', XDG_STATE_HOME: '', PI_CODING_AGENT_DIR: '', CODEX_HOME: '' }, '/home/test');
   assert.equal(defaults.pi, '/home/test/.config/pi');
   assert.equal(defaults.state, '/home/test/.local/state/pi/chatgpt-computer-use');
-  const custom = paths({ XDG_CONFIG_HOME: '/config', XDG_STATE_HOME: '/state', PI_CODING_AGENT_DIR: '/pi' }, '/home/test');
+  assert.match(defaults.client, /^\/home\/test\/\.codex\/computer-use\//);
+  const custom = paths({ XDG_CONFIG_HOME: '/config', XDG_STATE_HOME: '/state', PI_CODING_AGENT_DIR: '/pi', CODEX_HOME: '/codex' }, '/home/test');
   assert.equal(custom.pi, '/pi');
   assert.equal(custom.state, '/state/pi/chatgpt-computer-use');
-  assert.match(custom.client, /^\/config\/codex\//);
+  assert.equal(custom.codexHome, '/codex');
+  assert.match(custom.client, /^\/codex\/computer-use\//);
 });
 
 test('MCP discovers ten tools, serializes calls, reuses the session, and preserves raw results', async t => {

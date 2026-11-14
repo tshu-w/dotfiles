@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 const methods = ['list_apps', 'get_app_state', 'click', 'drag', 'scroll', 'type_text', 'press_key', 'set_value', 'select_text', 'perform_secondary_action'];
 let count = 0;
@@ -13,7 +15,8 @@ createInterface({ input: process.stdin }).on('line', line => {
     active = false;
   } else if (m.method === 'initialize') result(m.id, {});
   else if (m.method === 'thread/start') {
-    if (m.params.approvalPolicy !== 'never' || m.params.sandbox !== 'danger-full-access' || m.params.ephemeral !== true) send({ id: m.id, error: { message: 'Expected ephemeral Full access thread' } });
+    if (!readFileSync(join(process.env.CODEX_HOME, 'config.toml'), 'utf8').includes('env={CODEX_HOME="/codex-home"}')) send({ id: m.id, error: { message: 'Expected client CODEX_HOME' } });
+    else if (m.params.approvalPolicy !== 'never' || m.params.sandbox !== 'danger-full-access' || m.params.ephemeral !== true) send({ id: m.id, error: { message: 'Expected ephemeral Full access thread' } });
     else result(m.id, { thread: { id: 'test-thread' } });
   }
   else if (m.method === 'mcpServerStatus/list') result(m.id, { data: [{ name: 'computer-use', tools: Object.fromEntries(methods.map(name => [name, { name, description: name, inputSchema: { type: 'object' }, annotations: { readOnlyHint: name === 'list_apps' } }])) }] });
