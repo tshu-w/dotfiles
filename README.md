@@ -6,24 +6,18 @@ git clone --recurse-submodules https://github.com/tshu-w/dotfiles.git
 
 ## macOS
 
-1. Ensure iCloud Unison folder downloaded
+1. `make`
 
-2. Grant terminal Full Disk Access
-
-3. `make`
-
-4. Finish *TODO* and *FIXME* in [macOS.sh](darwin/macOS.sh)
-
-5. Link Documents to Dropbox and lock it
+2. Link Documents to Dropbox and lock it
 
 ```shell
 sudo rm -rf ~/Documents && ln -s ~/Library/CloudStorage/Dropbox/Documents ~
 sudo chflags -h uchg ~/Documents
 ```
 
-6. Set YouDao appID and key for LaunchBar (\~ ID)
+3. Set YouDao appID and key for LaunchBar (\~ ID)
 
-7. Import GPG subkeys
+4. Import GPG subkeys
 
 ```shell
 gpg --import private-subkeys.asc

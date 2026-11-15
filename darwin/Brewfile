@@ -142,6 +142,8 @@ cask "discord"
 cask "dropbox"
 # Dictionary and translator app
 cask "easydict"
+# Project management software
+cask "feishu"
 # Virtual workspace manager
 cask "flashspace"
 # Website and application blocker
@@ -214,10 +216,9 @@ cask "tor-browser"
 # Messaging and calling application
 cask "wechatwork"
 mas "Bitwarden", id: 1352778147
-mas "Feishu", id: 1551632588
-mas "Keynote", id: 409183694
-mas "Numbers", id: 409203825
-mas "Pages", id: 409201541
+mas "Keynote", id: 361285480
+mas "Numbers", id: 361304891
+mas "Pages", id: 361309726
 mas "Peek", id: 1554235898
 mas "Surfingkeys", id: 1609752330
 mas "Userscripts", id: 1463298887

@@ -7,6 +7,13 @@ set -euxo pipefail # -e=-o errexit, -u=-o nounset
 : ${XDG_STATE_HOME:=~/.local/state}
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 
+# Require Full Disk Access for the terminal
+if ! head -c1 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" >/dev/null 2>&1; then
+    open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    echo "Grant Full Disk Access to your terminal, then rerun setup"
+    exit 1
+fi
+
 # Initialize Pi data directories and links
 PI_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config/pi" && pwd)"
 mkdir -p "$XDG_DATA_HOME"/pi/{git,npm} "$XDG_CACHE_HOME/pi" "$XDG_STATE_HOME"/pi/{sessions,tape}
@@ -94,7 +101,12 @@ mkdir -p ~/Developer
 # Unison restore
 UNISON_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Unison"
 mkdir -p "$XDG_CACHE_HOME/unison"
-[ -d "$UNISON_DIR" ] && UNISON="$XDG_CONFIG_HOME/unison" unison dotfile -batch -force "$UNISON_DIR"
+if [ -d "$UNISON_DIR" ]; then
+    find "$UNISON_DIR" -type f -exec head -c1 {} \; >/dev/null
+    UNISON="$XDG_CONFIG_HOME/unison" unison dotfile -batch -force "$UNISON_DIR"
+else
+    echo "Skip Unison restore: $UNISON_DIR not found (sign in to iCloud first)"
+fi
 
 # Apply macoS system settings
 . "macOS.sh"
