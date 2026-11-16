@@ -7,6 +7,7 @@
       "description": "Manage Fly.io apps, Machines, volumes, secrets, Managed Postgres, and Sprites"
     },
     "radius": {
+      "enabled": false,
       "url": "https://radius.pi.dev/mcp",
       "auth": {
         "provider": "radius"

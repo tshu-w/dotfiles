@@ -73,6 +73,8 @@
   "showCacheMissNotices": true,
   "quietStartup": "header",
   "pi-agents": {
+    "maxConcurrent": 7,
+    "maxOutstanding": 16,
     "extensions": [
       "extensions/pi-web/index.ts",
       "git/github.com/tshu-w/pi-exec/src/index.ts",
