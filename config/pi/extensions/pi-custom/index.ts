@@ -19,7 +19,7 @@ import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   createCustomPreferences,
   CUSTOM_SETTINGS_ENTRY_TYPE,
@@ -823,12 +823,6 @@ export default async function piCustom(pi: ExtensionAPI) {
     timeout: 130,
     exposure: "codemode",
     description: "Control macOS apps through official ChatGPT Computer Use",
-  });
-  if ((process.env.PATH ?? "").split(delimiter).some((dir) => existsSync(join(dir, "flyctl")))) pi.registerMcpServer("fly-mcp", {
-    enabled: false,
-    url: "https://mcp.fly.io",
-    exposure: "codemode",
-    description: "Manage Fly.io apps, Machines, volumes, secrets, Managed Postgres, and Sprites",
   });
   if (existsSync("/opt/homebrew/bin/pinkyctl")) pi.registerMcpServer("pinky", {
     command: "/opt/homebrew/bin/pinkyctl",

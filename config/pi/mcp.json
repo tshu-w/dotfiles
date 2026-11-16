@@ -1,5 +1,11 @@
 {
   "mcpServers": {
+    "fly-mcp": {
+      "enabled": false,
+      "url": "https://mcp.fly.io",
+      "exposure": "codemode",
+      "description": "Manage Fly.io apps, Machines, volumes, secrets, Managed Postgres, and Sprites"
+    },
     "radius": {
       "url": "https://radius.pi.dev/mcp",
       "auth": {
