@@ -38,7 +38,6 @@ import { registerNotify } from "./notify.ts";
 import { registerRenderPerf, type RenderPerfControl } from "./render-perf.ts";
 import { registerClampedOutput } from "./clamped-output.ts";
 import { installTranscriptDisplay } from "./transcript-display.ts";
-import { paths as computerUsePaths } from "../../mcp/chatgpt-computer-use/paths.mjs";
 
 // ─── Formatting utils ─────────────────────────────────────────────────────────
 
@@ -817,20 +816,6 @@ function registerRestart(pi: ExtensionAPI): void {
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export default async function piCustom(pi: ExtensionAPI) {
-  if (existsSync(computerUsePaths().client)) pi.registerMcpServer("computer-use", {
-    command: "/bin/sh",
-    args: ["-c", 'exec node "${PI_CODING_AGENT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pi}/mcp/chatgpt-computer-use/server.mjs"'],
-    timeout: 130,
-    exposure: "codemode",
-    description: "Control macOS apps through official ChatGPT Computer Use",
-  });
-  if (existsSync("/opt/homebrew/bin/pinkyctl")) pi.registerMcpServer("pinky", {
-    command: "/opt/homebrew/bin/pinkyctl",
-    args: ["mcp"],
-    exposure: "codemode",
-    description: "Operate phones through Pinky with human approvals",
-  });
-
   const preferences = createCustomPreferences({
     path: CUSTOM_SETTINGS_PATH,
     appendSession: (settings) => pi.appendEntry(CUSTOM_SETTINGS_ENTRY_TYPE, settings),
