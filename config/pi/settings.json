@@ -92,6 +92,8 @@
     "openai/gpt-6.2-sol",
     "claude-code/claude-fable-5-2",
     "claude-code/claude-opus-5-5",
+    "antigravity/gemini-4-neon",
+    "antigravity/gemini-4-hydrogen",
     "antigravity/gemini-4-argon"
   ],
   "pi-custom": {
