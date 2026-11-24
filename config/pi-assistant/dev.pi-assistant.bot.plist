@@ -5,8 +5,9 @@
   <key>Label</key><string>dev.pi-assistant.bot</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/node</string>
-    <string>/Users/wangtianshu/.config/pi-assistant/startup.mjs</string>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>exec /opt/homebrew/bin/node /Users/wangtianshu/.config/pi-assistant/startup.mjs</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/wangtianshu/.config/pi-assistant</string>
   <key>EnvironmentVariables</key>
