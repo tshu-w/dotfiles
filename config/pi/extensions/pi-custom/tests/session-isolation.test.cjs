@@ -26,6 +26,7 @@ function extensionHarness() {
       },
       registerCommand(name, command) { commands.set(name, command); },
       registerProvider() {},
+      registerMcpServer() {},
       getThinkingLevel() { return "off"; },
       exec: async () => ({ code: 0, stdout: "", stderr: "" }),
     },
