@@ -1,6 +1,6 @@
 {
   "defaultProvider": "openai",
-  "defaultModel": "gpt-6-astra",
+  "defaultModel": "gpt-6.2-sol",
   "defaultThinkingLevel": "medium",
   "followUpMode": "one-at-a-time",
   "steeringMode": "all",
