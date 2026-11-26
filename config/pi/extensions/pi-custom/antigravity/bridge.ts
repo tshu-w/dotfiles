@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -80,32 +80,18 @@ function checkedPromptBytes(prompt: any[]): number {
   return bytes;
 }
 
-const PROFILE_MARKER = ".pi-history-owner.json";
+const DEFAULT_PROFILE = "antigravity-cli";
 const validSessionId = (id: unknown): id is string => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 function geminiRoot(cwd: string, overrides?: Record<string, string>) {
   const env = { ...process.env, ...overrides };
-  return realpathSync(resolve(cwd, env.GEMINI_HOME || join(env.HOME || homedir(), ".gemini")));
-}
-
-function ownedProfile(geminiDir: string, appDataDir: string, piSessionId: string): string | undefined {
-  if (!/^pi-history-[0-9a-f-]{36}$/.test(appDataDir)) return undefined;
-  const path = join(geminiDir, appDataDir);
-  try {
-    if (!lstatSync(path).isDirectory() || realpathSync(path) !== path) return undefined;
-    const marker = join(path, PROFILE_MARKER);
-    if (!lstatSync(marker).isFile()) return undefined;
-    const owner = JSON.parse(readFileSync(marker, "utf8"));
-    return owner && typeof owner === "object" && owner.piSessionId === piSessionId && owner.geminiDir === geminiDir ? path : undefined;
-  } catch (error) {
-    if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
+  return resolve(cwd, env.GEMINI_HOME || join(env.HOME || homedir(), ".gemini"));
 }
 
 export interface BridgeState {
   sessionId: string;
-  appDataDir?: string;
+  appDataDir?: string; // Legacy isolated-profile checkpoints are rejected.
+  imported?: true;
   configuration: string;
   historyLength: number;
   historyKey: string;
@@ -128,7 +114,7 @@ export function createAntigravityBridge(options: {
   let selection: string | undefined;
   let connection: Connection | undefined;
   let sessionId: string | undefined;
-  let appDataDir: string | undefined;
+  let imported = false;
   let configuration: string | undefined;
   let history: any[] = [];
   let stream: AssistantMessageEventStream | undefined;
@@ -172,7 +158,7 @@ export function createAntigravityBridge(options: {
     } else {
       history.push(structuredClone(message));
       if (reason !== "toolUse") {
-        checkpoint = { sessionId: sessionId!, ...(appDataDir ? { appDataDir } : {}), configuration: configuration!, historyLength: history.length, historyKey: historyKey(history) };
+        checkpoint = { sessionId: sessionId!, ...(imported ? { imported: true as const } : {}), configuration: configuration!, historyLength: history.length, historyKey: historyKey(history) };
         checkpointShared = false;
       }
       target.push({ type: "done", reason, message });
@@ -192,7 +178,7 @@ export function createAntigravityBridge(options: {
     void connection?.close().catch(() => {});
     connection = undefined;
     sessionId = undefined;
-    appDataDir = undefined;
+    imported = false;
     configuration = undefined;
     selection = undefined;
     checkpoint = undefined;
@@ -279,7 +265,12 @@ export function createAntigravityBridge(options: {
     interruptedTool = undefined;
     if (interrupted && messages.some((message) => message.role === "toolResult" && message.toolCallId === interrupted.id)) throw interrupted.error;
     if (startedGeneration !== generation) throw new Error("Pi session context changed before the request started");
-    const config = digest([AGENT_DEFINITION, HISTORY_IMPORT_POLICY, routing(effective.tools.length > 0), options.cwd(), systemPrompt, effective.tools, settings.env]);
+    const requestedRoot = geminiRoot(options.cwd(), settings.env);
+    let root: string | undefined;
+    try { root = realpathSync(requestedRoot); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const configParts = [AGENT_DEFINITION, HISTORY_IMPORT_POLICY, routing(effective.tools.length > 0), options.cwd(), systemPrompt, effective.tools, settings.env];
+    let config = digest([...configParts, root]);
     const selectedConfig = digest([selected.id, settings.reasoning]);
     if (stream) throw new Error("Antigravity ACP already has an active stream");
     if (connection && !prompting && (connection.closed || selection !== selectedConfig)) {
@@ -314,14 +305,9 @@ export function createAntigravityBridge(options: {
       && messages.slice(checkpoint.historyLength).every((message) => message.role === "user") ? checkpoint : undefined;
     checkpoint = undefined;
     const owner = options.piSessionId?.();
-    let root: string | undefined;
-    if (fresh && owner) {
-      try { root = geminiRoot(options.cwd(), settings.env); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    }
-    if (restored?.appDataDir && (!root || !owner || !validSessionId(restored.sessionId)
-      || !ownedProfile(root, restored.appDataDir, owner))) restored = undefined;
-    const open = async (profile?: { geminiDir: string; appDataDir: string; historyTarget?: true }, availableTools = effective.tools) => {
+    if (restored?.appDataDir !== undefined
+      || (restored?.imported && (!root || !owner || !validSessionId(restored.sessionId)))) restored = undefined;
+    const open = async (profile?: { geminiDir: string; historyTarget?: true }, availableTools = effective.tools) => {
       const created = await (options.connect ?? createAcpConnection)(options.cwd(), {
         update: (params) => update(params, epoch),
         tool: async (name, args) => {
@@ -353,57 +339,64 @@ export function createAntigravityBridge(options: {
       if (!prepared) throw new Error("Antigravity cannot import this history. Compact with another model or start a new conversation.");
       if (!owner) throw new Error("Antigravity history import requires a Pi session ID.");
       if (!root) throw new Error("Antigravity history storage is unavailable.");
-      const name = `pi-history-${randomUUID()}`;
-      const path = join(root, name);
+      const path = join(root, DEFAULT_PROFILE), conversations = join(path, "conversations");
       let created: Connection | undefined;
       const incompatible = new Error("Antigravity history storage layout is unsupported.");
+      for (const directory of [path, conversations]) {
+        const stat = lstatSync(directory, { throwIfNoEntry: false });
+        if (stat && (!stat.isDirectory() || realpathSync(directory) !== directory)) throw incompatible;
+      }
+      let existing: string[];
+      try { existing = readdirSync(conversations).map(name => name.toLowerCase()); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; existing = []; }
       try {
-        mkdirSync(path, { mode: 0o700 });
-        writeFileSync(join(path, PROFILE_MARKER), JSON.stringify({ piSessionId: owner, geminiDir: root }), { flag: "wx", mode: 0o600 });
-        created = await open({ geminiDir: root, appDataDir: name, historyTarget: true }, []);
+        created = await open({ geminiDir: root, historyTarget: true }, []);
         if (!supportsHistory(created.initialized?.agentInfo?.version)) throw new Error("Antigravity history import requires CLI 1.5.15 or later.");
         const params = sessionRequest(options.cwd(), undefined, systemPrompt, created.initialized, false);
         const session = await created.request("session/new", params);
         if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
         if (!validSessionId(session?.sessionId)) throw new Error("Invalid Antigravity import session ID");
+        if (existing.some(name => name.startsWith(session.sessionId.toLowerCase() + ".db"))) throw incompatible;
         await created.request("session/close", { sessionId: session.sessionId });
         await created.close();
         if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
         settings.signal?.throwIfAborted();
         connection = undefined;
         const database = join(path, "conversations", session.sessionId + ".db");
-        let nativeTarget: boolean;
-        try { nativeTarget = realpathSync(database) === database && lstatSync(database).isFile(); }
+        let identity: { dev: number; ino: number };
+        try {
+          const stat = lstatSync(database);
+          if (realpathSync(database) !== database || !stat.isFile()) throw incompatible;
+          identity = { dev: stat.dev, ino: stat.ino };
+        }
         catch (error) {
           if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw incompatible;
           throw error;
         }
-        if (!ownedProfile(root, name, owner) || !nativeTarget
-          || !writeHistory(database, session.sessionId, prepared.steps, join(path, "brain", session.sessionId, ".user_uploaded"))) {
+        if (!writeHistory(database, session.sessionId, prepared.steps, join(path, "brain", session.sessionId, ".user_uploaded"), identity)) {
           throw incompatible;
         }
         importedSession = session.sessionId;
         importedLength = boundary;
         importedLosses = prepared.losses;
-        // Resumed workers outlive the parent-stop proof; retain post-import resources.
-        appDataDir = name;
       } catch (error) {
-        let stopped = false;
+        // Native owns the shared profile and summaries; retain failed new sessions.
         if (created) {
-          try { await created.close(); stopped = true; } catch { /* Never delete a profile whose writer may still be running. */ }
-        }
-        if (stopped && ownedProfile(root, name, owner) === path) {
-          try { rmSync(path, { recursive: true }); } catch (cleanupError) { if (error === incompatible) throw cleanupError; }
+          try { await created.close(); } catch { /* An unconfirmed writer stop grants no write or cleanup authority. */ }
         }
         if (epoch !== generation || settings.signal?.aborted) throw new DOMException("Antigravity history import aborted", "AbortError");
         throw error;
       }
     }
     if (!connection) {
-      appDataDir = restored?.appDataDir ?? appDataDir;
-      const active = await open(appDataDir ? { geminiDir: root!, appDataDir } : undefined);
+      imported = !!(restored?.imported || importedSession);
+      const active = await open({ geminiDir: root ?? requestedRoot });
+      if (!root) {
+        root = realpathSync(requestedRoot);
+        config = digest([...configParts, root]);
+      }
       const resumeId = restored?.sessionId ?? importedSession;
-      if (appDataDir && !supportsHistory(active.initialized?.agentInfo?.version)) {
+      if (imported && !supportsHistory(active.initialized?.agentInfo?.version)) {
         await active.close();
         if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
         throw new Error("Antigravity history import requires CLI 1.5.15 or later.");
@@ -412,7 +405,7 @@ export function createAntigravityBridge(options: {
       const session = await active.request(resumeId ? "session/resume" : "session/new",
         resumeId ? { ...params, sessionId: resumeId } : params);
       if (epoch !== generation) return;
-      if (typeof session?.sessionId !== "string" || (appDataDir && session.sessionId !== resumeId)) throw new Error("Antigravity returned an invalid session ID");
+      if (typeof session?.sessionId !== "string" || !session.sessionId || (resumeId && session.sessionId !== resumeId)) throw new Error("Antigravity returned an invalid session ID");
       sessionId = session.sessionId;
       const selector = session.configOptions?.find((option: any) => option.category === "model" || option.id === "model");
       const selectedModel = selector

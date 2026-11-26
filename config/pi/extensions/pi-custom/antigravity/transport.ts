@@ -39,7 +39,7 @@ type PendingRequest = {
   removeAbort?(): void;
 };
 
-export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, tools: AcpTool[] = [], overrides?: Record<string, string>, signal?: AbortSignal, profile?: { geminiDir: string; appDataDir: string; historyTarget?: true }) {
+export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, tools: AcpTool[] = [], overrides?: Record<string, string>, signal?: AbortSignal, profile?: { geminiDir: string; historyTarget?: true }) {
   signal?.throwIfAborted();
   const env = { ...process.env, ...overrides };
   const geminiDir = resolve(cwd, profile?.geminiDir || env.GEMINI_HOME || join(env.HOME || homedir(), ".gemini"));
@@ -116,7 +116,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   // Only empty-target creation keeps the writer in the child we can await.
   // Normal sessions need the per-session worker's HTTP MCP support.
   const child = spawn(env.AGY_ACP_BIN || "agy", ["acp", ...(profile?.historyTarget ? [] : ["--process-per-session"]),
-    ...(profile ? ["--gemini-dir", profile.geminiDir, "--app-data-dir", profile.appDataDir] : []),
+    ...(profile ? ["--gemini-dir", profile.geminiDir] : []),
     "--disable-telemetry", "--include-default-customizations=false", "--agent", "pi"], {
     cwd, env, stdio: ["pipe", "pipe", "ignore"],
   });

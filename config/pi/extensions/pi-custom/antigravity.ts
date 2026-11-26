@@ -53,7 +53,7 @@ export function registerAntigravity(pi: ExtensionAPI) {
       try {
         const saved = JSON.parse(readFileSync(claimed, "utf8"));
         return saved.sessionId === state.sessionId && saved.configuration === state.configuration
-          && saved.appDataDir === state.appDataDir && saved.historyLength === state.historyLength && saved.historyKey === state.historyKey;
+          && saved.appDataDir === state.appDataDir && saved.imported === state.imported && saved.historyLength === state.historyLength && saved.historyKey === state.historyKey;
       } finally {
         rmSync(claimed, { force: true });
       }

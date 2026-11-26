@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test, before } = require("node:test");
-const { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync } = require("node:fs");
+const { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync, realpathSync, statSync, symlinkSync, renameSync, linkSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { randomUUID } = require("node:crypto");
@@ -18,7 +18,7 @@ const pair = (name = "echo", result = "COMPLETED_中文") => [
 ];
 
 function target(t, constraint = "") {
-  const root = mkdtempSync(join(tmpdir(), "pi-history-test-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-history-test-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const sessionId = randomUUID(), trajectoryId = randomUUID();
   const path = join(root, "conversations", sessionId + ".db");
@@ -40,7 +40,7 @@ function target(t, constraint = "") {
   db.prepare("INSERT INTO trajectory_meta VALUES (?, ?, 4, 17)").run(trajectoryId, sessionId);
   db.prepare("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)").run(Buffer.from("synthetic-native-metadata"));
   db.close();
-  return { root, path, sessionId, trajectoryId, imageDirectory };
+  return { root, path, sessionId, trajectoryId, imageDirectory, identity: statSync(path) };
 }
 function rows(path, table = "steps") {
   const db = new DatabaseSync(path, { readOnly: true });
@@ -70,7 +70,7 @@ test("writes complete visible text into an existing empty native target without 
   assert.ok(prepared);
   const identity = rows(fixture.path, "trajectory_meta");
   const metadata = rows(fixture.path, "trajectory_metadata_blob");
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const written = rows(fixture.path);
   assert.deepEqual(written.map(r => [r.idx, r.step_type, r.status]), [[0, 14, 3], [1, 15, 3]]);
   assert.equal(at(written[0].step_payload, 19, 2).toString(), messages[0].content);
@@ -97,7 +97,7 @@ test("writes one completed text tool pair with fresh shared identity and exact P
     const prepared = prepareSteps(input);
     assert.ok(prepared);
     assert.deepEqual(input, before);
-    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
     const written = rows(fixture.path);
     assert.deepEqual(written.map(r => r.step_type), [14, 15, 15, 132, 15]);
     assert.equal(at(written[0].step_payload, 19, 2).toString(), input[0].content);
@@ -118,7 +118,7 @@ test("writes one completed text tool pair with fresh shared identity and exact P
     assert.equal(written.every(row => row.status === 3 && row.has_subtrajectory === 0), true);
     assert.ok(Buffer.byteLength(input[0].content) + Buffer.byteLength(input[3].content[0].text) > 185000);
     const other = target(t);
-    assert.equal(writeHistory(other.path, other.sessionId, prepareSteps(input)), true);
+    assert.equal(writeHistory(other.path, other.sessionId, prepareSteps(input), undefined, other.identity), true);
     assert.notEqual(at(rows(other.path)[2].step_payload, 20, 7, 1).toString(), callId);
   }
 });
@@ -132,7 +132,7 @@ test("encodes observed JSON arguments and two sequential pairs without losing va
   second[0].content[0].id = second[1].toolCallId = "second-source-call";
   const prepared = prepareSteps([user("start"), ...first, ...second, assistant([text("done")])]);
   assert.ok(prepared);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const written = rows(fixture.path);
   assert.deepEqual(written.map(r => r.step_type), [14, 15, 132, 15, 132, 15]);
   assert.deepEqual(JSON.parse(at(written[1].step_payload, 20, 7, 3).toString()), args);
@@ -152,14 +152,14 @@ test("writes only the proven Text then PNG layout with explicit target resource 
   const attachment = 'EXACT_TEXT_ATTACHMENT_中文\n<file name="note.txt">content</file>\n';
   const prepared = prepareSteps([user([text("caption before image"), png]), assistant([text("seen")]), user([text(attachment)])]);
   assert.ok(prepared);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), false);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), false);
   const outside = join(fixture.root, "not-authorized");
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, outside), false);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, outside, fixture.identity), false);
   assert.equal(existsSync(outside), false);
   assert.deepEqual(rows(fixture.path), []);
   mkdirSync(fixture.imageDirectory, { recursive: true });
   writeFileSync(join(fixture.imageDirectory, "keep.txt"), "preexisting");
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, fixture.imageDirectory), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, fixture.imageDirectory, fixture.identity), true);
   const written = rows(fixture.path);
   assert.deepEqual(written.map(r => r.step_type), [14, 15, 14]);
   assert.equal(at(written[0].step_payload, 19, 2).toString(), "caption before image");
@@ -180,7 +180,7 @@ test("writes multiple text blocks using the native MCP newline separator", (t) =
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   assert.equal(at(rows(fixture.path)[1].step_payload, 140, 2, 1).toString(), "BLOCK_A_甲\nEND_A\nBLOCK_B_乙\nEND_B\nBLOCK_C_丙\nEND_C");
   assert.deepEqual(input, before);
 });
@@ -192,7 +192,7 @@ test("writes failed MCP results with native error status and matching error deta
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const result = rows(fixture.path)[1];
   assert.equal(result.status, 7);
   assert.equal(at(result.step_payload, 4), 7);
@@ -210,7 +210,7 @@ test("keeps assistant text and its call in one native planner step", (t) => {
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const written = rows(fixture.path);
   assert.deepEqual(written.map(row => row.step_type), [15, 132]);
   assert.equal(at(written[0].step_payload, 20, 1).toString(), "ASSISTANT_BEFORE_CALL_甲_SENTINEL");
@@ -229,7 +229,7 @@ test("keeps a parallel tool batch grouped with results normalized to call order"
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const written = rows(fixture.path);
   assert.deepEqual(written.map(row => row.step_type), [15, 132, 132]);
   const calls = fields(at(written[0].step_payload, 20)).filter(([number]) => number === 7).map(([, value]) => value);
@@ -256,7 +256,7 @@ test("replaces tool-result images with explicit text placeholders without image 
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const result = rows(fixture.path)[1];
   assert.equal(at(result.step_payload, 140, 2, 1).toString(), "IMAGE_BEFORE\n[Pi omitted an image]\nIMAGE_AFTER\n[Pi omitted an image]");
   assert.equal(at(result.step_payload, 140, 2, 4), undefined);
@@ -269,7 +269,7 @@ test("imports retired tool names while validating call names and IDs", (t) => {
   const prepared = prepareSteps(input);
   assert.ok(prepared);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   const written = rows(fixture.path);
   assert.equal(at(written[0].step_payload, 20, 7, 2).toString(), "mcp_pi_retired_tool");
   assert.equal(at(written[1].metadata, 4, 2).toString(), "mcp_pi_retired_tool");
@@ -326,7 +326,7 @@ test("bounds only the target tool result with exact UTF-8 head, omission count a
   assert.equal(expected.includes("\ufffd"), false);
   assert.equal(80055 - 6140 * 4 - (6126 * 4 + 55), 30936);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   assert.equal(at(rows(fixture.path)[1].step_payload, 140, 2, 1).toString(), expected);
   assert.deepEqual(input, original);
 });
@@ -344,7 +344,7 @@ test("reserves the native error prefix before clipping to preserve the original 
   assert.equal(Buffer.byteLength(expected), 49112);
   assert.equal(Buffer.byteLength(prefix + expected), 49149);
   const fixture = target(t);
-  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
   assert.equal(at(rows(fixture.path)[1].error_details, 2).toString(), expected);
   assert.equal(at(rows(fixture.path)[1].error_details, 3).toString(), expected);
   assert.deepEqual(input, before);
@@ -364,7 +364,7 @@ test("bounds only historical user text and preserves full assistant text", (t) =
     assert.equal(Buffer.byteLength(prepared[0].text), input[0].role === "user" ? 184995 : 300000);
     assert.equal(prepared[0].text, targetText);
     const fixture = target(t);
-    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared), true);
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
     const row = rows(fixture.path)[0];
     assert.equal(at(row.step_payload, ...(input[0].role === "user" ? [19, 2] : [20, 1])).toString(), targetText);
     if (input[0].role === "assistant") assert.equal(at(row.step_payload, 20, 8).toString(), longAssistant);
@@ -611,7 +611,7 @@ test("refuses missing, nonempty, wrong-identity or incompatible targets without 
   const prepared = prepareSteps([user("import")]);
   const fixture = target(t);
   const missing = join(fixture.root, "missing.db");
-  assert.equal(writeHistory(missing, fixture.sessionId, prepared), false);
+  assert.equal(writeHistory(missing, fixture.sessionId, prepared, undefined, fixture.identity), false);
   assert.equal(existsSync(missing), false);
   const mutations = [
     () => {},
@@ -622,9 +622,57 @@ test("refuses missing, nonempty, wrong-identity or incompatible targets without 
     const targetFixture = target(t);
     const db = new DatabaseSync(targetFixture.path); mutations[i](db); db.close();
     const before = readFileSync(targetFixture.path);
-    assert.equal(writeHistory(targetFixture.path, i === 0 ? "wrong-session" : targetFixture.sessionId, prepared), false);
+    assert.equal(writeHistory(targetFixture.path, i === 0 ? "wrong-session" : targetFixture.sessionId, prepared, undefined, targetFixture.identity), false);
     assert.deepEqual(readFileSync(targetFixture.path), before);
   }
+});
+
+test("rejects replaced targets and symlinked database ancestors", (t) => {
+  const fixture = target(t);
+  const prepared = prepareSteps([user("import")]);
+  renameSync(fixture.path, fixture.path + ".original");
+  writeFileSync(fixture.path, readFileSync(fixture.path + ".original"));
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), false);
+  const alias = join(fixture.root, "alias");
+  symlinkSync(dirname(fixture.path), alias, "dir");
+  assert.equal(writeHistory(join(alias, fixture.sessionId + ".db"), fixture.sessionId, prepared, undefined, statSync(fixture.path)), false);
+  assert.deepEqual(rows(fixture.path), []);
+});
+
+test("rejects a target hard-linked to a neighboring database", (t) => {
+  const fixture = target(t);
+  const neighbor = join(dirname(fixture.path), "neighbor.db");
+  linkSync(fixture.path, neighbor);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepareSteps([user("import")]), undefined, fixture.identity), false);
+  assert.deepEqual(rows(fixture.path), []);
+  assert.deepEqual(rows(neighbor), []);
+});
+
+test("rejects symlinks at every image directory level", (t) => {
+  for (const level of ["brain", "session", "uploads"]) {
+    const fixture = target(t);
+    const outside = join(fixture.root, "outside");
+    mkdirSync(outside);
+    const directory = level === "brain" ? join(fixture.root, "brain")
+      : level === "session" ? dirname(fixture.imageDirectory) : fixture.imageDirectory;
+    mkdirSync(dirname(directory), { recursive: true });
+    symlinkSync(outside, directory, "dir");
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepareSteps([user([text("one"), png])]), fixture.imageDirectory, fixture.identity), false);
+    assert.deepEqual(rows(fixture.path), []);
+    assert.deepEqual(readdirSync(outside), []);
+  }
+});
+
+test("locks before inspecting an incompatible target and does not retry busy writes", (t) => {
+  const fixture = target(t);
+  const db = new DatabaseSync(fixture.path);
+  try {
+    db.exec("ALTER TABLE steps ADD COLUMN incompatible TEXT; BEGIN IMMEDIATE");
+    assert.throws(() => writeHistory(fixture.path, fixture.sessionId, prepareSteps([user("import")]), undefined, fixture.identity), /locked|busy/i);
+    db.exec("ROLLBACK");
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepareSteps([user("import")]), undefined, fixture.identity), false);
+    assert.deepEqual(rows(fixture.path), []);
+  } finally { db.close(); }
 });
 
 test("rolls back steps and removes only new image files if any insertion fails", (t) => {
@@ -634,7 +682,7 @@ test("rolls back steps and removes only new image files if any insertion fails",
   writeFileSync(join(fixture.imageDirectory, "keep.txt"), "preexisting");
   const prepared = prepareSteps([user([text("one"), png]), assistant([text("two")]), user("three")]);
   assert.ok(prepared);
-  assert.throws(() => writeHistory(fixture.path, fixture.sessionId, prepared, fixture.imageDirectory), /CHECK constraint failed/);
+  assert.throws(() => writeHistory(fixture.path, fixture.sessionId, prepared, fixture.imageDirectory, fixture.identity), /CHECK constraint failed/);
   assert.deepEqual(rows(fixture.path), []);
   assert.deepEqual(rows(fixture.path, "trajectory_meta"), identity);
   assert.deepEqual(readdirSync(fixture.imageDirectory), ["keep.txt"]);

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { closeSync, lstatSync, mkdirSync, openSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, lstatSync, mkdirSync, openSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { JsonObject, JsonValue, Message } from "@earendil-works/pi-ai";
@@ -8,8 +8,9 @@ export const MAX_PROMPT_TEXT_BYTES = 185_000;
 // Revision covers turn boundaries, omission counts and marker formatting.
 export const HISTORY_IMPORT_POLICY = { revision: 4, maxBytes: 500_000 } as const;
 
-// Private agy 1.5.15 schema. The caller gates the CLI version, creates/stops a
-// fresh native session, and owns its directory. This module never starts agy.
+// Native agy 1.5.15 schema. The caller gates the CLI version, creates a fresh
+// session, stops its creator, and supplies its file identity in the shared profile.
+// This module never starts agy or writes shared conversation indexes.
 // Validate whole histories before windowing; signatures/thinking are excluded.
 type TextStep = { role: "user" | "assistant"; text: string };
 type Call = { id: string; name: string; arguments: JsonObject };
@@ -236,15 +237,22 @@ function emptyTarget(db: DatabaseSync, sessionId: string): string | undefined {
 
 // Image authority is explicit and restricted to this native target's upload directory.
 // Ordinary failures remove only files created here; empty directories may remain.
-// SQLite/files are not crash-atomic: the caller must discard a failed private profile.
+// SQLite/files are not crash-atomic; never remove native DBs or shared profile trees.
 // Operational failures propagate; cleanup must not replace the original error.
-export function writeHistory(targetDatabasePath: string, sessionId: string, prepared: PreparedHistory, imageDirectory?: string): boolean {
+export function writeHistory(targetDatabasePath: string, sessionId: string, prepared: PreparedHistory, imageDirectory: string | undefined, expectedIdentity: { dev: number; ino: number }): boolean {
   let db: DatabaseSync | undefined;
   const createdImages: string[] = [];
   let committed = false, failed = false;
   try {
-    if (!prepared.length || !sessionId || !lstatSync(targetDatabasePath, { throwIfNoEntry: false })?.isFile()) return false;
+    const matchesTarget = () => {
+      const stat = lstatSync(targetDatabasePath, { throwIfNoEntry: false });
+      return stat?.isFile() && stat.nlink === 1 && stat.dev === expectedIdentity.dev && stat.ino === expectedIdentity.ino
+        && realpathSync(targetDatabasePath) === targetDatabasePath;
+    };
+    if (!prepared.length || !sessionId || !matchesTarget()) return false;
     db = new DatabaseSync(targetDatabasePath);
+    db.exec("BEGIN IMMEDIATE");
+    if (!matchesTarget()) return false;
     const trajectoryId = emptyTarget(db, sessionId);
     if (!trajectoryId) return false;
     if (prepared.some(step => step.role === "image")) {
@@ -252,8 +260,11 @@ export function writeHistory(targetDatabasePath: string, sessionId: string, prep
       if (database !== join(profile, "conversations", sessionId + ".db") || !imageDirectory
         || resolve(imageDirectory) !== join(profile, "brain", sessionId, ".user_uploaded")) return false;
       imageDirectory = resolve(imageDirectory);
+      for (const directory of [join(profile, "brain"), join(profile, "brain", sessionId), imageDirectory]) {
+        if (!lstatSync(directory, { throwIfNoEntry: false })) mkdirSync(directory);
+        if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory) return false;
+      }
     }
-    db.exec("BEGIN IMMEDIATE");
     const insert = db.prepare("INSERT INTO steps (idx,step_type,status,has_subtrajectory,metadata,error_details,step_payload,step_format) VALUES (?,?,?,0,?,?,?,0)");
     const runId = randomUUID();
     for (const [idx, step] of prepared.entries()) {
@@ -273,7 +284,6 @@ export function writeHistory(targetDatabasePath: string, sessionId: string, prep
       if (step.role === "user" || step.role === "image") {
         const fields = [field(2, step.text), messageField(3, [field(1, step.text)]), field(4, "")];
         if (step.role === "image") {
-          mkdirSync(imageDirectory!, { recursive: true });
           const path = join(imageDirectory!, `pi-history-${randomUUID()}.png`);
           const bytes = Buffer.from(step.data, "base64");
           const fd = openSync(path, "wx", 0o600);

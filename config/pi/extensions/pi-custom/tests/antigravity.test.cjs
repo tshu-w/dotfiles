@@ -58,7 +58,7 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
         this.calls.push({ method, params });
         options.request?.(method, params);
         if (method === "session/new" || method === "session/resume") {
-          this.sessionId = params.sessionId ?? (profile ? randomUUID() : `session-${connections.length}`);
+          this.sessionId = params.sessionId ?? (profile?.historyTarget ? randomUUID() : `session-${connections.length}`);
           if (method === "session/new") options.newSession?.(this);
           return Promise.resolve({ sessionId: this.sessionId, ...session });
         }
@@ -96,16 +96,16 @@ function importFixture(t, extra = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-import-test-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const databases = [];
-  const h = harness(t, { agentCapabilities, agentInfo: { version: extra.version ?? "1.5.15" } }, {}, {
+  const h = harness(t, { agentCapabilities, agentInfo: { version: extra.version ?? "1.5.15" } }, extra.session ?? {}, {
     piSessionId: () => "pi-import-owner",
     initialized: profile => profile?.historyTarget ? {
       agentCapabilities: { ...agentCapabilities, mcpCapabilities: { http: false } }, agentInfo: { version: extra.version ?? "1.5.15" },
     } : undefined,
     ...extra,
     newSession(connection) {
-      if (!connection.profile) return;
-      const path = join(connection.profile.geminiDir, connection.profile.appDataDir, "conversations", connection.sessionId + ".db");
-      mkdirSync(dirname(path));
+      if (!connection.profile?.historyTarget) return;
+      const path = join(connection.profile.geminiDir, "antigravity-cli", "conversations", connection.sessionId + ".db");
+      mkdirSync(dirname(path), { recursive: true });
       const db = new DatabaseSync(path);
       db.exec(`
         CREATE TABLE steps (idx INTEGER PRIMARY KEY ${extra.failInsert ? 'CHECK (idx < 1)' : ''}, step_type INTEGER NOT NULL DEFAULT 0,
@@ -174,15 +174,15 @@ test("imports the whole prefix once after writer stop and sends only the new use
   assert.deepEqual(initial.profile, { ...resumed.profile, historyTarget: true });
   assert.notEqual(resumed.mcpServer.url, initial.mcpServer.url);
   assert.deepEqual(resumed.prompts[0].params.prompt, [{ type: "text", text: "new request" }]);
-  const profile = join(h.root, resumed.profile.appDataDir);
-  assert.equal(statSync(profile).mode & 0o777, 0o700);
-  assert.equal(JSON.parse(readFileSync(join(profile, ".pi-history-owner.json"))).piSessionId, "pi-import-owner");
+  assert.deepEqual(resumed.profile, { geminiDir: h.root });
+  assert.equal(dirname(dirname(h.databases[0])), join(h.root, "antigravity-cli"));
   resumed.chunk("completed"); resumed.finish();
   const answer = await stream.result();
   assert.equal(answer.stopReason, "stop");
   assert.equal(saved, undefined);
   h.bridge.settle();
-  assert.equal(saved.appDataDir, resumed.profile.appDataDir);
+  assert.equal(saved.appDataDir, undefined);
+  assert.equal(saved.imported, true);
   h.bridge.reset(); h.bridge.restore(saved);
   const next = await started(h, [...messages, answer, user("follow up")], 2, h.settings);
   assert.equal(next.connection.calls[0].method, "session/resume");
@@ -191,6 +191,127 @@ test("imports the whole prefix once after writer stop and sends only the new use
   assert.equal(notices.length, 1);
   next.connection.chunk("done"); next.connection.finish();
   await next.stream.result();
+});
+
+test("shared-profile imports leave neighboring databases and the shared index untouched", async (t) => {
+  for (const failInsert of [false, true]) {
+    const h = importFixture(t, { failInsert });
+    const profile = join(h.root, "antigravity-cli");
+    mkdirSync(join(profile, "conversations"), { recursive: true });
+    const neighbor = join(profile, "conversations", randomUUID() + ".db");
+    const index = join(profile, "conversation_summaries.db");
+    writeFileSync(neighbor, "existing-session");
+    writeFileSync(index, "native-owned-index");
+    if (failInsert) {
+      assert.match((await h.stream(importedHistory(), h.settings).result()).errorMessage, /CHECK constraint/);
+      assert.equal(importedRows(h.databases[0]).length, 0);
+    } else {
+      const next = await started(h, importedHistory(), 1, h.settings);
+      next.connection.chunk("done"); next.connection.finish();
+      await next.stream.result();
+    }
+    assert.equal(readFileSync(neighbor, "utf8"), "existing-session");
+    assert.equal(readFileSync(index, "utf8"), "native-owned-index");
+    assert.equal(readdirSync(join(profile, "conversations")).length, 2);
+  }
+});
+
+test("a native new response cannot authorize an already existing session database", async (t) => {
+  const existingId = randomUUID();
+  const h = importFixture(t, { session: { sessionId: existingId } });
+  const directory = join(h.root, "antigravity-cli", "conversations");
+  mkdirSync(directory, { recursive: true });
+  const existing = join(directory, existingId + ".db");
+  writeFileSync(existing, "existing-session");
+  const result = await h.stream(importedHistory(), h.settings).result();
+  assert.match(result.errorMessage, /history storage layout is unsupported/);
+  assert.equal(readFileSync(existing, "utf8"), "existing-session");
+  assert.deepEqual(h.connections[0].calls.map(call => call.method), ["session/new"]);
+  assert.equal(h.connections[0].closed, true);
+  assert.equal(importedRows(h.databases[0]).length, 0);
+});
+
+test("legacy owned-profile checkpoints are invalidated without removing their directories", async (t) => {
+  let saved;
+  const h = importFixture(t, { save: state => { saved = state; return true; }, claim: () => true });
+  const messages = importedHistory();
+  const first = await started(h, messages, 1, h.settings);
+  first.connection.chunk("done"); first.connection.finish();
+  messages.push(await first.stream.result(), user("next"));
+  h.bridge.settle();
+  const oldName = "pi-history-" + randomUUID();
+  mkdirSync(join(h.root, oldName));
+  writeFileSync(join(h.root, oldName, "keep"), "old-owned-session");
+  h.bridge.reset(); h.bridge.restore({ ...saved, appDataDir: oldName });
+  const next = await started(h, messages, 3, h.settings);
+  assert.equal(h.connections[2].calls[0].method, "session/new");
+  assert.notEqual(next.connection.sessionId, saved.sessionId);
+  assert.equal(readFileSync(join(h.root, oldName, "keep"), "utf8"), "old-owned-session");
+  next.connection.chunk("done"); next.connection.finish();
+  await next.stream.result();
+});
+
+test("inherited Gemini root changes invalidate checkpoints without touching the prior root", async (t) => {
+  let saved;
+  const previous = process.env.GEMINI_HOME;
+  t.after(() => { if (previous === undefined) delete process.env.GEMINI_HOME; else process.env.GEMINI_HOME = previous; });
+  const h = importFixture(t, { save: state => { saved = state; return true; }, claim: () => true });
+  process.env.GEMINI_HOME = h.root;
+  const messages = importedHistory();
+  const first = await started(h, messages, 1);
+  first.connection.chunk("done"); first.connection.finish();
+  messages.push(await first.stream.result(), user("next"));
+  h.bridge.settle();
+  const original = readFileSync(h.databases[0]);
+  const otherRoot = realpathSync(mkdtempSync(join(tmpdir(), "pi-import-other-root-")));
+  t.after(() => rmSync(otherRoot, { recursive: true, force: true }));
+  process.env.GEMINI_HOME = otherRoot;
+  h.bridge.reset(); h.bridge.restore(saved);
+  const next = await started(h, messages, 3);
+  assert.equal(h.connections[2].profile.geminiDir, otherRoot);
+  assert.equal(h.connections[2].calls[0].method, "session/new");
+  assert.deepEqual(readFileSync(h.databases[0]), original);
+  next.connection.chunk("done"); next.connection.finish();
+  await next.stream.result();
+});
+
+test("a newly created Gemini root keeps the first ordinary checkpoint valid", { timeout: 3000 }, async (t) => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "pi-new-gemini-root-")));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, "new-root"), settings = { env: { GEMINI_HOME: root } };
+  let saved;
+  const h = harness(t, { agentCapabilities }, {}, {
+    initialized(profile) {
+      assert.deepEqual(profile, { geminiDir: root });
+      mkdirSync(root, { recursive: true });
+      return { agentCapabilities };
+    },
+    save: state => { saved = state; return true; }, claim: () => true,
+  });
+  const first = await started(h, [user("first")], 0, settings);
+  first.connection.chunk("done"); first.connection.finish();
+  const answer = await first.stream.result();
+  h.bridge.settle(); h.bridge.reset(); h.bridge.restore(saved);
+  const next = await started(h, [user("first"), answer, user("next")], 1, settings);
+  assert.equal(next.connection.calls[0].method, "session/resume");
+  assert.equal(next.connection.sessionId, saved.sessionId);
+  next.connection.chunk("done"); next.connection.finish();
+  assert.equal((await next.stream.result()).stopReason, "stop");
+});
+
+test("ordinary checkpoint resume also rejects a mismatched returned session ID", async (t) => {
+  let saved;
+  const session = {};
+  const h = harness(t, { agentCapabilities }, session, { save: state => { saved = state; return true; }, claim: () => true });
+  const first = await started(h, [user("hello")]);
+  first.connection.chunk("done"); first.connection.finish();
+  const answer = await first.stream.result();
+  h.bridge.settle(); h.bridge.reset(); h.bridge.restore(saved);
+  session.sessionId = "wrong-session";
+  const result = await h.stream([user("hello"), answer, user("next")]).result();
+  assert.match(result.errorMessage, /invalid session ID/);
+  assert.equal(h.connections[1].calls[0].method, "session/resume");
+  assert.equal(h.connections[1].prompts.length, 0);
 });
 
 test("history budgeting trims whole turns or intermediate groups while preserving the full filtered checkpoint ledger", async (t) => {
@@ -226,7 +347,7 @@ test("history budgeting trims whole turns or intermediate groups while preservin
     const { AGENT_DEFINITION } = await jiti.import(join(CUSTOM, "antigravity/transport.ts"));
     const configParts = [AGENT_DEFINITION, HISTORY_IMPORT_POLICY,
       "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.",
-      CUSTOM, "Use Pi tools only.", [tool], h.settings.env];
+      CUSTOM, "Use Pi tools only.", [tool], h.settings.env, h.root];
     assert.equal(saved.configuration, createHash("sha256").update(JSON.stringify(configParts)).digest("hex"));
     h.bridge.reset(); h.bridge.restore(saved);
     const resumed = await started(h, [...messages, answer, user("follow up")], 2, h.settings);
@@ -288,17 +409,37 @@ test("missing import versions and downgraded owned checkpoints fail without fall
   assert.equal(h.connections.length, 3);
   assert.equal(h.connections[2].prompts.length, 0);
   assert.equal(h.connections[2].closed, true);
-  assert.deepEqual(readdirSync(h.root), [first.connection.profile.appDataDir]);
+  assert.deepEqual(readdirSync(h.root), ["antigravity-cli"]);
 });
 
-test("unknown import layout discards only the new profile and fails without fallback", async (t) => {
+test("model changes retain the imported checkpoint version gate", async (t) => {
+  let saved, version = "1.5.17";
+  const h = importFixture(t, { initialized: () => ({ agentCapabilities, agentInfo: { version } }),
+    save: state => { saved = state; return true; }, claim: () => true });
+  const messages = importedHistory();
+  const first = await started(h, messages, 1, h.settings);
+  first.connection.chunk("done"); first.connection.finish();
+  messages.push(await first.stream.result(), user("next"));
+  h.bridge.settle();
+  assert.equal(saved.imported, true);
+  version = "1.5.14";
+  const result = await h.bridge.streamSimple({ ...model, id: "another-model" },
+    ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages }), h.settings).result();
+  assert.match(result.errorMessage, /requires CLI 1.5.15 or later/);
+  assert.equal(h.connections.length, 3);
+  assert.equal(h.connections[2].prompts.length, 0);
+  assert.equal(h.databases.length, 1);
+});
+
+test("unknown import layout retains the new native session and fails without fallback", async (t) => {
   const h = importFixture(t, { badLayout: true });
   writeFileSync(join(h.root, "unrelated"), "keep");
   const answer = await h.stream(importedHistory(), h.settings).result();
   assert.equal(answer.errorMessage, "Antigravity history storage layout is unsupported.");
   assert.equal(h.connections.length, 1);
   assert.equal(h.connections[0].prompts.length, 0);
-  assert.deepEqual(readdirSync(h.root), ["unrelated"]);
+  assert.deepEqual(readdirSync(h.root), ["antigravity-cli", "unrelated"]);
+  assert.equal(importedRows(h.databases[0]).length, 0);
 });
 
 test("error and aborted assistants are omitted consistently from imports and checkpoint accounting", async (t) => {
@@ -341,7 +482,8 @@ test("session-close failure propagates without fallback after confirmed writer s
   assert.equal(result.errorMessage, "native close failed");
   assert.equal(h.connections.length, 1);
   assert.equal(h.connections[0].prompts.length, 0);
-  assert.deepEqual(readdirSync(h.root), []);
+  assert.deepEqual(readdirSync(h.root), ["antigravity-cli"]);
+  assert.equal(importedRows(h.databases[0]).length, 0);
 });
 
 test("native-root filesystem failures propagate before any connection or profile creation", { timeout: 3000 }, async (t) => {
@@ -354,27 +496,23 @@ test("native-root filesystem failures propagate before any connection or profile
   assert.deepEqual(readdirSync(h.root), ["not-a-directory"]);
 });
 
-test("owned-marker access failure stops checkpoint restore without fallback or deleting resources", { timeout: 3000, skip: process.getuid?.() === 0 }, async (t) => {
-  let saved;
-  const h = importFixture(t, { save: state => { saved = state; return true; }, claim: () => true });
-  const messages = importedHistory();
-  const first = await started(h, messages, 1, h.settings);
-  first.connection.chunk("done"); first.connection.finish();
-  const answer = await first.stream.result();
-  h.bridge.settle(); h.bridge.reset(); h.bridge.restore(saved);
-  const profile = join(h.root, saved.appDataDir);
+test("unreadable shared conversations stop import before creating a native session", { timeout: 3000, skip: process.getuid?.() === 0 }, async (t) => {
+  const h = importFixture(t);
+  const directory = join(h.root, "antigravity-cli", "conversations");
+  mkdirSync(directory, { recursive: true });
+  const sentinel = join(directory, "existing.db");
+  writeFileSync(sentinel, "keep");
   const { chmodSync } = require("node:fs");
-  chmodSync(profile, 0o000);
+  chmodSync(directory, 0o000);
   try {
-    const result = await h.stream([...messages, answer, user("next")], h.settings).result();
+    const result = await h.stream(importedHistory(), h.settings).result();
     assert.match(result.errorMessage, /EACCES/);
-    assert.equal(h.connections.length, 2);
-  } finally { chmodSync(profile, 0o700); }
-  assert.equal(importedRows(h.databases[0]).length, 2);
-  assert.deepEqual(readdirSync(h.root), [saved.appDataDir]);
+    assert.equal(h.connections.length, 0);
+  } finally { chmodSync(directory, 0o700); }
+  assert.equal(readFileSync(sentinel, "utf8"), "keep");
 });
 
-test("history write failures propagate without fallback after rollback and profile cleanup", async (t) => {
+test("history write failures roll back and retain the new native session without fallback", async (t) => {
   const h = importFixture(t, { failInsert: true, onImport: () => assert.fail("Failed writes must not notify") });
   const messages = importedHistory();
   messages[0].content = "x".repeat(185001);
@@ -382,7 +520,8 @@ test("history write failures propagate without fallback after rollback and profi
   assert.match(result.errorMessage, /CHECK constraint failed/);
   assert.equal(h.connections.length, 1);
   assert.equal(h.connections[0].prompts.length, 0);
-  assert.deepEqual(readdirSync(h.root), []);
+  assert.deepEqual(readdirSync(h.root), ["antigravity-cli"]);
+  assert.equal(importedRows(h.databases[0]).length, 0);
 });
 
 test("failed worker resume retains imported resources without fallback or a parent-stop deletion", async (t) => {
@@ -399,7 +538,7 @@ test("failed worker resume retains imported resources without fallback or a pare
   assert.equal(readdirSync(h.root).length, 1);
 });
 
-test("unconfirmed writer stop neither writes nor deletes the owned profile nor falls back", async (t) => {
+test("unconfirmed writer stop neither writes nor deletes native resources nor falls back", async (t) => {
   const h = importFixture(t, { stopped: () => Promise.reject(new Error("writer stop unconfirmed")) });
   const result = await h.stream(importedHistory(), h.settings).result();
   assert.equal(result.errorMessage, "writer stop unconfirmed");
@@ -418,7 +557,9 @@ test("branch reset during native writer stop aborts import without writing or fa
   assert.equal(importedRows(h.databases[0]).length, 0);
   stopped.resolve();
   assert.equal((await stream.result()).stopReason, "error");
-  await until(() => readdirSync(h.root).length === 0);
+  await tick();
+  assert.deepEqual(readdirSync(h.root), ["antigravity-cli"]);
+  assert.equal(importedRows(h.databases[0]).length, 0);
   assert.equal(h.connections.length, 1);
   assert.equal(h.connections[0].prompts.length, 0);
 });
@@ -564,7 +705,7 @@ test("filtered system fingerprints reject old checkpoints and remain stable acro
   const { HISTORY_IMPORT_POLICY } = await jiti.import(join(CUSTOM, "antigravity/history.ts"));
   const guidance = "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.";
   const fingerprint = prompt => createHash("sha256").update(JSON.stringify([
-    AGENT_DEFINITION, HISTORY_IMPORT_POLICY, guidance, CUSTOM, prompt, [tool], h.settings.env,
+    AGENT_DEFINITION, HISTORY_IMPORT_POLICY, guidance, CUSTOM, prompt, [tool], h.settings.env, h.root,
   ])).digest("hex");
   assert.equal(saved.configuration, fingerprint(system.sections.custom));
   const legacyConfiguration = fingerprint(ai.getSystemMessageText(system));
@@ -1243,13 +1384,13 @@ test("installs the Pi agent once and refuses a different existing definition wit
   assert.equal(readFileSync(path, "utf8"), "user-owned agent definition");
 });
 
-test("only empty-target creation uses a directly awaited writer; normal owned profiles use MCP workers", async (t) => {
+test("default-profile creation uses an awaited writer and resume uses MCP workers without app-data overrides", async (t) => {
   fixture(t);
   const marker = join(root, "writer-stopped");
-  const profile = { geminiDir: root, appDataDir: "pi-history-fixture", historyTarget: true };
+  const profile = { geminiDir: root, historyTarget: true };
   const connection = await createAcpConnection(root, { update() {}, tool: async () => { throw new Error("Unexpected tool"); } }, [],
     { ACP_FIXTURE_STOP_FILE: marker }, undefined, profile);
-  assert.deepEqual(connection.initialized.argv, ["acp", "--gemini-dir", root, "--app-data-dir", profile.appDataDir,
+  assert.deepEqual(connection.initialized.argv, ["acp", "--gemini-dir", root,
     "--disable-telemetry", "--include-default-customizations=false", "--agent", "pi"]);
   assert.equal(readFileSync(join(root, "config/agents/pi/agent.md"), "utf8"), readFileSync(join(CUSTOM, "antigravity/agent.md"), "utf8"));
   const stopped = connection.close();
@@ -1259,8 +1400,8 @@ test("only empty-target creation uses a directly awaited writer; normal owned pr
   assert.equal(readFileSync(marker, "utf8"), "stopped");
   await connection.close();
   const resumed = await createAcpConnection(root, { update() {}, tool: async () => { throw new Error("Unexpected tool"); } }, [],
-    undefined, undefined, { geminiDir: root, appDataDir: profile.appDataDir });
-  assert.deepEqual(resumed.initialized.argv, ["acp", "--process-per-session", "--gemini-dir", root, "--app-data-dir", profile.appDataDir,
+    undefined, undefined, { geminiDir: root });
+  assert.deepEqual(resumed.initialized.argv, ["acp", "--process-per-session", "--gemini-dir", root,
     "--disable-telemetry", "--include-default-customizations=false", "--agent", "pi"]);
   await resumed.close();
 });

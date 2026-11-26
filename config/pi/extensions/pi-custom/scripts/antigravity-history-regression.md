@@ -35,11 +35,13 @@ sections or tool schemas. Active system-prompt bytes are reported separately.
 Modes:
 
 - `--self-test`: synthetic oracle checks; no files or network.
-- `--verify-isolation`: eight synthetic checks. A sandboxed process and its child
+- `--verify-isolation`: twelve synthetic checks. A sandboxed process and its child
   must reach two local endpoints, bind/listen/roundtrip locally, and receive an
-  explicit permission denial connecting to public `1.1.1.1:443`. The unconfined
-  baseline must first connect there. This sends a TCP handshake only, no HTTP or
-  payload; a timeout does not count as sandbox enforcement.
+  explicit permission denial connecting to public `1.1.1.1:443`. Both must also
+  receive permission denials reading and writing a self-created protected sentinel.
+  The unconfined baseline must first pass those operations. These are eight network
+  and four filesystem checks; no real profile is probed. The network check sends a
+  TCP handshake only, no HTTP or payload; a timeout does not count as enforcement.
 - `--inspect-admission`: read a fresh sample using the same selection rule, count
   SDK-converted roles, system provenance/content/sections/tool-delta categories,
   effective recorded system-prompt bytes and failed-assistant omissions, and call
@@ -64,7 +66,23 @@ Modes:
   unchanged, for observing whether SQLite, Gen, and HTTP retain empty records
   or parts and whether all subsequent nonempty content remains intact. Native attempts retain
   their private tree. Unproven worker cleanup is an information count, separate
-  from the import/request comparison result and its exit status.
+  from the import/request comparison result and its exit status. Each synthetic
+  case first imports and resumes a small neighboring session without dispatching
+  a prompt. Its database and WAL/SHM bytes and complete existing `conversation_summaries` row
+  must remain unchanged through the main import. The new imported summary row must
+  also exist. Row presence alone does not prove all index fields are synchronized.
+  These checks use only this case's private synthetic profile and its own IDs;
+  shared indexes are never edited by the harness. Before host-side reads, index,
+  session database, and optional WAL/SHM paths must be canonical ordinary files
+  owned by this user, with one hard link, under the private case root; symlinks
+  (including dangling auxiliary symlinks) are rejected.
+- `--verify-default-profile`: **explicit real-account opt-in, run by the operator**.
+  This uses the existing default profile and preserves the caller's environment;
+  it does not inject fixture credentials or use the fake backend. Confirm that the
+  profile is the intended consumer account, not an API-provider configuration.
+  API-key/base-URL overrides and `AGY_ACP_BIN` are rejected, but the script does not
+  inspect settings or credential contents to prove the configured account mode.
+  See the zero-prompt procedure below. This mode is never invoked by the fake modes.
 - `--run`: repeat isolation checks and the same synthetic smoke **before**
   enumerating real sessions. Exit 0 requires exactly 30 selected, processed, and
   passed cases. The prerequisite smoke has no request dump or detailed diagnostic
@@ -74,7 +92,7 @@ Modes:
   setup exceptions retain the fixed error output. No new payload fields are added.
   Perfect lifecycle proof is not required for a codec comparison.
 
-A real run reports one new private `runRoot` containing its prerequisite-smoke
+`--run` reports one new private `runRoot` containing its prerequisite-smoke
 and case directories. Native profiles with unproven worker state are retained;
 the script does not clean them. Aggregate retained counts include the smoke, but
 source/comparison and byte-distribution statistics cover only the real cases.
@@ -95,11 +113,59 @@ own synthetic prerequisite result; an earlier smoke does not verify later oracle
 or production changes. Every real run repeats isolation proof → synthetic native
 smoke → real-history selection. Passing the network check alone cannot admit data.
 
+## Real default-profile zero-prompt verification
+
+The operator runs this same script with `--verify-default-profile` only after
+confirming the existing consumer sign-in and approving creation of one native
+session. Do not unlock, log in, copy tokens, or change credential storage as part
+of this check. The harness does not read token contents, and no `authenticate` or
+`session/prompt` RPC is dispatched. There is a 60-second abort budget; connection cleanup is awaited.
+Normal native credential loading or refresh is outside the harness's observation.
+Stopped creator/worker counters refer only to directly started processes;
+`completeLifetimeProof` remains zero.
+
+The production bridge performs single-process creator `session/new`, session close,
+and awaited process close, then writes two fixed synthetic historical steps only to
+its proven-new database. A normal worker resumes the same ID. After the actual
+resume succeeds, the wrapper closes that session and connection and raises an
+expected abort before model selection or prompt dispatch. Thus a successful result
+has one new session, two written steps, one same-ID resume, and zero forbidden RPC
+or tool attempts. `expectedCompletionAbort` must be one: the final result must carry
+the fixed completion-abort marker after validation, with no cancellation signal.
+Other aborts or timeouts cannot pass. No independent writer, ownership marker, title mutation, or
+shared-index cleanup is introduced. Connection phases and RPC stages are checked
+before dispatch: only one creator/new and one worker/same-ID resume are permitted;
+repeated, concurrent, wrong-phase, or wrong-ID lifecycle RPCs are rejected before
+they can create another real session.
+
+Only the newly created database is read. Existing files in `conversations` are
+compared by name, device/inode, size, mtime, ctime, and mode, including auxiliary
+files. Metadata changes or unrelated additions make preservation verification
+inconclusive (`existing_session_metadata_changed_unattributed`); concurrent native
+activity is a possible cause, not proof that this check corrupted a session.
+No existing session contents or real summary rows are read or compared. Exact
+neighbor database/summary preservation is tested separately in the isolated fixture.
+
+The anonymous result is printed and saved as `summary.json` (0600) under the new
+private `verificationRoot`, which also retains the synthetic working directory.
+The new imported session stays in the native default profile and can appear in
+native `/resume`; the harness neither invents a title nor deletes it on failure.
+This does not verify the `/resume` UI, a model response, or tool availability.
+A fake-backend pass is never evidence that real account authentication works.
+
 ## Boundaries
 
-The script creates private HOME/GEMINI directories and clears inherited
-credentials/proxies. Under the accepted local-run policy, native
-processes and descendants run under `sandbox-exec` with network denied except
+The fake modes create private HOME/GEMINI directories and clear inherited
+credentials/proxies. Before clearing the parent environment, it captures the OS
+user's default `.gemini`, the parent HOME's `.gemini`, and any configured GEMINI_HOME,
+including existing canonical aliases. Each case explicitly passes its own
+`--gemini-dir` and uses its `antigravity-cli` default directory, without
+`--app-data-dir`. Creator/worker and imported IDs are checked explicitly, not inferred
+from the presence of a profile argument. Native launchers deny filesystem reads and
+writes under those real profile paths; a missing guard fails closed. Only synthetic
+sentinels test this rule, never a read or write probe against the real profile.
+Under the accepted local-run policy, native processes and descendants run under
+`sandbox-exec` with network denied except
 local TCP bind/inbound and localhost outbound. Native internal RPC uses random
 local ports; the earlier exact-port policy failed at creator `session/new` with
 `bind_denied` before any native database existed. macOS's `localhost` filter also

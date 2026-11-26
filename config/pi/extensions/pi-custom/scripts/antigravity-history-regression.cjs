@@ -1,7 +1,7 @@
 // Opt-in local regression. Never include this script in the default test suite.
-const { readFileSync, readdirSync, statSync, lstatSync, realpathSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
-const { join, dirname } = require("node:path");
-const { tmpdir, homedir } = require("node:os");
+const { readFileSync, readdirSync, statSync, lstatSync, realpathSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
+const { join, dirname, resolve } = require("node:path");
+const { tmpdir, homedir, userInfo } = require("node:os");
 const { pathToFileURL } = require("node:url");
 const { createHash } = require("node:crypto");
 const { isDeepStrictEqual, promisify } = require("node:util");
@@ -708,7 +708,43 @@ function selfTest() {
   assert.equal(historyWindowOracle([turns[2]], 1).rejectedAdmission, "empty_projected_history");
   assert.equal(historyWindowOracle([turns[2]], 185001).promptExceeded, true);
   assert.equal(historyWindowOracle([], 1).rejectedAdmission, undefined);
-  return 83 + systemDefaultChecks;
+  assert.equal(networkProfile(["/synthetic/default"]).includes('(deny file-read* file-write* (subpath "/synthetic/default"))'), true);
+  assert.equal(networkProfile(['/synthetic/"quoted']).includes('(subpath "/synthetic/\\"quoted")'), true);
+  assert.equal(networkProfile(["/synthetic/default"]).includes("(deny network*)"), true);
+  assert.equal(networkProfile().includes("(deny file-read*"), false);
+  const priorMetadata = new Map([["prior.db", [1, 2, 3]]]);
+  assert.equal(compareSessionMetadata(priorMetadata, new Map([...priorMetadata, ["own.db", [4]]]), "own").existingSessionMetadataUnchanged, true);
+  assert.equal(compareSessionMetadata(priorMetadata, new Map([["prior.db", [1, 2, 4]]]), "own").existingSessionMetadataChanges, 1);
+  assert.equal(compareSessionMetadata(priorMetadata, new Map(), "own").existingSessionMetadataChanges, 1);
+  assert.equal(compareSessionMetadata(priorMetadata, new Map([...priorMetadata, ["external.db", [4]]]), "own").unrelatedSessionEntriesAdded, 1);
+  assert.equal(compareSessionMetadata(priorMetadata, new Map([...priorMetadata, ["own.db.unrelated", [4]]]), "own").unrelatedSessionEntriesAdded, 1);
+  const rpcCases = [
+    ["creator_new", "session/new", undefined, undefined, "creator_new_pending"],
+    ["creator_new_pending", "session/new", undefined, undefined, undefined],
+    ["creator_new", "session/new", "own", undefined, undefined],
+    ["creator_close", "session/close", "own", "own", "creator_done"],
+    ["creator_close", "session/close", "own", "other", undefined],
+    ["creator_done", "session/new", "own", undefined, undefined],
+    ["worker_resume", "session/new", "own", undefined, undefined],
+    ["worker_resume", "session/resume", "own", "own", "worker_resume_pending"],
+    ["worker_resume_pending", "session/resume", "own", "own", undefined],
+    ["worker_resume", "session/resume", "own", "other", undefined],
+    ["worker_close", "session/close", "own", "own", "worker_done"],
+    ["worker_done", "session/resume", "own", "own", undefined],
+    ["worker_close", "session/prompt", "own", "own", undefined],
+    ["creator_new", "authenticate", undefined, undefined, undefined],
+  ];
+  for (const [stage, method, own, requested, next] of rpcCases) assert.equal(profileRpcNextStage(stage, method, own, requested), next);
+  assert.equal(defaultProfileOverridesPresent({ AGY_ACP_BIN: "/synthetic/launcher" }), true);
+  assert.equal(defaultProfileOverridesPresent({ GEMINI_API_KEY: "synthetic" }), true);
+  assert.equal(defaultProfileOverridesPresent({ SSH_TTY: "synthetic" }), false);
+  const completionAbort = { stopReason: "aborted", errorMessage: "Profile check completed before any prompt" };
+  assert.equal(expectedProfileCompletion(completionAbort, true, false), true);
+  assert.equal(expectedProfileCompletion(completionAbort, false, false), false);
+  assert.equal(expectedProfileCompletion(completionAbort, true, true), false);
+  assert.equal(expectedProfileCompletion({ ...completionAbort, errorMessage: "Other cancellation" }, true, false), false);
+  assert.equal(expectedProfileCompletion({ ...completionAbort, stopReason: "error" }, true, false), false);
+  return 100 + rpcCases.length + systemDefaultChecks;
 }
 
 function revision2SelfTest() {
@@ -942,14 +978,22 @@ function stopServer(server) {
   server.closeAllConnections();
   return new Promise(resolve => server.close(resolve));
 }
-function networkProfile() {
+function networkProfile(protectedRoots = []) {
   // Synthetic-only authorization: native RPC uses dynamically assigned loopback
   // listeners. Local forward proxies remain a residual risk for real payloads.
   return `(version 1) (allow default) (deny network*)
     (allow network-bind (local tcp "localhost:*"))
     (allow network-inbound (local tcp "localhost:*"))
-    (allow network-outbound (remote tcp "localhost:*"))`;
+    (allow network-outbound (remote tcp "localhost:*"))
+    ${protectedRoots.map(root => `(deny file-read* file-write* (subpath ${JSON.stringify(root)}))`).join("\n    ")}`;
 }
+
+function protectedProfileRoots() {
+  const roots = [join(userInfo().homedir, ".gemini"), join(process.env.HOME || homedir(), ".gemini")];
+  if (process.env.GEMINI_HOME) roots.push(resolve(process.env.GEMINI_HOME));
+  return [...new Set(roots.flatMap(root => existsSync(root) ? [root, realpathSync(root)] : [root]))];
+}
+
 function cleanEnvironment(home) {
   return { PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin", HOME: home, TMPDIR: home, LANG: "en_US.UTF-8" };
 }
@@ -958,7 +1002,12 @@ function cleanEnvironment(home) {
 // direct enforcement and inheritance to a child launched inside the sandbox.
 async function verifyIsolation() {
   const servers = [], endpoints = [];
+  let guardRoot;
   try {
+    guardRoot = realpathSync(mkdtempSync(join(tmpdir(), "pi-history-isolation-")));
+    const blocked = join(guardRoot, "blocked"), sentinel = join(blocked, "sentinel");
+    mkdirSync(blocked, { mode: 0o700 });
+    writeFileSync(sentinel, "synthetic isolation sentinel", { mode: 0o600, flag: "wx" });
     for (let index = 0; index < 2; index++) {
       const server = createServer((_request, response) => response.end("OK"));
       servers.push(server);
@@ -993,12 +1042,18 @@ async function verifyIsolation() {
         });
         const roundtrip = bound && await connect({host:'127.0.0.1',port:local.address().port});
         if (bound) { local.closeAllConnections(); await new Promise(resolve => local.close(resolve)); }
-        return [...results, roundtrip];
+        const fs = require('node:fs'), sentinel = ${JSON.stringify(sentinel)};
+        const access = operation => {
+          try { operation(); return 'allowed'; }
+          catch (error) { return ['EPERM','EACCES'].includes(error.code) ? 'denied' : 'failed'; }
+        };
+        return [...results, roundtrip, access(() => fs.readFileSync(sentinel)),
+          access(() => fs.writeFileSync(sentinel, 'synthetic isolation sentinel'))];
       }
     `;
     // Require external baseline reachability; a timeout cannot count as denial.
     const baseline = await runFile(process.execPath, ["-e", probe + "probe().then(x => process.stdout.write(JSON.stringify(x)))"], { timeout: 10000 });
-    if (!isDeepStrictEqual(JSON.parse(baseline.stdout), [true, true, "connected", true])) throw new Error("isolation_baseline");
+    if (!isDeepStrictEqual(JSON.parse(baseline.stdout), [true, true, "connected", true, "allowed", "allowed"])) throw new Error("isolation_baseline");
     const child = probe + "probe().then(x => process.stdout.write(JSON.stringify(x)))";
     const code = probe + `
       probe().then(async direct => {
@@ -1008,17 +1063,21 @@ async function verifyIsolation() {
         process.stdout.write(JSON.stringify([direct, JSON.parse(child.stdout)]));
       }).catch(() => process.exit(1));
     `;
-    const result = await runFile("/usr/bin/sandbox-exec", ["-p", networkProfile(), process.execPath, "-e", code], {
+    const result = await runFile("/usr/bin/sandbox-exec", ["-p", networkProfile([blocked]), process.execPath, "-e", code], {
       timeout: 20000, env: cleanEnvironment("/tmp"), maxBuffer: 4096,
     });
     const checks = JSON.parse(result.stdout);
-    if (!isDeepStrictEqual(checks, [[true, true, "denied", true], [true, true, "denied", true]])) {
+    if (!isDeepStrictEqual(checks, [[true, true, "denied", true, "denied", "denied"], [true, true, "denied", true, "denied", "denied"]])) {
       const error = new Error("isolation_not_enforced");
       error.observedChecks = checks;
       throw error;
     }
-    return { isolationChecks: 8, failed: 0, loopbackProxyRisk: 1 };
-  } finally { await Promise.allSettled(servers.map(stopServer)); }
+    if (readFileSync(sentinel, "utf8") !== "synthetic isolation sentinel") throw new Error("isolation_sentinel_changed");
+    return { isolationChecks: 12, networkIsolationChecks: 8, filesystemIsolationChecks: 4, failed: 0, loopbackProxyRisk: 1 };
+  } finally {
+    await Promise.allSettled(servers.map(stopServer));
+    if (guardRoot) rmSync(guardRoot, { recursive: true });
+  }
 }
 
 // The fixed endpoint forwards to the dynamically allocated production listener.
@@ -1164,6 +1223,185 @@ async function inspectAdmission() {
     }
   }
   return counts;
+}
+
+function sessionFileMetadata(profile) {
+  const directory = join(profile, "conversations"), files = new Map();
+  for (const candidate of [profile, directory]) {
+    if (existsSync(candidate) && (!lstatSync(candidate).isDirectory() || realpathSync(candidate) !== candidate)) throw new Error("profile_metadata_root");
+  }
+  if (!existsSync(directory)) return files;
+  for (const name of readdirSync(directory)) {
+    const stat = lstatSync(join(directory, name));
+    files.set(name, [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs, stat.mode]);
+  }
+  return files;
+}
+
+function compareSessionMetadata(before, after, ownId) {
+  let changed = 0, added = 0;
+  for (const [name, metadata] of before) if (!isDeepStrictEqual(metadata, after.get(name))) changed++;
+  const ownFiles = new Set([ownId + ".db", ownId + ".db-wal", ownId + ".db-shm"]);
+  for (const name of after.keys()) if (!before.has(name) && !ownFiles.has(name)) added++;
+  return { existingSessionMetadataChanges: changed, unrelatedSessionEntriesAdded: added,
+    existingSessionMetadataUnchanged: changed === 0 && added === 0 };
+}
+
+function profileRpcNextStage(stage, method, ownId, requestedId) {
+  if (stage === "creator_new" && method === "session/new" && !ownId) return "creator_new_pending";
+  if (ownId && requestedId === ownId) {
+    if (stage === "creator_close" && method === "session/close") return "creator_done";
+    if (stage === "worker_resume" && method === "session/resume") return "worker_resume_pending";
+    if (stage === "worker_close" && method === "session/close") return "worker_done";
+  }
+  return undefined;
+}
+
+function defaultProfileOverridesPresent(env) {
+  return ["AGY_ACP_BIN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_BASE_URL"].some(name => name in env);
+}
+
+function expectedProfileCompletion(result, completed, signalAborted) {
+  return completed && !signalAborted && result.stopReason === "aborted"
+    && result.errorMessage === "Profile check completed before any prompt";
+}
+
+// Exercise the production importer, then stop at an actual successful resume.
+// No model selection, authentication RPC, or prompt is dispatched by this check.
+async function profileRoundtrip(runtime, { cwd, geminiDir, env, opening = (_phase, connect) => connect() }) {
+  const profile = join(geminiDir, "antigravity-cli"), before = sessionFileMetadata(profile);
+  const connections = [], openedPhases = new Set(), controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  const evidence = { created: 0, creatorStopped: 0, writtenSteps: 0, resumedSameId: 0, workerStopped: 0,
+    forbiddenRpcAttempts: 0, promptAttempts: 0, authenticateAttempts: 0, promptCalls: 0, authenticateCalls: 0, toolCalls: 0, closeFailures: 0, expectedCompletionAbort: 0 };
+  let sessionId, identity, completed = false, failureCategory = "profile_roundtrip_incomplete";
+  const fail = category => { failureCategory = category; throw new Error(category); };
+  const model = { ...runtime.ai.getModel("anthropic", "claude-haiku-4-5"), id: "profile-check-not-dispatched", provider: "antigravity", api: "antigravity" };
+  const bridge = runtime.createAntigravityBridge({ cwd: () => cwd, piSessionId: () => "local-profile-roundtrip",
+    connect: async (workingDirectory, callbacks, tools, overrides, signal, profileOptions) => {
+      if (workingDirectory !== cwd || profileOptions?.geminiDir !== geminiDir || profileOptions?.appDataDir !== undefined) fail("profile_roundtrip_root");
+      const creator = profileOptions.historyTarget === true;
+      if (openedPhases.has(creator)) fail("profile_check_connection_count");
+      openedPhases.add(creator);
+      if (!creator) {
+        if (!sessionId || !evidence.creatorStopped || !identity) fail("creator_stop_unverified");
+        const database = join(profile, "conversations", sessionId + ".db"), stat = lstatSync(database);
+        if (!stat.isFile() || realpathSync(database) !== database || stat.dev !== identity.dev || stat.ino !== identity.ino) fail("new_database_identity");
+        const { DatabaseSync } = require("node:sqlite");
+        const db = new DatabaseSync(database, { readOnly: true });
+        try {
+          const rows = db.prepare("SELECT cascade_id FROM trajectory_meta").all();
+          if (rows.length !== 1 || rows[0].cascade_id !== sessionId) fail("new_database_identity");
+          evidence.writtenSteps = Number(db.prepare("SELECT COUNT(*) AS count FROM steps").get().count);
+          if (evidence.writtenSteps !== 2) fail("new_database_steps");
+        } finally { db.close(); }
+      }
+      const connection = await opening(creator ? "neighbor_creator_" : "neighbor_worker_", () => runtime.createAcpConnection(workingDirectory,
+        { ...callbacks, tool: async () => { evidence.toolCalls++; throw new Error("profile_check_tools_forbidden"); } }, tools, overrides, signal, profileOptions));
+      let stopped = false, stage = creator ? "creator_new" : "worker_resume";
+      const close = async () => {
+        await connection.close();
+        if (stopped) return;
+        stopped = true;
+        if (creator) {
+          evidence.creatorStopped++;
+          if (sessionId) {
+            const database = join(profile, "conversations", sessionId + ".db"), stat = lstatSync(database);
+            if (!stat.isFile() || realpathSync(database) !== database) fail("new_database_identity");
+            identity = { dev: stat.dev, ino: stat.ino };
+          }
+        } else evidence.workerStopped++;
+      };
+      connections.push({ close });
+      const request = async (method, params, settings) => {
+        const nextStage = profileRpcNextStage(stage, method, sessionId, params?.sessionId);
+        if (!nextStage) {
+          evidence.forbiddenRpcAttempts++;
+          if (method === "session/prompt") evidence.promptAttempts++;
+          if (method === "authenticate") evidence.authenticateAttempts++;
+          fail("profile_check_forbidden_rpc");
+        }
+        stage = nextStage;
+        const result = await connection.request(method, params, settings);
+        if (method === "session/new") {
+          if (!creator || sessionId || !/^[0-9a-f-]{36}$/i.test(result.sessionId ?? "")
+            || [...before.keys()].some(name => name.toLowerCase().startsWith(result.sessionId.toLowerCase() + ".db"))) fail("new_session_not_proven");
+          sessionId = result.sessionId;
+          evidence.created++;
+          stage = "creator_close";
+        }
+        if (method === "session/resume") {
+          if (creator || result.sessionId !== sessionId) fail("resume_identity");
+          evidence.resumedSameId++;
+          stage = "worker_close";
+          await request("session/close", { sessionId }, { timeoutMs: 5000 });
+          await close();
+          completed = true;
+          throw new DOMException("Profile check completed before any prompt", "AbortError");
+        }
+        return result;
+      };
+      return { ...connection, get closed() { return connection.closed; }, close, request };
+    } });
+  try {
+    const result = await bridge.streamSimple(model, runtime.ai.normalizeContext({ systemPrompt: "Local profile verification. Never execute tools.", tools: [], messages: [
+      { role: "user", content: "SYNTHETIC_PROFILE_CHECK_HISTORY", timestamp: 0 },
+      { role: "assistant", content: [{ type: "text", text: "SYNTHETIC_PROFILE_CHECK_REPLY" }], stopReason: "stop", timestamp: 0 },
+      { role: "user", content: "THIS_PROMPT_MUST_NOT_BE_SENT", timestamp: 0 },
+    ] }), { env, signal: controller.signal }).result();
+    evidence.expectedCompletionAbort = Number(expectedProfileCompletion(result, completed, controller.signal.aborted));
+    if (!completed && result.errorMessage?.includes("(-32000)")) failureCategory = "authentication_required";
+  } catch { /* Only fixed categories leave this verification. */ }
+  finally {
+    clearTimeout(timer);
+    for (const connection of connections) try { await connection.close(); } catch { evidence.closeFailures++; }
+    bridge.reset();
+  }
+  const metadata = compareSessionMetadata(before, sessionFileMetadata(profile), sessionId ?? "uncreated");
+  const passed = Number(completed && evidence.expectedCompletionAbort && evidence.created === 1 && evidence.writtenSteps === 2 && evidence.resumedSameId === 1
+    && !evidence.forbiddenRpcAttempts && !evidence.toolCalls && !evidence.closeFailures && metadata.existingSessionMetadataUnchanged);
+  return { sessionId, profile, evidence: { ...evidence, ...metadata, passed,
+    ...(passed ? {} : { failureCategory: completed && !metadata.existingSessionMetadataUnchanged ? "existing_session_metadata_changed_unattributed" : failureCategory }),
+    harnessTokenContentsRead: 0, harnessExistingSessionContentsRead: 0, fullExistingContentsCompared: 0,
+    stoppedScope: "direct_children_only", completeLifetimeProof: 0 } };
+}
+
+function assertSyntheticReadPaths(profile, sessionId, caseRoot) {
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !profile.startsWith(caseRoot + "/") || realpathSync(caseRoot) !== caseRoot) throw new Error("synthetic_read_boundary");
+  for (const directory of [profile, join(profile, "conversations")]) {
+    if (!lstatSync(directory).isDirectory() || realpathSync(directory) !== directory) throw new Error("synthetic_read_boundary");
+  }
+  for (const file of [join(profile, "conversation_summaries.db"), join(profile, "conversations", sessionId + ".db")]) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const candidate = file + suffix, stat = lstatSync(candidate, { throwIfNoEntry: false });
+      if (!stat && suffix) continue;
+      if (!stat?.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || realpathSync(candidate) !== candidate) throw new Error("synthetic_read_boundary");
+    }
+  }
+}
+
+function syntheticSessionSnapshot(profile, sessionId, caseRoot) {
+  assertSyntheticReadPaths(profile, sessionId, caseRoot);
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(join(profile, "conversation_summaries.db"), { readOnly: true });
+  try {
+    const row = db.prepare("SELECT * FROM conversation_summaries WHERE conversation_id = ?").get(sessionId);
+    if (!row) throw new Error("synthetic_summary_missing");
+    const database = join(profile, "conversations", sessionId + ".db");
+    return { database: ["", "-wal", "-shm"].map(suffix => existsSync(database + suffix) ? digest(readFileSync(database + suffix)) : null), summary: row };
+  } finally { db.close(); }
+}
+
+async function verifyDefaultProfile() {
+  if (defaultProfileOverridesPresent(process.env)) throw new Error("profile_check_override");
+  const geminiDir = realpathSync(resolve(process.env.GEMINI_HOME || join(process.env.HOME || homedir(), ".gemini")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-history-profile-check-"))), cwd = join(root, "cwd");
+  mkdirSync(cwd, { mode: 0o700 });
+  const result = await profileRoundtrip(await loadRuntime(), { cwd, geminiDir, env: undefined });
+  const summary = { mode: "default-profile-zero-prompt", verificationRoot: root, ...result.evidence,
+    fakeBackend: 0, consumerProfileMustBeConfirmedByOperator: 1, nativeResumeEntryRetained: Number(!!result.sessionId) };
+  writeFileSync(join(root, "summary.json"), JSON.stringify(summary) + "\n", { mode: 0o600, flag: "wx" });
+  return summary;
 }
 
 async function loadRuntime() {
@@ -1379,12 +1617,15 @@ function lifecycleObserver() {
   };
 }
 
-async function nativeCase(runtime, input, synthetic = false, runRoot) {
+async function nativeCase(runtime, input, synthetic = false, runRoot, protectedRoots) {
+  if (!Array.isArray(protectedRoots) || !protectedRoots.length) throw new Error("profile_isolation_missing");
   const root = realpathSync(mkdtempSync(join(runRoot ?? tmpdir(), runRoot ? (synthetic ? "smoke-" : "case-") : "pi-history-regression-")));
   const home = join(root, "home"), gemini = join(home, ".gemini"), cwd = join(root, "cwd");
   for (const path of [home, gemini, cwd]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const connections = [], sessionIds = new Set(), requests = [], livePrompts = [];
-  let proxy, backend, bridge, callbackCount = 0, imported = false, nativeAttempted = false, profileRoot, databasePath, firstError, cleaning = false, requestAppend;
+  let proxy, backend, bridge, callbackCount = 0, imported = false, nativeAttempted = false, profileRoot, databasePath, createdSessionId, firstError, cleaning = false, requestAppend;
+  let neighbor, neighborBefore, backendModelRequests = 0;
+  const sharedProfileVerification = { expected: Number(synthetic), zeroPromptRoundtrip: 0, neighborDatabaseAndSummaryUnchanged: 0, importedSummaryPresent: 0, verified: 0 };
   let systemBytes = 0, hasSystem = 0, systemVerified = 0, systemToolReferenceMappings = 0, recordedToolDeclarations = 0;
   let sourceUserCount = 0, nativeLiveStepCount = 0, liveUserCoalescing = 0, liveSeparatorBytes = 0, omittedFailedAssistants = { error: 0, aborted: 0 };
   const cleanup = { retainedProfiles: 0, retainedCaseRoots: 0, unprovenWorkers: 0, closeFailures: 0 };
@@ -1433,6 +1674,7 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
     backend = createServer(async (request, response) => {
       try {
         if (!/:(streamGenerateContent|generateContent)(?:\?|$)/.test(request.url)) { response.writeHead(404).end("{}"); return; }
+        backendModelRequests++;
         const chunks = [];
         for await (const chunk of request) chunks.push(chunk);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -1447,9 +1689,21 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
     const agy = realpathSync(execFileSync("/usr/bin/which", ["agy"], { encoding: "utf8" }).trim());
     const launcher = join(root, "native-launcher");
     const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
-    writeFileSync(launcher, `#!/bin/sh\nexec /usr/bin/sandbox-exec -p ${quote(networkProfile())} ${quote(agy)} "$@"\n`, { mode: 0o700, flag: "wx" });
+    writeFileSync(launcher, `#!/bin/sh\nexec /usr/bin/sandbox-exec -p ${quote(networkProfile(protectedRoots))} ${quote(agy)} "$@"\n`, { mode: 0o700, flag: "wx" });
     const env = { ...cleanEnvironment(home), GEMINI_HOME: gemini, AGY_ACP_BIN: launcher,
       GOOGLE_GEMINI_BASE_URL: `http://127.0.0.1:${backendPort}`, GEMINI_API_KEY: "local-fixture-not-a-credential" };
+    const defaultProfile = join(gemini, "antigravity-cli");
+    mkdirSync(defaultProfile, { mode: 0o700 });
+    writeFileSync(join(defaultProfile, "settings.json"), JSON.stringify({ modelProvider: "gemini", setupComplete: true, onboardingComplete: true }), { mode: 0o600, flag: "wx" });
+    if (synthetic) {
+      nativeAttempted = true;
+      profileRoot = defaultProfile;
+      neighbor = await profileRoundtrip(runtime, { cwd, geminiDir: gemini, env,
+        opening: (phase, connect) => lifecycle.opening(launcher, connect, phase) });
+      if (!neighbor.evidence.passed || backendModelRequests) throw new Error("synthetic_neighbor_unverified");
+      sharedProfileVerification.zeroPromptRoundtrip = 1;
+      neighborBefore = syntheticSessionSnapshot(defaultProfile, neighbor.sessionId, root);
+    }
     const model = { ...runtime.ai.getModel("anthropic", "claude-haiku-4-5"), id: "native-default", provider: "antigravity", api: "antigravity" };
     const context = runtime.ai.normalizeContext({ messages: requestMessages(input) });
     const system = structuredClone(runtime.ai.getCurrentSystemMessage(context.messages));
@@ -1459,13 +1713,16 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
     bridge = runtime.createAntigravityBridge({ cwd: () => cwd, piSessionId: () => "local-regression-owner",
       onImport: losses => importLossReports.push(structuredClone(losses)), connect: async (...args) => {
       const [workingDirectory, callbacks, available, overrides, signal, profile] = args;
-      const data = join(gemini, profile?.appDataDir ?? "antigravity");
+      if (profile?.appDataDir !== undefined || profile?.geminiDir !== gemini
+        || overrides?.HOME !== home || overrides?.GEMINI_HOME !== gemini || workingDirectory !== cwd) throw new Error("profile_isolation_mismatch");
+      const data = join(gemini, "antigravity-cli");
       mkdirSync(data, { recursive: true, mode: 0o700 });
+      if (realpathSync(data) !== data) throw new Error("profile_isolation_mismatch");
       try {
         writeFileSync(join(data, "settings.json"), JSON.stringify({ modelProvider: "gemini", setupComplete: true, onboardingComplete: true }), { mode: 0o600, flag: "wx" });
       } catch (error) { if (error.code !== "EEXIST") throw error; }
       if (profile?.historyTarget) profileRoot = data;
-      else if (profile && profileRoot === data) measure("beforeResume", data);
+      else if (profileRoot === data) measure("beforeResume", data);
       nativeAttempted = true;
       const phase = profile?.historyTarget ? "creator_" : "worker_";
       const connection = await lifecycle.opening(launcher, () => runtime.createAcpConnection(workingDirectory, { ...callbacks, tool: async () => { callbackCount++; throw new Error("fixture_execution_forbidden"); } }, available, overrides, signal, profile), phase);
@@ -1485,10 +1742,16 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
         finally { if (observed) await lifecycle.observe(phase + method + "_after"); }
         if (["session/new", "session/resume"].includes(method)) {
           if (typeof result.sessionId === "string") sessionIds.add(result.sessionId);
-          if (profile && /^[0-9a-f-]{36}$/i.test(result.sessionId ?? "")) databasePath = join(data, "conversations", result.sessionId + ".db");
+          if (profile?.historyTarget && method === "session/new" && /^[0-9a-f-]{36}$/i.test(result.sessionId ?? "")) {
+            createdSessionId = result.sessionId;
+            databasePath = join(data, "conversations", createdSessionId + ".db");
+          }
           const selector = result.configOptions?.find(option => option.category === "model" || option.id === "model");
           if (typeof selector?.currentValue === "string") model.id = selector.currentValue;
-          if (method === "session/resume" && profile) imported = true;
+          if (method === "session/resume") {
+            if (!createdSessionId || params.sessionId !== createdSessionId || result.sessionId !== createdSessionId) throw new Error("imported_session_identity");
+            imported = true;
+          }
         }
         return result;
       } };
@@ -1577,6 +1840,16 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
     if (backend) await stopServer(backend);
     if (proxy) await proxy.close();
     if (!nativeAttempted && !cleanupRoot(root, false)) cleanup.retainedCaseRoots = 1;
+    if (synthetic) {
+      try {
+        if (!neighborBefore || !neighbor?.sessionId || !createdSessionId || neighbor.sessionId === createdSessionId) throw new Error("synthetic_neighbor_unverified");
+        sharedProfileVerification.neighborDatabaseAndSummaryUnchanged = Number(isDeepStrictEqual(neighborBefore, syntheticSessionSnapshot(profileRoot, neighbor.sessionId, root)));
+        syntheticSessionSnapshot(profileRoot, createdSessionId, root);
+        sharedProfileVerification.importedSummaryPresent = 1;
+        sharedProfileVerification.verified = Number(sharedProfileVerification.zeroPromptRoundtrip && sharedProfileVerification.neighborDatabaseAndSummaryUnchanged);
+      } catch { /* No unverified index layout may pass the prerequisite. */ }
+      if (!sharedProfileVerification.verified) differences.add("shared_profile_unverified");
+    }
     if (profileRoot) {
       try {
         if (lstatSync(profileRoot).isDirectory()) { cleanup.retainedProfiles = 1; measure("afterClose", profileRoot); }
@@ -1587,11 +1860,12 @@ async function nativeCase(runtime, input, synthetic = false, runRoot) {
   for (const kind of lossReporting.differences) differences.add(kind);
   const historyLossReporting = { expectedReports: lossReporting.expectedReports, actualReports: lossReporting.actualReports,
     verifiedReports: lossReporting.verifiedReports };
-  return { differences: [...differences], truncations, knownDifferences, expectedHistoryLosses, historyLossReporting, proactiveTrimming, ...(comparisonSummary ? { comparisonSummary } : {}), callbackCount, imported: Number(imported), sourceVisibleBytes: visibleBytes(input), historyVisibleBytes: visibleBytes(historyInput), sourceSystemMessages: input.length - historyInput.length, systemBytes, hasSystem, systemVerified, systemToolReferenceMappings, recordedToolDeclarations, sourceUserCount, nativeLiveStepCount, liveUserCoalescing, liveSeparatorBytes, omittedFailedAssistants, omittedEmptyAssistants, profileBytes, lifecycle: lifecycle.summary(), cleanup, ...(diagnosticsEnabled ? { syntheticRoot: root, syntheticArtifact, ...(comparisonDiagnostics ? { comparisonDiagnostics } : {}), ...(firstError ? { firstError } : {}) } : {}) };
+  return { differences: [...differences], truncations, knownDifferences, expectedHistoryLosses, historyLossReporting, proactiveTrimming, sharedProfileVerification, ...(comparisonSummary ? { comparisonSummary } : {}), callbackCount, imported: Number(imported), sourceVisibleBytes: visibleBytes(input), historyVisibleBytes: visibleBytes(historyInput), sourceSystemMessages: input.length - historyInput.length, systemBytes, hasSystem, systemVerified, systemToolReferenceMappings, recordedToolDeclarations, sourceUserCount, nativeLiveStepCount, liveUserCoalescing, liveSeparatorBytes, omittedFailedAssistants, omittedEmptyAssistants, profileBytes, lifecycle: lifecycle.summary(), cleanup, ...(diagnosticsEnabled ? { syntheticRoot: root, syntheticArtifact, ...(comparisonDiagnostics ? { comparisonDiagnostics } : {}), ...(firstError ? { firstError } : {}) } : {}) };
 }
 
 async function runNative(real, adjacentUsers = false, emptyAssistants = false) {
   // This must precede even enumerating the real session directory.
+  const protectedRoots = protectedProfileRoots();
   await verifyIsolation();
   const sourceRoot = join(homedir(), ".local/state/pi/sessions");
   const runtime = await loadRuntime();
@@ -1623,7 +1897,7 @@ async function runNative(real, adjacentUsers = false, emptyAssistants = false) {
   ];
   const emptyAssistant = () => ({ role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop", timestamp: 0 });
   const emptySmoke = [...adjacentSmoke.slice(0, 2), emptyAssistant(), ...adjacentSmoke.slice(2, 6), emptyAssistant(), adjacentSmoke.at(-1)];
-  const proof = await nativeCase(runtime, emptyAssistants ? emptySmoke : adjacentUsers ? adjacentSmoke : smoke, true, runRoot);
+  const proof = await nativeCase(runtime, emptyAssistants ? emptySmoke : adjacentUsers ? adjacentSmoke : smoke, true, runRoot, protectedRoots);
   if (!real) return { syntheticVariant: emptyAssistants ? "empty_assistants" : adjacentUsers ? "adjacent_users" : "combined", fixtureToolset: 1, cases: 1, passed: Number(!proof.differences.length), ...proof };
   if (proof.differences.length) return { runRoot, fixtureToolset: 1, requested: 30, selected: 0, processed: 0, passed: 0, prerequisiteSmokeFailed: 1,
     differences: Object.fromEntries(proof.differences.map(kind => [kind, 1])), cleanup: proof.cleanup };
@@ -1633,7 +1907,7 @@ async function runNative(real, adjacentUsers = false, emptyAssistants = false) {
     expectedHistoryLosses: { userTruncated: 0, toolResultsTruncated: 0, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 0 },
     historyLossReporting: { expectedReports: 0, actualReports: 0, verifiedReports: 0 },
     retainedProfiles: proof.cleanup.retainedProfiles, retainedCaseRoots: proof.cleanup.retainedCaseRoots, unprovenWorkers: proof.cleanup.unprovenWorkers, closeFailures: proof.cleanup.closeFailures, knownDifferenceCases: 0, knownDifferences: {},
-    prerequisiteSmoke: { passed: 1, expectedHistoryLosses: proof.expectedHistoryLosses, historyLossReporting: proof.historyLossReporting, proactiveTrimming: proof.proactiveTrimming, systemVerified: proof.systemVerified, knownDifferences: proof.knownDifferences, omittedFailedAssistants: proof.omittedFailedAssistants, omittedEmptyAssistants: proof.omittedEmptyAssistants, sourceUserCount: proof.sourceUserCount, nativeLiveStepCount: proof.nativeLiveStepCount, liveUserCoalescing: proof.liveUserCoalescing, liveSeparatorBytes: proof.liveSeparatorBytes, retainedProfiles: proof.cleanup.retainedProfiles, nativeBytesAfterClose: proof.profileBytes.afterClose ?? null }, differences: {} };
+    prerequisiteSmoke: { passed: 1, sharedProfileVerification: proof.sharedProfileVerification, expectedHistoryLosses: proof.expectedHistoryLosses, historyLossReporting: proof.historyLossReporting, proactiveTrimming: proof.proactiveTrimming, systemVerified: proof.systemVerified, knownDifferences: proof.knownDifferences, omittedFailedAssistants: proof.omittedFailedAssistants, omittedEmptyAssistants: proof.omittedEmptyAssistants, sourceUserCount: proof.sourceUserCount, nativeLiveStepCount: proof.nativeLiveStepCount, liveUserCoalescing: proof.liveUserCoalescing, liveSeparatorBytes: proof.liveSeparatorBytes, retainedProfiles: proof.cleanup.retainedProfiles, nativeBytesAfterClose: proof.profileBytes.afterClose ?? null }, differences: {} };
   const sizes = { sourceVisible: [], historyVisible: [], system: [], empty: [], beforeResume: [], completed: [], afterClose: [] };
   const caseResults = [];
   for (const [index, sample] of selectSessions(sourceRoot, runtime, counts).entries()) {
@@ -1643,7 +1917,7 @@ async function runNative(real, adjacentUsers = false, emptyAssistants = false) {
       caseResults.push({ sampleOrdinal: index + 1, imported: 0, retainedCaseRoot: 0, differences: ["source_changed"] });
       continue;
     }
-    const result = await nativeCase(runtime, sample.messages, false, runRoot);
+    const result = await nativeCase(runtime, sample.messages, false, runRoot, protectedRoots);
     const source = sourceStatus(sample);
     if (source.changed) result.differences.push("source_changed");
     else if (source.appendedBytes) { counts.externalAppends++; counts.appendedBytes += source.appendedBytes; }
@@ -1695,13 +1969,18 @@ async function runNative(real, adjacentUsers = false, emptyAssistants = false) {
   return counts;
 }
 
-module.exports = { digest, parseEntries, visibleBytes, selectSessions, sourceStatus, requestMessages, expectedHistory, approvedText, compareHistory, networkProfile, cleanEnvironment, verifyIsolation, mcpProxy, lifecycleObserver, decodeRequest, diagnoseComparison, anonymousComparison, readNativeFraming, admissionReason, compareSystem, validSystemSources, approvedUserText, projectFailedAssistants, livePromptOracle, projectedText, historyWindowOracle, omittableEmptyAssistant };
+module.exports = { digest, parseEntries, visibleBytes, selectSessions, sourceStatus, requestMessages, expectedHistory, approvedText, compareHistory, networkProfile, cleanEnvironment, verifyIsolation, mcpProxy, lifecycleObserver, decodeRequest, diagnoseComparison, anonymousComparison, readNativeFraming, admissionReason, compareSystem, validSystemSources, approvedUserText, projectFailedAssistants, livePromptOracle, projectedText, historyWindowOracle, omittableEmptyAssistant, loadRuntime, protectedProfileRoots, assertSyntheticReadPaths };
 
 if (require.main === module) {
   void (async () => {
     if (process.argv.length === 3 && process.argv[2] === "--self-test") return { selfTests: selfTest() + revision2SelfTest() + anonymousComparisonSelfTest() + importLossReportSelfTest(), failed: 0 };
     if (process.argv.length === 3 && process.argv[2] === "--verify-isolation") return verifyIsolation();
     if (process.argv.length === 3 && process.argv[2] === "--inspect-admission") return inspectAdmission();
+    if (process.argv.length === 3 && process.argv[2] === "--verify-default-profile") {
+      const result = await verifyDefaultProfile();
+      if (!result.passed) process.exitCode = 1;
+      return result;
+    }
     if (process.argv[2] === "--native-smoke" && (process.argv.length === 3
       || (process.argv.length === 4 && ["--adjacent-users", "--empty-assistants"].includes(process.argv[3])))) {
       const result = await runNative(false, process.argv[3] === "--adjacent-users", process.argv[3] === "--empty-assistants");
