@@ -311,7 +311,7 @@ restoration of omitted context or deleted codepoints.
 
 The exact budget errors are:
 - `Antigravity cannot fit the latest turn. Compact with another model or start a new conversation.`
-- `Antigravity input exceeds 185 KB. Use another model for this request.`
+- `Antigravity input exceeds 185 KB. Shorten the input or use another model.`
 
 Native error envelopes and single-LF result-block joining follow independent
 synthetic captures. Native function responses use the `model` envelope role;

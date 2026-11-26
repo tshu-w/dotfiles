@@ -883,7 +883,7 @@ test("oversized actual UTF-8 input fails without prompting or retrying", async (
     const h = harness(t);
     const answer = await h.stream(messages).result();
     assert.equal(answer.stopReason, "error");
-    assert.equal(answer.errorMessage, "Antigravity input exceeds 185 KB. Use another model for this request.");
+    assert.equal(answer.errorMessage, "Antigravity input exceeds 185 KB. Shorten the input or use another model.");
     assert.equal(ai.isContextOverflow(answer), false);
     assert.equal(ai.isRetryableAssistantError(answer), false);
     assert.equal(h.connections.reduce((sum, connection) => sum + connection.prompts.length, 0), 0);
