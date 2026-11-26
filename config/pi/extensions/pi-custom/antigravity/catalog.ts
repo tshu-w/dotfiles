@@ -5,17 +5,19 @@ import { createAcpConnection } from "./transport.js";
 type CatalogModel = Extract<ProviderModelConfig, { type?: "chat" }>;
 
 export function catalogModel(id: string): CatalogModel {
+  const model = getModels("google").find((model) => model.id === id)!;
+  const reasoning = ["gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon"].includes(id);
   return {
-    id, name: getModels("google").find((model) => model.id === id)?.name ?? id, reasoning: false, input: ["text", "image"],
+    id, name: model.name, reasoning, input: ["text", "image"],
+    ...(reasoning ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
     compat: { supportsMidConvoSystemMessages: false },
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    // ACP model choices do not advertise context or output limits.
-    contextWindow: 128000, maxTokens: 8192,
+    contextWindow: model.contextWindow, maxTokens: model.maxTokens,
   };
 }
 
 export function isGeminiModelId(id: unknown): id is string {
-  return typeof id === "string" && id.startsWith("gemini-") && id.length > "gemini-".length;
+  return typeof id === "string" && id.startsWith("gemini-") && getModels("google").some((model) => model.id === id);
 }
 
 export async function discoverModels(cwd: string, signal: AbortSignal): Promise<CatalogModel[]> {

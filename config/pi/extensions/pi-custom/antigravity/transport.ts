@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { createServer } from "node:http";
 import { createInterface } from "node:readline";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+
+export const AGENT_DEFINITION = readFileSync(new URL("./agent.md", import.meta.url), "utf8");
 
 export interface AcpTool {
   name: string;
@@ -29,14 +34,24 @@ type PendingRequest = {
   reject(error: Error): void;
   timeoutMs: number;
   toolWaits: number;
+  sent?: boolean;
   timer?: ReturnType<typeof setTimeout>;
   removeAbort?(): void;
 };
 
-export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, tools: AcpTool[] = [], overrides?: Record<string, string>, signal?: AbortSignal) {
+export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, tools: AcpTool[] = [], overrides?: Record<string, string>, signal?: AbortSignal, profile?: { geminiDir: string; appDataDir: string; historyTarget?: true }) {
   signal?.throwIfAborted();
+  const env = { ...process.env, ...overrides };
+  const geminiDir = resolve(cwd, profile?.geminiDir || env.GEMINI_HOME || join(env.HOME || homedir(), ".gemini"));
+  const agentPath = join(geminiDir, "config", "agents", "pi", "agent.md");
+  mkdirSync(dirname(agentPath), { recursive: true, mode: 0o700 });
+  try { writeFileSync(agentPath, AGENT_DEFINITION, { flag: "wx", mode: 0o600 }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (readFileSync(agentPath, "utf8") !== AGENT_DEFINITION) throw new Error(`Existing Antigravity agent conflicts with the Pi bridge: ${agentPath}`);
+  }
   const token = `Bearer ${randomBytes(32).toString("hex")}`;
-  const byName = new Map(tools.map((tool) => [`pi_${tool.name}`, tool]));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const active = new Set<Server>();
   let host = "";
   const http = createServer(async (req, res) => {
@@ -49,7 +64,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
       res.writeHead(404).end();
       return;
     }
-    const server = new Server({ name: "pi-bridge", version: "1.0.0" }, { capabilities: { tools: {} } });
+    const server = new Server({ name: "pi", version: "1.0.0" }, { capabilities: { tools: {} } });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -59,7 +74,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
     });
     active.add(server);
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: tools.map((tool) => ({ name: `pi_${tool.name}`, description: tool.description, inputSchema: tool.parameters })),
+      tools: tools.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.parameters })),
     }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const tool = byName.get(request.params.name);
@@ -97,12 +112,16 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   const address = http.address();
   if (!address || typeof address === "string") throw new Error("ACP MCP listener failed");
   host = `127.0.0.1:${address.port}`;
-  const mcpServer = { type: "http" as const, name: "pi-bridge", url: `http://${host}/mcp`, headers: [{ name: "Authorization", value: token }] };
-  const env = { ...process.env, ...overrides };
-  const child = spawn(env.AGY_ACP_BIN || "agy", ["acp", "--process-per-session", "--disable-telemetry", "--include-default-customizations=false"], {
+  const mcpServer = { type: "http" as const, name: "pi", url: `http://${host}/mcp`, headers: [{ name: "Authorization", value: token }] };
+  // Only empty-target creation keeps the writer in the child we can await.
+  // Normal sessions need the per-session worker's HTTP MCP support.
+  const child = spawn(env.AGY_ACP_BIN || "agy", ["acp", ...(profile?.historyTarget ? [] : ["--process-per-session"]),
+    ...(profile ? ["--gemini-dir", profile.geminiDir, "--app-data-dir", profile.appDataDir] : []),
+    "--disable-telemetry", "--include-default-customizations=false", "--agent", "pi"], {
     cwd, env, stdio: ["pipe", "pipe", "ignore"],
   });
   const lines = createInterface({ input: child.stdout });
+  const stopped = new Promise<void>((resolve) => child.once("close", () => resolve()));
   let closed = false;
   let nextId = 0;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -126,7 +145,11 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   function close(error = new Error("ACP connection closed")) {
     if (closed) return;
     closed = true;
-    for (const entry of pending.values()) { clearTimeout(entry.timer); entry.removeAbort?.(); entry.reject(error); }
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer);
+      entry.removeAbort?.();
+      entry.reject(entry.method === "session/prompt" && entry.sent ? new DOMException(error.message, "AbortError") : error);
+    }
     pending.clear();
     lines.close();
     child.stdin.destroy();
@@ -163,8 +186,10 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
       entry.removeAbort = () => options.signal?.removeEventListener("abort", abort);
       if (options.signal?.aborted) { abort(); return; }
       watch(entry);
-      try { send({ jsonrpc: "2.0", id, method, params }); }
-      catch { close(new Error("ACP write failed")); }
+      try {
+        send({ jsonrpc: "2.0", id, method, params });
+        entry.sent = true;
+      } catch { close(new Error("ACP write failed")); }
     });
   }
 
@@ -192,7 +217,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
             );
             // agy supplies the canonical name alongside the ACP display title.
             // Pi's tool pipeline still owns execution, guards and user approval.
-            const ownedTool = typeof name === "string" && name.startsWith("mcp_pi-bridge_") && byName.has(name.slice("mcp_pi-bridge_".length));
+            const ownedTool = typeof name === "string" && name.startsWith("mcp_pi_") && byName.has(name.slice("mcp_pi_".length));
             const allow = activePrompt && ownedTool && params.options?.find((option: any) => option.kind === "allow_once" && typeof option.optionId === "string");
             send({ jsonrpc: "2.0", id: message.id, result: { outcome: allow
               ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" } } });
@@ -226,9 +251,10 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
     const initialized = await request("initialize", {
       protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "pi", version: "1.0.0" },
     });
-    return { request, setPromptWatchdog, close: () => close(), mcpServer, initialized };
+    return { request, setPromptWatchdog, close: () => { close(); return stopped; }, get closed() { return closed; }, mcpServer, initialized };
   } catch (error) {
     close();
+    await stopped;
     throw error;
   } finally {
     signal?.removeEventListener("abort", abort);

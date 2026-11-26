@@ -1,33 +1,51 @@
 import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import {
-  createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools,
+  createAssistantMessageEventStream, getCurrentSystemMessage, getCurrentTools, getSystemMessageText,
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { createAcpConnection } from "./transport.js";
+import { AGENT_DEFINITION, createAcpConnection } from "./transport.js";
+import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, prepareHistory, writeHistory, type ImportLosses } from "./history.js";
+import { rewriteToolReferences } from "../tool-references.js";
 
 export const PROVIDER_ID = "antigravity";
-// Leave room for agy's serialization around the supplied text.
-const MAX_PROMPT_TEXT_BYTES = 185_000;
-const ROUTING = "Use only the pi_ tools supplied by the pi-bridge MCP server for user tasks. Native tools are disabled. Report missing capabilities instead of substituting a native tool.";
+const routing = (hasTools: boolean) => hasTools
+  ? "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts."
+  : "No Pi tools are available for this request.";
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+function supportsHistory(version: unknown): boolean {
+  if (typeof version !== "string") return false;
+  const match = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
+  if (!match) return false;
+  const parts = match.slice(1, 4).map(Number);
+  if (!parts.every(Number.isSafeInteger)) return false;
+  const minimum = [1, 5, 15];
+  for (let index = 0; index < minimum.length; index++) {
+    if (parts[index] !== minimum[index]) return parts[index] > minimum[index];
+  }
+  return !match[4];
+}
 
 // Usage and timestamps do not change the conversation being continued.
 function historyKey(messages: any[]): string {
   return digest(messages.map(({ role, content, toolCallId, toolName, isError }) => ({ role, content, toolCallId, toolName, isError })));
 }
 
-export function sessionRequest(cwd: string, mcpServer: any, systemPrompt: string, initialized: any) {
+export function sessionRequest(cwd: string, mcpServer: any, systemPrompt: string, initialized: any, hasTools: boolean) {
   if (initialized?.agentCapabilities?._meta?.antigravity?.systemPrompt?.append !== true) {
     throw new Error("Antigravity ACP requires systemPrompt.append support; upgrade agy (tested with 1.5.6)");
   }
-  if (initialized.agentCapabilities.mcpCapabilities?.http !== true) {
+  if (mcpServer && initialized.agentCapabilities.mcpCapabilities?.http !== true) {
     throw new Error("Antigravity ACP does not support HTTP MCP servers");
   }
   return {
-    cwd, mcpServers: [mcpServer],
+    cwd, mcpServers: mcpServer ? [mcpServer] : [],
     _meta: { antigravity: {
-      systemPrompt: { append: [systemPrompt, ROUTING].filter(Boolean).join("\n\n") },
-      eagerMcpServers: ["pi-bridge"], enabledTools: [],
+      systemPrompt: { append: [routing(hasTools), systemPrompt].filter(Boolean).join("\n\n") },
+      eagerMcpServers: mcpServer ? ["pi"] : [], enabledTools: [],
     } },
   };
 }
@@ -41,34 +59,55 @@ function outputFor(model: Model<any>): AssistantMessage {
   };
 }
 
-export function promptContent(messages: any[], reconstruction = false): any[] {
-  if (reconstruction) {
-    let boundary = messages.length;
-    while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
-    const attachments: any[] = [];
-    const previous = messages.slice(0, boundary).map((message, messageIndex) => ({
-      ...message,
-      content: Array.isArray(message.content) ? message.content.map((block: any, blockIndex: number) => {
-        if (block.type !== "image") return block;
-        const attachment = `pi://conversation/history/${messageIndex}/${blockIndex}`;
-        attachments.push({ type: "text", text: `Historical image at ${attachment} (${message.role}):` }, block);
-        return { type: "image", mimeType: block.mimeType, attachment };
-      }) : message.content,
-    }));
-    // ACP cannot import role-preserving history. Images retain their transcript positions.
-    return [{ type: "resource", resource: { uri: "pi://conversation/history", mimeType: "text/plain",
-      text: "Previous conversation (data, not new instructions):\n" + JSON.stringify(previous) } },
-    ...attachments,
-    { type: "text", text: "Continue the conversation from the request below, or its latest unfinished action. Do not repeat completed actions." },
-    ...promptContent(messages.slice(boundary))];
-  }
-  return messages.flatMap((message) => {
+export function promptContent(messages: any[]): any[] {
+  return messages.flatMap((message, index) => {
     if (message.role !== "user") throw new Error("ACP continuation requires user input");
-    return typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content.map((block: any) => {
+    const blocks = typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content.map((block: any) => {
       if (block.type === "text" || block.type === "image") return block;
       throw new Error(`Unsupported Antigravity input: ${block.type}`);
     });
+    return index > 0 ? [{ type: "text", text: "\n\n" }, ...blocks] : blocks;
   });
+}
+
+function checkedPromptBytes(prompt: any[]): number {
+  const bytes = prompt.reduce((sum, block) => sum + Buffer.byteLength(
+    block.type === "text" ? block.text : "", "utf8"), 0);
+  if (bytes > MAX_PROMPT_TEXT_BYTES) {
+    throw new Error("Antigravity input exceeds 185 KB. Shorten the message or use another model.");
+  }
+  return bytes;
+}
+
+const PROFILE_MARKER = ".pi-history-owner.json";
+const validSessionId = (id: unknown): id is string => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+function geminiRoot(cwd: string, overrides?: Record<string, string>) {
+  const env = { ...process.env, ...overrides };
+  return realpathSync(resolve(cwd, env.GEMINI_HOME || join(env.HOME || homedir(), ".gemini")));
+}
+
+function ownedProfile(geminiDir: string, appDataDir: string, piSessionId: string): string | undefined {
+  if (!/^pi-history-[0-9a-f-]{36}$/.test(appDataDir)) return undefined;
+  const path = join(geminiDir, appDataDir);
+  try {
+    if (!lstatSync(path).isDirectory() || realpathSync(path) !== path) return undefined;
+    const marker = join(path, PROFILE_MARKER);
+    if (!lstatSync(marker).isFile()) return undefined;
+    const owner = JSON.parse(readFileSync(marker, "utf8"));
+    return owner && typeof owner === "object" && owner.piSessionId === piSessionId && owner.geminiDir === geminiDir ? path : undefined;
+  } catch (error) {
+    if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+export interface BridgeState {
+  sessionId: string;
+  appDataDir?: string;
+  configuration: string;
+  historyLength: number;
+  historyKey: string;
 }
 
 type Connection = Awaited<ReturnType<typeof createAcpConnection>>;
@@ -76,10 +115,19 @@ type PendingTool = { id: string; name: string; args: any; resolve(value: any): v
 
 export function createAntigravityBridge(options: {
   cwd(): string;
+  piSessionId?(): string | undefined;
+  onImport?(losses: ImportLosses): void;
+  save?(state: BridgeState): boolean | void;
+  claim?(state: BridgeState): boolean;
   connect?: typeof createAcpConnection;
 }) {
+  let checkpoint: BridgeState | undefined;
+  let checkpointShared = false;
+  let interruptedTool: { id: string; error: Error } | undefined;
+  let selection: string | undefined;
   let connection: Connection | undefined;
   let sessionId: string | undefined;
+  let appDataDir: string | undefined;
   let configuration: string | undefined;
   let history: any[] = [];
   let stream: AssistantMessageEventStream | undefined;
@@ -87,6 +135,7 @@ export function createAntigravityBridge(options: {
   let request: SimpleStreamOptions = {};
   let model: Model<any>;
   let prompting = false;
+  let promptUsage: { used?: number } | undefined;
   let generation = 0;
   let queue: Promise<void> = Promise.resolve();
   let tools: PendingTool[] = [];
@@ -121,24 +170,35 @@ export function createAntigravityBridge(options: {
       target.push({ type: "error", reason, error: message });
     } else {
       history.push(structuredClone(message));
+      if (reason !== "toolUse") {
+        checkpoint = { sessionId: sessionId!, ...(appDataDir ? { appDataDir } : {}), configuration: configuration!, historyLength: history.length, historyKey: historyKey(history) };
+        checkpointShared = false;
+      }
       target.push({ type: "done", reason, message });
     }
     target.end();
   }
 
   function reset(error = new Error("Antigravity session context changed")) {
+    const pending = !stream && error.name === "AbortError" ? tools.find((tool) => tool.emitted) : undefined;
+    interruptedTool = pending ? { id: pending.id, error } : undefined;
     generation++;
-    terminal(request.signal?.aborted ? "aborted" : "error", error);
+    terminal(request.signal?.aborted || error.name === "AbortError" ? "aborted" : "error", error);
     removeAbort?.();
     removeAbort = undefined;
     for (const tool of tools) tool.reject(error);
     tools = [];
-    connection?.close();
+    void connection?.close().catch(() => {});
     connection = undefined;
     sessionId = undefined;
+    appDataDir = undefined;
     configuration = undefined;
+    selection = undefined;
+    checkpoint = undefined;
+    checkpointShared = false;
     history = [];
     prompting = false;
+    promptUsage = undefined;
     queue = Promise.resolve();
   }
 
@@ -156,12 +216,20 @@ export function createAntigravityBridge(options: {
   }
 
   function update(params: any, epoch: number) {
+    const activePrompt = promptUsage;
     queue = queue.then(async () => {
       if (epoch !== generation || params.sessionId !== sessionId) return;
       const owner = stream;
       await request.onProviderStreamEvent?.(params, model);
-      if (epoch !== generation || params.sessionId !== sessionId || stream !== owner || !stream || !output) return;
+      if (epoch !== generation || params.sessionId !== sessionId) return;
       const event = params.update;
+      if (event?.sessionUpdate === "usage_update") {
+        if (prompting && activePrompt && activePrompt === promptUsage && Number.isSafeInteger(event.used) && event.used > 0) {
+          activePrompt.used = event.used;
+        }
+        return;
+      }
+      if (stream !== owner || !stream || !output) return;
       const type = event?.sessionUpdate === "agent_message_chunk" ? "text"
         : event?.sessionUpdate === "agent_thought_chunk" ? "thinking" : undefined;
       if (!type || event.content?.type !== "text") return;
@@ -177,7 +245,9 @@ export function createAntigravityBridge(options: {
       else if (block.type === "thinking") block.thinking += value;
       stream.push({ type: `${type}_delta`, contentIndex: openBlock, delta: value, partial: output } as any);
     });
-    void queue.catch((error) => { if (epoch === generation) reset(error); });
+    void queue.catch((error) => {
+      if (epoch === generation) reset(prompting ? new DOMException(error.message, "AbortError") : error);
+    });
   }
 
   async function start(target: AssistantMessageEventStream, selected: Model<any>, context: TranscriptContext, settings: SimpleStreamOptions) {
@@ -185,22 +255,47 @@ export function createAntigravityBridge(options: {
     settings.signal?.throwIfAborted();
     if (settings.fetch) throw new Error("Antigravity ACP cannot use custom fetch");
     if ((settings as any).disableContinuation) throw new Error("Antigravity ACP does not support cache-warming replays");
+    const system = getCurrentSystemMessage(context.messages);
+    const originalPrompt = system ? getSystemMessageText(system) : "";
     const initial = {
-      systemPrompt: getCurrentSystemPrompt(context.messages),
+      systemPrompt: originalPrompt,
       tools: settings.toolChoice === "none" ? [] : getCurrentTools(context.messages),
       messages: context.messages.filter((message) => message.role !== "system"),
     };
     const payload = await settings.onPayload?.(initial, selected) ?? initial;
-    if (startedGeneration !== generation) throw new Error("Pi session context changed before the request started");
     const effective = payload as { systemPrompt: string; tools: any[]; messages: any[] };
+    let systemPrompt = effective.systemPrompt;
+    if (systemPrompt === originalPrompt && system?.sections) {
+      const sections = { ...system.sections };
+      const names = new Map<string, string>(effective.tools.map((tool) => [`mcp_pi_${tool.name}`, tool.name]));
+      for (const name of ["tools", "rules", "skills"]) {
+        if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
+      }
+      systemPrompt = getSystemMessageText({ ...system, sections });
+    }
     const messages = effective.messages.filter((message) => message.role !== "assistant" || !["error", "aborted"].includes(message.stopReason));
-    const config = digest([options.cwd(), selected.id, effective.systemPrompt, effective.tools, settings.reasoning, settings.env]);
+    const interrupted = interruptedTool;
+    interruptedTool = undefined;
+    if (interrupted && messages.some((message) => message.role === "toolResult" && message.toolCallId === interrupted.id)) throw interrupted.error;
+    if (startedGeneration !== generation) throw new Error("Pi session context changed before the request started");
+    const config = digest([AGENT_DEFINITION, HISTORY_IMPORT_POLICY, routing(effective.tools.length > 0), options.cwd(), systemPrompt, effective.tools, settings.env]);
+    const selectedConfig = digest([selected.id, settings.reasoning]);
     if (stream) throw new Error("Antigravity ACP already has an active stream");
+    if (connection && !prompting && (connection.closed || selection !== selectedConfig)) {
+      const saved = checkpoint, shared = checkpointShared;
+      reset();
+      checkpoint = saved;
+      checkpointShared = shared;
+    }
+    if (checkpointShared) {
+      if (options.claim?.(checkpoint!) === false) reset();
+      checkpointShared = false;
+    }
     const prefix = historyKey(messages.slice(0, history.length)) === historyKey(history) && messages.length >= history.length;
     const suffix = prefix ? messages.slice(history.length) : messages;
     const pending = tools.find((entry) => entry.emitted);
     const continuation = pending && suffix.length === 1 && suffix[0].role === "toolResult" && suffix[0].toolCallId === pending.id;
-    if (connection && (configuration !== config || !prefix || (prompting ? !continuation : !suffix.length || !suffix.every((message) => message.role === "user")))) reset();
+    if (connection && (configuration !== config || !prefix || (prompting ? !continuation || selection !== selectedConfig : !suffix.length || !suffix.every((message) => message.role === "user")))) reset();
     const epoch = generation;
     model = selected;
     request = settings;
@@ -212,10 +307,24 @@ export function createAntigravityBridge(options: {
     removeAbort = () => settings.signal?.removeEventListener("abort", abort);
     settings.signal?.throwIfAborted();
     const fresh = !connection;
-    if (!connection) {
+    let restored = fresh && checkpoint?.configuration === config
+      && messages.length > checkpoint.historyLength
+      && historyKey(messages.slice(0, checkpoint.historyLength)) === checkpoint.historyKey
+      && messages.slice(checkpoint.historyLength).every((message) => message.role === "user") ? checkpoint : undefined;
+    checkpoint = undefined;
+    const owner = options.piSessionId?.();
+    let root: string | undefined;
+    if (fresh && owner) {
+      try { root = geminiRoot(options.cwd(), settings.env); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    if (restored?.appDataDir && (!root || !owner || !validSessionId(restored.sessionId)
+      || !ownedProfile(root, restored.appDataDir, owner))) restored = undefined;
+    const open = async (profile?: { geminiDir: string; appDataDir: string; historyTarget?: true }, availableTools = effective.tools) => {
       const created = await (options.connect ?? createAcpConnection)(options.cwd(), {
         update: (params) => update(params, epoch),
         tool: async (name, args) => {
+          if (!availableTools.length) throw new Error("Antigravity history setup cannot execute tools");
           await queue;
           if (epoch !== generation) throw new Error("Antigravity session closed");
           return new Promise((resolve, reject) => {
@@ -223,22 +332,98 @@ export function createAntigravityBridge(options: {
             emitTool();
           });
         },
-      }, effective.tools, settings.env, settings.signal);
-      if (epoch !== generation) { created.close(); return; }
+      }, availableTools, settings.env, settings.signal, profile);
+      if (epoch !== generation) { await created.close(); throw new DOMException("Antigravity session context changed", "AbortError"); }
       connection = created;
-      const session = await connection.request("session/new", sessionRequest(options.cwd(), connection.mcpServer, effective.systemPrompt, connection.initialized));
+      return created;
+    };
+    let importedLength = 0;
+    let importedSession: string | undefined;
+    let importedLosses: ImportLosses | undefined;
+    if (fresh && !restored && messages.some(message => message.role !== "user")) {
+      let boundary = messages.length;
+      while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
+      const promptBytes = checkedPromptBytes(promptContent(messages.slice(boundary)));
+      const prepared = boundary > 0 && boundary < messages.length
+        ? prepareHistory(messages.slice(0, boundary), promptBytes) : undefined;
+      if (boundary === messages.length && messages.at(-1)?.role === "toolResult") {
+        throw new Error("Antigravity cannot resume from a tool result. Send a new message to continue.");
+      }
+      if (!prepared) throw new Error("Antigravity cannot import this history. Compact with another model or start a new conversation.");
+      if (!owner) throw new Error("Antigravity history import requires a Pi session ID.");
+      if (!root) throw new Error("Antigravity history storage is unavailable.");
+      const name = `pi-history-${randomUUID()}`;
+      const path = join(root, name);
+      let created: Connection | undefined;
+      const incompatible = new Error("Antigravity history storage layout is unsupported.");
+      try {
+        mkdirSync(path, { mode: 0o700 });
+        writeFileSync(join(path, PROFILE_MARKER), JSON.stringify({ piSessionId: owner, geminiDir: root }), { flag: "wx", mode: 0o600 });
+        created = await open({ geminiDir: root, appDataDir: name, historyTarget: true }, []);
+        if (!supportsHistory(created.initialized?.agentInfo?.version)) throw new Error("Antigravity history import requires CLI 1.5.15 or later.");
+        const params = sessionRequest(options.cwd(), undefined, systemPrompt, created.initialized, false);
+        const session = await created.request("session/new", params);
+        if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
+        if (!validSessionId(session?.sessionId)) throw new Error("Invalid Antigravity import session ID");
+        await created.request("session/close", { sessionId: session.sessionId });
+        await created.close();
+        if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
+        settings.signal?.throwIfAborted();
+        connection = undefined;
+        const database = join(path, "conversations", session.sessionId + ".db");
+        let nativeTarget: boolean;
+        try { nativeTarget = realpathSync(database) === database && lstatSync(database).isFile(); }
+        catch (error) {
+          if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw incompatible;
+          throw error;
+        }
+        if (!ownedProfile(root, name, owner) || !nativeTarget
+          || !writeHistory(database, session.sessionId, prepared.steps, join(path, "brain", session.sessionId, ".user_uploaded"))) {
+          throw incompatible;
+        }
+        importedSession = session.sessionId;
+        importedLength = boundary;
+        importedLosses = prepared.losses;
+        // Resumed workers outlive the parent-stop proof; retain post-import resources.
+        appDataDir = name;
+      } catch (error) {
+        let stopped = false;
+        if (created) {
+          try { await created.close(); stopped = true; } catch { /* Never delete a profile whose writer may still be running. */ }
+        }
+        if (stopped && ownedProfile(root, name, owner) === path) {
+          try { rmSync(path, { recursive: true }); } catch (cleanupError) { if (error === incompatible) throw cleanupError; }
+        }
+        if (epoch !== generation || settings.signal?.aborted) throw new DOMException("Antigravity history import aborted", "AbortError");
+        throw error;
+      }
+    }
+    if (!connection) {
+      appDataDir = restored?.appDataDir ?? appDataDir;
+      const active = await open(appDataDir ? { geminiDir: root!, appDataDir } : undefined);
+      const resumeId = restored?.sessionId ?? importedSession;
+      if (appDataDir && !supportsHistory(active.initialized?.agentInfo?.version)) {
+        await active.close();
+        if (epoch !== generation) throw new DOMException("Antigravity session context changed", "AbortError");
+        throw new Error("Antigravity history import requires CLI 1.5.15 or later.");
+      }
+      const params = sessionRequest(options.cwd(), active.mcpServer, systemPrompt, active.initialized, effective.tools.length > 0);
+      const session = await active.request(resumeId ? "session/resume" : "session/new",
+        resumeId ? { ...params, sessionId: resumeId } : params);
       if (epoch !== generation) return;
-      if (typeof session?.sessionId !== "string") throw new Error("Antigravity returned an invalid session ID");
+      if (typeof session?.sessionId !== "string" || (appDataDir && session.sessionId !== resumeId)) throw new Error("Antigravity returned an invalid session ID");
       sessionId = session.sessionId;
       const selector = session.configOptions?.find((option: any) => option.category === "model" || option.id === "model");
-      if (selector) await connection.request("session/set_config_option", { sessionId, configId: selector.id, value: selected.id });
-      else await connection.request("session/set_model", { sessionId, modelId: selected.id });
+      const selectedModel = selector
+        ? await active.request("session/set_config_option", { sessionId, configId: selector.id, value: selected.id })
+        : await active.request("session/set_model", { sessionId, modelId: selected.id });
       if (settings.reasoning) {
-        const selector = session.configOptions?.find((option: any) => option.category === "thought_level" || option.id === "thinking_level");
+        const selector = (selectedModel.configOptions ?? session.configOptions)?.find((option: any) => option.category === "thought_level" || option.id === "thinking_level");
         if (!selector) throw new Error("Antigravity does not advertise a thinking-level selector for this model");
-        await connection.request("session/set_config_option", { sessionId, configId: selector.id, value: settings.reasoning });
+        await active.request("session/set_config_option", { sessionId, configId: selector.id, value: settings.reasoning });
       }
       configuration = config;
+      selection = selectedConfig;
     }
     if (epoch !== generation) return;
     target.push({ type: "start", partial: output! });
@@ -253,26 +438,21 @@ export function createAntigravityBridge(options: {
       emitTool();
       return;
     }
-    const unseen = fresh ? messages : suffix;
-    const reconstruction = unseen.some((message) => message.role !== "user");
+    const unseen = restored ? messages.slice(restored.historyLength) : importedLength ? messages.slice(importedLength) : fresh ? messages : suffix;
     history = structuredClone(messages);
     prompting = true;
+    promptUsage = {};
     let response: any;
     try {
-      const prompt = promptContent(unseen, reconstruction);
-      const textBytes = prompt.reduce((sum, block) => sum + Buffer.byteLength(
-        block.type === "text" ? block.text : block.type === "resource" ? block.resource.text : "", "utf8"), 0);
-      if (textBytes > MAX_PROMPT_TEXT_BYTES) {
-        throw new Error("Antigravity input exceeds 185 KB. Compact the conversation or switch providers.");
-      }
-      const capabilities = connection.initialized.agentCapabilities.promptCapabilities;
+      const prompt = promptContent(unseen);
+      checkedPromptBytes(prompt);
+      const capabilities = connection!.initialized.agentCapabilities.promptCapabilities;
       if (prompt.some((block) => block.type === "image") && capabilities?.image !== true) {
         throw new Error("Antigravity ACP does not support image prompts");
       }
-      if (prompt.some((block) => block.type === "resource") && capabilities?.embeddedContext !== true) {
-        throw new Error("Antigravity ACP does not support embedded context");
-      }
-      response = await connection.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
+      if ((!settings.sessionId || settings.sessionId === owner)
+        && importedLosses && Object.values(importedLosses).some(count => count > 0)) options.onImport?.(importedLosses);
+      response = await connection!.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
       await queue;
     } catch (error) {
       if (epoch === generation) reset(error instanceof Error ? error : new Error(String(error)));
@@ -294,15 +474,25 @@ export function createAntigravityBridge(options: {
       output.usage.output = (tokens?.output_tokens ?? usage?.outputTokens ?? 0) + (usage?.thoughtTokens ?? 0);
       output.usage.totalTokens = output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
     }
+    // Prompt usage is cumulative; the last update reports the active context size.
+    if (promptUsage?.used !== undefined) output.usage.totalTokens = promptUsage.used;
+    promptUsage = undefined;
     if (["refusal", "max_turn_requests"].includes(response.stopReason)) reset(new Error(`Antigravity stopped: ${response.stopReason}`));
     else if (!output.content.some((block) => block.type === "text" && block.text.trim())) {
       reset(new Error("Antigravity finished without a text response; check tool permissions and ACP events"));
-    } else terminal(response.stopReason === "max_tokens" ? "length" : "stop");
+    } else {
+      terminal(response.stopReason === "max_tokens" ? "length" : "stop");
+    }
   }
 
   return {
     reset,
-    settle() { if (prompting && !stream) reset(new Error("Pi stopped while an Antigravity tool was pending")); },
+    restore(state: BridgeState | undefined) { checkpoint = state; checkpointShared = !!state; },
+    settle() {
+      interruptedTool = undefined;
+      if (prompting && !stream) reset(new Error("Pi stopped while an Antigravity tool was pending"));
+      else if (!prompting && checkpoint && !checkpointShared) checkpointShared = options.save?.(checkpoint) === true;
+    },
     streamSimple(selected: Model<any>, context: TranscriptContext, settings: SimpleStreamOptions = {}) {
       const target = createAssistantMessageEventStream();
       void start(target, selected, context, settings).catch((error) => {
@@ -310,7 +500,7 @@ export function createAntigravityBridge(options: {
         if (stream === target) reset(error instanceof Error ? error : new Error(String(error)));
         else {
           const message = outputFor(selected);
-          message.stopReason = settings.signal?.aborted ? "aborted" : "error";
+          message.stopReason = settings.signal?.aborted || (error instanceof Error && error.name === "AbortError") ? "aborted" : "error";
           message.errorMessage = error instanceof Error ? error.message : String(error);
           ended.add(target);
           target.push({ type: "error", reason: message.stopReason, error: message });
