@@ -40,7 +40,7 @@ export function registerAntigravity(pi: ExtensionAPI) {
       ] as const;
       const items = fields.filter(([count]) => count > 0)
         .map(([count, noun, verb]) => `${count} ${noun}${count === 1 ? "" : "s"} ${verb}`);
-      if (items.length) context.ui.notify(`Antigravity import: ${items.join(", ")}.`, "warning");
+      if (items.length) context.ui.notify(`Antigravity imported this history with ${items.join(", ")}.`, "warning");
     },
     claim(state) {
       const path = statePath(sessionId!), claimed = `${path}.${randomUUID()}.claimed`;

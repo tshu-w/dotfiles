@@ -1000,11 +1000,11 @@ exports.createAntigravityBridge = options => {
   const zero = { userTruncated: 0, toolResultsTruncated: 0, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 0 };
   const plural = { ...zero, toolResultsTruncated: 2, earlierMessagesOmitted: 3, toolImagesOmitted: 4 };
   assert.equal(b.provider.streamSimple(model, {}, { sessionId: a.id, losses: plural }), a.id);
-  assert.deepEqual(a.notices, [["Antigravity import: 2 tool results shortened, 3 earlier messages omitted, 4 images omitted.", "warning"]]);
+  assert.deepEqual(a.notices, [["Antigravity imported this history with 2 tool results shortened, 3 earlier messages omitted, 4 images omitted.", "warning"]]);
   assert.deepEqual(b.notices, []);
   const singular = Object.fromEntries(Object.keys(zero).map(key => [key, 1]));
   assert.equal(a.provider.streamSimple(model, {}, { sessionId: b.id, losses: singular }), b.id);
-  assert.deepEqual(b.notices, [["Antigravity import: 1 tool result shortened, 1 user message shortened, 1 earlier message omitted, 1 intermediate message omitted, 1 image omitted.", "warning"]]);
+  assert.deepEqual(b.notices, [["Antigravity imported this history with 1 tool result shortened, 1 user message shortened, 1 earlier message omitted, 1 intermediate message omitted, 1 image omitted.", "warning"]]);
   a.provider.streamSimple(model, {}, { sessionId: a.id, losses: zero });
   a.provider.streamSimple(model, {}, { sessionId: headless.id, losses: singular });
   assert.equal(a.notices.length, 1);
