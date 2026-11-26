@@ -123,9 +123,17 @@ The full transcript, including system records, reaches production normalization.
 Before SDK folding, system content must be a string or known text/string blocks;
 section values must be strings or null, and text must be well-formed UTF-16.
 Unknown content fails as `system_source_shape` rather than disappearing in SDK
-text extraction. The SDK's active system text is the oracle source; its content and every remaining
-section must match the worker ACP append. Only approved tool-name prefix mappings
-inside `tools`, `rules`, and `skills` are allowed and counted. The complete append
+text extraction. The SDK's active system text is the oracle source, checked against
+an independent snapshot before projection. The oracle independently omits structured
+`preamble` and `docs` sections matching the approved Pi-default shapes: the one-line
+Pi harness identity and its help sentence, and the Pi documentation heading with
+one or more bullet lines inside `<docs>`. Matching is by shape, not provenance;
+a custom section that still matches is also omitted. Opaque content and nonmatching
+sections remain exact. Null sections contribute no text. These checks apply after
+SDK system-delta folding, without importing the production matcher. Reported system
+bytes still measure the recorded active source before this filtering.
+The remaining content and sections must match the worker ACP append. Only approved
+tool-name prefix mappings inside `tools`, `rules`, and `skills` are allowed and counted. The complete append
 must be the exact suffix of the native single-text `systemInstruction`, immediately
 after the independently captured native communication-style boundary. Unknown Pi
 content changes or unverified framing fail. Old system versions are resolved by

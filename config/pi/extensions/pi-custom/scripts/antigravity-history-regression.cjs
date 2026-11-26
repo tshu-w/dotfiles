@@ -124,17 +124,25 @@ function validSystemSources(messages) {
       && Object.values(message.sections).every(value => value === null || text(value)))));
 }
 
-// Verify source text against the observed ACP append, then its exact placement
-// in the native request. Only named tool references in three sections may grow.
+// Independent approved policy: omit only shape-matching named default sections.
+function defaultSystemSection(name, text) {
+  if (name === "preamble") return /^You are [^\n]* inside pi, a coding agent harness\. (?:You help|Help) users [^.\n]*\.$/.test(text);
+  if (name === "docs") return /^<docs>\nPi documentation \([^\n]*\):\n(?:- [^\n]*\n)+<\/docs>$/.test(text);
+  return false;
+}
+
+// Verify the original snapshot before projecting approved default omissions and
+// tool references, then check the exact append and its native placement.
 function compareSystem(system, sourcePrompt, toolNames, append, body) {
   const fail = kind => ({ differences: [kind], toolReferenceMappings: 0, verified: 0 });
   const content = system ? typeof system.content === "string" ? system.content
     : system.content.filter(block => block.type === "text").map(block => block.text).join("\n") : "";
-  const parts = [{ text: content, rename: false }, ...Object.entries(system?.sections ?? {}).filter(([, text]) => text !== null)
-    .map(([name, text]) => ({ text, rename: ["tools", "rules", "skills"].includes(name) }))].filter(part => part.text.length > 0);
-  if (parts.map(part => part.text).join("\n\n") !== sourcePrompt) return fail("system_source_shape");
+  const sourceParts = [{ text: content, rename: false }, ...Object.entries(system?.sections ?? {}).filter(([, text]) => text !== null)
+    .map(([name, text]) => ({ name, text, rename: ["tools", "rules", "skills"].includes(name) }))].filter(part => part.text.length > 0);
+  if (sourceParts.map(part => part.text).join("\n\n") !== sourcePrompt) return fail("system_source_shape");
+  const parts = sourceParts.filter(part => !defaultSystemSection(part.name, part.text));
   const routing = toolNames.length ? SYSTEM_ROUTING : "No Pi tools are available for this request.";
-  const prefix = routing + (sourcePrompt ? "\n\n" : "");
+  const prefix = routing + (parts.length ? "\n\n" : "");
   if (typeof append !== "string" || !append.startsWith(prefix)) return fail("system_routing");
   const target = append.slice(prefix.length), names = [...toolNames].sort((a, b) => b.length - a.length);
   let position = 0, mappings = 0;
@@ -579,6 +587,33 @@ function selfTest() {
   assert.equal(validSystemSources([{ role: "system", ...system }]), true);
   assert.equal(validSystemSources([{ role: "system", content: [text("keep"), { type: "future", value: "unknown" }] }]), false);
   assert.equal(validSystemSources([{ role: "system", content: "keep", sections: { future: { value: "unknown" } } }]), false);
+  const preamble = "You are a coding assistant running inside pi, a coding agent harness. Help users inspect files.";
+  const docs = "<docs>\nPi documentation (read when needed):\n- Main: /synthetic/README.md\n</docs>";
+  let systemDefaultChecks = 0;
+  for (const [snapshot, retained, names] of [
+    [{ content: "BASE", sections: { preamble, docs, rules: "Use fixture tool." } }, "BASE\n\nUse mcp_pi_fixture tool.", ["fixture"]],
+    [{ content: "", sections: { preamble, docs } }, "", []],
+    [{ content: "", sections: { preamble: preamble.replace("Help users", "You help users"), docs: null } }, "", []],
+    [{ content: "", sections: { preamble: preamble + "\nKeep this identity.", docs: docs + "\nKeep this guide." } }, preamble + "\nKeep this identity.\n\n" + docs + "\nKeep this guide.", []],
+    [{ content: "", sections: { preamble, docs: "Custom guide" } }, "Custom guide", []],
+    [{ content: "", sections: { docs: docs.replace("</docs>", "- Custom same-shape item\n</docs>") } }, "", []],
+    [{ content: preamble + "\n\n" + docs }, preamble + "\n\n" + docs, []],
+    [{ content: "", sections: { unknown: preamble, docs: "<docs>\nPi documentation (read when needed):\n</docs>" } }, preamble + "\n\n<docs>\nPi documentation (read when needed):\n</docs>", []],
+  ]) {
+    const original = structuredClone(snapshot);
+    const sourceText = [snapshot.content, ...Object.values(snapshot.sections ?? {})].filter(value => value).join("\n\n");
+    const routing = names.length ? SYSTEM_ROUTING : "No Pi tools are available for this request.";
+    const expectedAppend = routing + (retained ? "\n\n" + retained : "");
+    const native = { systemInstruction: { parts: [{ text: "NATIVE\n</communication_style>\n" + expectedAppend }] } };
+    assert.deepEqual(compareSystem(snapshot, sourceText, names, expectedAppend, native).differences, []);
+    assert.deepEqual(compareSystem(snapshot, sourceText + "changed", names, expectedAppend, native).differences, ["system_source_shape"]);
+    assert.deepEqual(snapshot, original);
+    systemDefaultChecks += 3;
+    if (sourceText !== retained) {
+      assert.deepEqual(compareSystem(snapshot, sourceText, names, routing + "\n\n" + sourceText, native).differences, ["system_prompt"]);
+      systemDefaultChecks++;
+    }
+  }
   const unicode = "A\uE000B\uF8FEC\uF8FF\uF8FFD\u200CE\u200DF\u200EG";
   const unicodeExpected = expectedHistory([{ role: "user", content: unicode }]), unicodeActual = structuredClone(unicodeExpected);
   unicodeActual[0].parts[0].text = "ABCDEFG";
@@ -673,7 +708,7 @@ function selfTest() {
   assert.equal(historyWindowOracle([turns[2]], 1).rejectedAdmission, "empty_projected_history");
   assert.equal(historyWindowOracle([turns[2]], 185001).promptExceeded, true);
   assert.equal(historyWindowOracle([], 1).rejectedAdmission, undefined);
-  return 83;
+  return 83 + systemDefaultChecks;
 }
 
 function revision2SelfTest() {

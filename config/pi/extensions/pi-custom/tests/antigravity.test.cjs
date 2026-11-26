@@ -510,6 +510,94 @@ test("structured tool references are mapped without changing custom sections, us
   }
 });
 
+test("Pi default sections are omitted while custom sections and opaque prompts remain exact", async (t) => {
+  const preamble = "You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.";
+  const docs = "<docs>\nPi documentation (read only when asked):\n- Main documentation: /synthetic/pi/README.md\n</docs>";
+  for (const kind of ["default", "custom", "opaque"]) {
+    const h = harness(t);
+    const sections = {
+      preamble: preamble + (kind === "custom" ? "\nKeep this custom identity." : ""),
+      docs: docs + (kind === "custom" ? "\nKeep this custom guide." : ""),
+      rules: "Use echo to repeat text.", custom: "Keep these project constraints.",
+    };
+    const system = { role: "system", timestamp: 0, toolsAdded: [tool],
+      ...(kind === "opaque" ? { content: `${preamble}\n\n${docs}` } : { content: "", sections }) };
+    const original = structuredClone(system);
+    const stream = h.bridge.streamSimple(model, { messages: [system, user("hello")] }, {});
+    await until(() => h.connections[0]?.prompts.length > 0);
+    const connection = h.connections[0], append = connection.calls[0].params._meta.antigravity.systemPrompt.append;
+    assert.match(append, /^Use only the Pi tools exposed through MCP\./);
+    if (kind === "default") {
+      assert.ok(!append.includes(preamble));
+      assert.ok(!append.includes(docs));
+    } else {
+      assert.ok(append.includes(kind === "opaque" ? preamble : sections.preamble));
+      assert.ok(append.includes(kind === "opaque" ? docs : sections.docs));
+    }
+    if (kind === "opaque") assert.equal(append.split("\n\n").slice(1).join("\n\n"), system.content);
+    else {
+      assert.match(append, /Use mcp_pi_echo to repeat text\./);
+      assert.ok(append.includes(sections.custom));
+    }
+    assert.deepEqual(system, original);
+    connection.chunk("done"); connection.finish();
+    assert.equal((await stream.result()).stopReason, "stop");
+  }
+});
+
+test("filtered system fingerprints reject old checkpoints and remain stable across default section deltas", async (t) => {
+  let saved;
+  const h = importFixture(t, { save: state => { saved = structuredClone(state); return true; }, claim: () => true });
+  const system = { role: "system", content: "", timestamp: 0, toolsAdded: [tool], sections: {
+    preamble: "You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.",
+    docs: "<docs>\nPi documentation (read only when asked):\n- Main documentation: /synthetic/pi/README.md\n</docs>",
+    custom: "Keep these project constraints.",
+  } };
+  const messages = [system, user("first")];
+  const firstStream = h.bridge.streamSimple(model, { messages }, h.settings);
+  await until(() => h.connections[0]?.prompts.length > 0);
+  const first = h.connections[0];
+  first.chunk("first answer"); first.finish();
+  messages.push(await firstStream.result());
+  h.bridge.settle();
+  const { AGENT_DEFINITION } = await jiti.import(join(CUSTOM, "antigravity/transport.ts"));
+  const { HISTORY_IMPORT_POLICY } = await jiti.import(join(CUSTOM, "antigravity/history.ts"));
+  const guidance = "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.";
+  const fingerprint = prompt => createHash("sha256").update(JSON.stringify([
+    AGENT_DEFINITION, HISTORY_IMPORT_POLICY, guidance, CUSTOM, prompt, [tool], h.settings.env,
+  ])).digest("hex");
+  assert.equal(saved.configuration, fingerprint(system.sections.custom));
+  const legacyConfiguration = fingerprint(ai.getSystemMessageText(system));
+  assert.notEqual(saved.configuration, legacyConfiguration);
+  h.bridge.reset(); h.bridge.restore({ ...saved, configuration: legacyConfiguration });
+  messages.push(user("second"));
+  const rebuiltStream = h.bridge.streamSimple(model, { messages }, h.settings);
+  await until(() => h.connections[2]?.prompts.length > 0);
+  const rebuilt = h.connections[2];
+  assert.equal(h.connections[1].calls[0].method, "session/new");
+  assert.equal(rebuilt.calls[0].method, "session/resume");
+  assert.notEqual(rebuilt.sessionId, first.sessionId);
+  rebuilt.chunk("second answer"); rebuilt.finish();
+  messages.push(await rebuiltStream.result());
+  h.bridge.settle();
+  assert.equal(saved.configuration, fingerprint(system.sections.custom));
+  h.bridge.reset(); h.bridge.restore(saved);
+  messages.push({ role: "system", content: "", timestamp: 1, sections: {
+    preamble: null,
+    docs: "<docs>\nPi documentation (read only when asked):\n- Main documentation: /synthetic/new-pi/README.md\n</docs>",
+  } }, user("third"));
+  const resumedStream = h.bridge.streamSimple(model, { messages }, h.settings);
+  await until(() => h.connections[3]?.prompts.length > 0);
+  const resumed = h.connections[3];
+  assert.equal(resumed.calls[0].method, "session/resume");
+  assert.equal(resumed.sessionId, rebuilt.sessionId);
+  assert.equal(h.databases.length, 1);
+  assert.equal(resumed.calls[0].params._meta.antigravity.systemPrompt.append, `${guidance}\n\n${system.sections.custom}`);
+  assert.deepEqual(resumed.prompts[0].params.prompt, [{ type: "text", text: "third" }]);
+  resumed.chunk("done"); resumed.finish();
+  assert.equal((await resumedStream.result()).stopReason, "stop");
+});
+
 test("a thinking-only or empty ACP completion is an explicit error, not a silent success", async (t) => {
   for (const thinking of [false, true]) {
     const h = harness(t), { stream, connection } = await started(h, [user("hello")]);

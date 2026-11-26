@@ -1,7 +1,7 @@
 // Adapted from pi-claude-bridge (MIT), copyright 2026 Eli Dickinson. See LICENSE.
 import { renderSystemMessageUpdate, type Message as PiMessage } from "@earendil-works/pi-ai";
 import type { Message as SessionMessage, ContentBlock, ToolResultBlock } from "cc-session-io";
-import { withoutPiDefaults } from "./system-prompt.js";
+import { withoutPiDefaults } from "../system-prompt.js";
 const MCP_TOOL_PREFIX = "mcp__pi__";
 
 export const PROVIDER_ID = "claude-code";

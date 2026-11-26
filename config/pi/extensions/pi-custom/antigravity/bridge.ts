@@ -9,6 +9,7 @@ import {
 import { AGENT_DEFINITION, createAcpConnection } from "./transport.js";
 import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, prepareHistory, writeHistory, type ImportLosses } from "./history.js";
 import { rewriteToolReferences } from "../tool-references.js";
+import { withoutPiDefaults } from "../system-prompt.js";
 
 export const PROVIDER_ID = "antigravity";
 const routing = (hasTools: boolean) => hasTools
@@ -266,7 +267,7 @@ export function createAntigravityBridge(options: {
     const effective = payload as { systemPrompt: string; tools: any[]; messages: any[] };
     let systemPrompt = effective.systemPrompt;
     if (systemPrompt === originalPrompt && system?.sections) {
-      const sections = { ...system.sections };
+      const sections = withoutPiDefaults(system.sections);
       const names = new Map<string, string>(effective.tools.map((tool) => [`mcp_pi_${tool.name}`, tool.name]));
       for (const name of ["tools", "rules", "skills"]) {
         if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
