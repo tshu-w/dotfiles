@@ -267,6 +267,7 @@ test("Claude preset retains current Pi constraints and routes their tool referen
   await until(() => h.calls.length === 1);
   const q = h.calls[0], prompt = q.options.systemPrompt;
   assert.equal(prompt.preset, "claude_code");
+  assert.equal(prompt.append.split("\n\n")[0], "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp__pi__<name> counterparts.");
   assert.ok(!prompt.append.includes(state.sections.preamble));
   assert.ok(!prompt.append.includes(state.sections.docs));
   for (const text of [state.sections.addendum, state.sections.project_context, state.sections.cwd,

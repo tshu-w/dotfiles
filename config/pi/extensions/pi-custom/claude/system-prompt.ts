@@ -1,5 +1,6 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { getSystemMessageText, type SystemMessage } from "@earendil-works/pi-ai";
+import { rewriteToolReferences } from "../tool-references.js";
 
 // Pi's default docs guide and identity, matched by shape so wording from any Pi version is recognized.
 // Anthropic bills requests carrying this guide as a third-party app, outside the subscription.
@@ -18,19 +19,6 @@ export function withoutPiDefaults<T extends string | null>(sections: Record<stri
   return Object.fromEntries(Object.entries(sections).filter(([name, value]) => !isPiDefaultSection(name, value)));
 }
 
-function rewriteToolReferences(text: string, names: Map<string, string>): string {
-  for (const [mcpName, piName] of names) {
-    const name = piName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text
-      .replace(new RegExp(`^(- )${name}(?=:)`, "gm"), `$1${mcpName}`)
-      .replaceAll(`\`${piName}\``, `\`${mcpName}\``)
-      .replace(new RegExp(`(?<![\\w./-])${name}(?=\\()`, "g"), mcpName)
-      .replace(new RegExp(`\\b(Use (?:the )?)${name}(?![\\w./-])`, "g"), `$1${mcpName}`)
-      .replace(new RegExp(`(?<![\\w./-])${name}(?= tool\\b)`, "g"), mcpName);
-  }
-  return text;
-}
-
 export async function buildClaudeSystemPrompt(message: SystemMessage | undefined, names: Map<string, string>): Promise<Options["systemPrompt"]> {
   // Forced prompts and auxiliary requests are opaque, exact replacements.
   if (!message?.sections) return message ? getSystemMessageText(message) : "";
@@ -39,7 +27,7 @@ export async function buildClaudeSystemPrompt(message: SystemMessage | undefined
     if (sections[name]) sections[name] = rewriteToolReferences(sections[name], names);
   }
   const guidance = names.size
-    ? "Use only the tools exposed for this request. Claude Code's built-in tools are disabled. Short tool names in the following instructions refer to their mcp__pi__<name> counterparts."
+    ? "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp__pi__<name> counterparts."
     : "No tools are available for this request.";
   const append = getSystemMessageText({ ...message, sections });
   return { type: "preset", preset: "claude_code", append: `${guidance}\n\n${append}` };
