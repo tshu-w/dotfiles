@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createAntigravityBridge, PROVIDER_ID, type BridgeState } from "./antigravity/bridge.js";
 import { catalogModel, isGeminiModelId, discoverModels } from "./antigravity/catalog.js";
+import { isAuthenticationRequired } from "./antigravity/transport.js";
 
 const STATE_DIR = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi", "antigravity-bridge");
 const statePath = (id: string) => join(STATE_DIR, `${createHash("sha256").update(id).digest("hex")}.json`);
@@ -86,7 +87,8 @@ export function registerAntigravity(pi: ExtensionAPI) {
       try {
         models = await discoverModels(context?.cwd ?? process.cwd(), signal);
       } catch (error) {
-        if (!signal.aborted) context?.ui.notify(`Antigravity model discovery: ${(error as Error).message}`, "error");
+        if (!signal.aborted) context?.ui.notify(`Could not refresh Antigravity models (${isAuthenticationRequired(error)
+          ? "agy is not signed in" : (error as Error).message}).`, "warning");
         throw error;
       }
       await publish({ persist: {

@@ -1276,7 +1276,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     send({id:m.id,result:{protocolVersion:1,received:m.params,argv:process.argv.slice(2),cwd:process.cwd(),home:process.env.HOME,xdgConfig:process.env.XDG_CONFIG_HOME,xdgData:process.env.XDG_DATA_HOME}});
   } else if (m.method === 'session/new') {
     const session = JSON.parse(process.env.ACP_FIXTURE_SESSION || '{}');
-    send(session.error ? {id:m.id,error:{code:-32000,message:'secret-upstream'}} : {id:m.id,result:session});
+    send(session.error ? {id:m.id,error:{code:session.errorCode ?? -32000,message:'secret-upstream'}} : {id:m.id,result:session});
   } else if (m.method === 'activity') {
     send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'still working'}}}});
     send({id:m.id,result:{ok:true}});
@@ -1297,7 +1297,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     send({id:m.id,result:{ok:true}});
   } else if (m.method === 'crash') { process.stderr.write('secret-stderr'); process.exit(9); }
   else if (m.method === 'invalid') process.stdout.write('not-json\\n');
-  else if (m.method === 'error') send({id:m.id,error:{code:-32000,message:'secret-upstream'}});
+  else if (m.method === 'error') send({id:m.id,error:{code:m.params.code ?? -32000,message:'secret-upstream'}});
   else if (m.method === 'hang') send({method:'session/update',params:{hanging:true}});
   else send({id:m.id,result:m.params});
 });
@@ -1416,7 +1416,8 @@ test("forwards updates, cancels permissions and denies all filesystem and termin
   const replies = updates.filter((event) => event.reply).map((event) => event.reply);
   assert.deepEqual(replies[0], { jsonrpc: "2.0", id: "agent-0", result: { outcome: { outcome: "cancelled" } } });
   for (const reply of replies.slice(1)) assert.equal(reply.error.code, -32601);
-  await assert.rejects(connection.request("error", {}), (error) => /agy ACP rejected.*authentication required/.test(error.message) && !/secret-upstream|log in/.test(error.message));
+  await assert.rejects(connection.request("error", {}), { code: -32000, message: "Antigravity is not signed in. Run agy to sign in." });
+  await assert.rejects(connection.request("error", { code: -32603 }), { code: -32603, message: "ACP request failed (-32603)" });
   assert.deepEqual(await connection.request("echo", { still: "alive" }), { still: "alive" });
 });
 
@@ -1627,7 +1628,7 @@ test("refresh supports legacy availableModels and leaves cache untouched on auth
   for (const session of [{ error: true }, { sessionId: "empty" }, { models: { availableModels: [{ modelId: "claude-opus-5-5" }] } }]) {
     fixture(t, undefined, session);
     let published = false;
-    await assert.rejects(provider().refreshModels(context({ allowNetwork: true, publish: async () => { published = true; return true; } })), session.error ? /agy ACP rejected.*authentication required/ : /did not advertise any models/);
+    await assert.rejects(provider().refreshModels(context({ allowNetwork: true, publish: async () => { published = true; return true; } })), session.error ? /Antigravity is not signed in\. Run agy to sign in\./ : /did not advertise any models/);
     assert.equal(published, false);
   }
 });
@@ -1654,16 +1655,20 @@ test("native runtime refresh discovers real IDs and registers only antigravity",
 });
 
 
-test("native refresh failure notifies the actual discovery error without upstream secrets", async (t) => {
-  fixture(t, undefined, { error: true });
-  const handlers = new Map(), notices = [];
-  let config;
-  registerAntigravity({ registerProvider(id, value) { if (id === "antigravity") config = value; }, on(event, handler) { handlers.set(event, handler); } });
-  handlers.get("session_start")({}, { cwd: process.cwd(), sessionManager: { getSessionId: () => "catalog-error-test" }, ui: { notify: (...args) => notices.push(args) } });
-  t.after(() => handlers.get("session_shutdown")());
-  await assert.rejects(config.refreshModels(context({ allowNetwork: true })), /authentication required/);
-  assert.equal(notices.length, 1);
-  assert.match(notices[0][0], /Antigravity model discovery:.*authentication required/);
-  assert.ok(!notices[0][0].includes("secret-upstream"));
+test("native refresh failures warn using structured authentication codes without upstream secrets", async (t) => {
+  for (const [code, expectedCode] of [[-32000, -32000], [-32603, -32603], ["-32000", "-32000"],
+    ["secret-upstream", undefined], [{ detail: "secret-upstream" }, undefined]]) {
+    fixture(t, undefined, { error: true, errorCode: code });
+    const handlers = new Map(), notices = [];
+    let config;
+    registerAntigravity({ registerProvider(id, value) { if (id === "antigravity") config = value; }, on(event, handler) { handlers.set(event, handler); } });
+    handlers.get("session_start")({}, { cwd: process.cwd(), sessionManager: { getSessionId: () => "catalog-error-test" }, ui: { notify: (...args) => notices.push(args) } });
+    t.after(() => handlers.get("session_shutdown")());
+    const message = code === -32000 ? "Antigravity is not signed in. Run agy to sign in."
+      : expectedCode === undefined ? "ACP request failed" : `ACP request failed (${expectedCode})`;
+    await assert.rejects(config.refreshModels(context({ allowNetwork: true })), { code: expectedCode, message });
+    assert.deepEqual(notices, [[`Could not refresh Antigravity models (${code === -32000 ? "agy is not signed in" : message}).`, "warning"]]);
+    assert.ok(!notices[0][0].includes("secret-upstream"));
+  }
 });
 

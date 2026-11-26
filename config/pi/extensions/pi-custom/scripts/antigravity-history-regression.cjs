@@ -744,7 +744,12 @@ function selfTest() {
   assert.equal(expectedProfileCompletion(completionAbort, true, true), false);
   assert.equal(expectedProfileCompletion({ ...completionAbort, errorMessage: "Other cancellation" }, true, false), false);
   assert.equal(expectedProfileCompletion({ ...completionAbort, stopReason: "error" }, true, false), false);
-  return 100 + rpcCases.length + systemDefaultChecks;
+  assert.equal(profileRpcFailureCategory(Object.assign(new Error("Unrelated wording"), { code: -32000 })), "authentication_required");
+  assert.equal(profileRpcFailureCategory({ code: "-32000" }), undefined);
+  assert.equal(profileRpcFailureCategory(new Error("Authentication required (-32000)")), undefined);
+  assert.equal(profileRpcFailureCategory({ code: -32603 }), undefined);
+  assert.equal(profileRpcFailureCategory(undefined), undefined);
+  return 105 + rpcCases.length + systemDefaultChecks;
 }
 
 function revision2SelfTest() {
@@ -1261,6 +1266,10 @@ function defaultProfileOverridesPresent(env) {
   return ["AGY_ACP_BIN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_BASE_URL"].some(name => name in env);
 }
 
+function profileRpcFailureCategory(error) {
+  return error?.code === -32000 ? "authentication_required" : undefined;
+}
+
 function expectedProfileCompletion(result, completed, signalAborted) {
   return completed && !signalAborted && result.stopReason === "aborted"
     && result.errorMessage === "Profile check completed before any prompt";
@@ -1276,6 +1285,10 @@ async function profileRoundtrip(runtime, { cwd, geminiDir, env, opening = (_phas
     forbiddenRpcAttempts: 0, promptAttempts: 0, authenticateAttempts: 0, promptCalls: 0, authenticateCalls: 0, toolCalls: 0, closeFailures: 0, expectedCompletionAbort: 0 };
   let sessionId, identity, completed = false, failureCategory = "profile_roundtrip_incomplete";
   const fail = category => { failureCategory = category; throw new Error(category); };
+  const recordRpcFailure = error => {
+    failureCategory = profileRpcFailureCategory(error) ?? failureCategory;
+    throw error;
+  };
   const model = { ...runtime.ai.getModel("anthropic", "claude-haiku-4-5"), id: "profile-check-not-dispatched", provider: "antigravity", api: "antigravity" };
   const bridge = runtime.createAntigravityBridge({ cwd: () => cwd, piSessionId: () => "local-profile-roundtrip",
     connect: async (workingDirectory, callbacks, tools, overrides, signal, profileOptions) => {
@@ -1297,7 +1310,7 @@ async function profileRoundtrip(runtime, { cwd, geminiDir, env, opening = (_phas
         } finally { db.close(); }
       }
       const connection = await opening(creator ? "neighbor_creator_" : "neighbor_worker_", () => runtime.createAcpConnection(workingDirectory,
-        { ...callbacks, tool: async () => { evidence.toolCalls++; throw new Error("profile_check_tools_forbidden"); } }, tools, overrides, signal, profileOptions));
+        { ...callbacks, tool: async () => { evidence.toolCalls++; throw new Error("profile_check_tools_forbidden"); } }, tools, overrides, signal, profileOptions)).catch(recordRpcFailure);
       let stopped = false, stage = creator ? "creator_new" : "worker_resume";
       const close = async () => {
         await connection.close();
@@ -1322,7 +1335,7 @@ async function profileRoundtrip(runtime, { cwd, geminiDir, env, opening = (_phas
           fail("profile_check_forbidden_rpc");
         }
         stage = nextStage;
-        const result = await connection.request(method, params, settings);
+        const result = await connection.request(method, params, settings).catch(recordRpcFailure);
         if (method === "session/new") {
           if (!creator || sessionId || !/^[0-9a-f-]{36}$/i.test(result.sessionId ?? "")
             || [...before.keys()].some(name => name.toLowerCase().startsWith(result.sessionId.toLowerCase() + ".db"))) fail("new_session_not_proven");
@@ -1350,7 +1363,6 @@ async function profileRoundtrip(runtime, { cwd, geminiDir, env, opening = (_phas
       { role: "user", content: "THIS_PROMPT_MUST_NOT_BE_SENT", timestamp: 0 },
     ] }), { env, signal: controller.signal }).result();
     evidence.expectedCompletionAbort = Number(expectedProfileCompletion(result, completed, controller.signal.aborted));
-    if (!completed && result.errorMessage?.includes("(-32000)")) failureCategory = "authentication_required";
   } catch { /* Only fixed categories leave this verification. */ }
   finally {
     clearTimeout(timer);

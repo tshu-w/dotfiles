@@ -11,6 +11,10 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 
 export const AGENT_DEFINITION = readFileSync(new URL("./agent.md", import.meta.url), "utf8");
 
+export function isAuthenticationRequired(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === -32000;
+}
+
 export interface AcpTool {
   name: string;
   description: string;
@@ -236,10 +240,13 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
         pending.delete(message.id);
         clearTimeout(entry.timer);
         entry.removeAbort?.();
-        if (message.error) entry.reject(new Error(message.error.code === -32000
-          ? "agy ACP rejected the request: authentication required (-32000); cached sign-in was not accepted by this process"
-          : `ACP request failed (${message.error.code})`));
-        else entry.resolve(message.result);
+        if (message.error) {
+          const rawCode = message.error.code;
+          const code = Number.isSafeInteger(rawCode) || (typeof rawCode === "string" && /^-?\d{1,16}$/.test(rawCode)) ? rawCode : undefined;
+          entry.reject(Object.assign(new Error(isAuthenticationRequired({ code })
+            ? "Antigravity is not signed in. Run agy to sign in."
+            : code === undefined ? "ACP request failed" : `ACP request failed (${code})`), { code }));
+        } else entry.resolve(message.result);
       }
     } catch { close(new Error("Invalid ACP message or update callback failed")); }
   });
