@@ -69,8 +69,20 @@ export function registerAntigravity(pi: ExtensionAPI) {
       return true;
     },
   });
-  const streamSimple: ReturnType<typeof createAntigravityBridge>["streamSimple"] = (model, transcript, request) =>
-    ((request?.sessionId && bridges.get(request.sessionId)) || bridge).streamSimple(model, transcript, request);
+  const temporaries = new Set<ReturnType<typeof createAntigravityBridge>>();
+  const streamSimple: ReturnType<typeof createAntigravityBridge>["streamSimple"] = (model, transcript, request) => {
+    const id = request?.sessionId;
+    const registered = id === undefined ? bridge : bridges.get(id);
+    if (registered) return registered.streamSimple(model, transcript, request);
+    const cwd = context?.cwd ?? process.cwd();
+    const temporary = createAntigravityBridge({ cwd: () => cwd, piSessionId: () => id });
+    temporaries.add(temporary);
+    const stream = temporary.streamSimple(model, transcript, request);
+    void stream.result().then(() => {
+      if (temporaries.delete(temporary)) temporary.reset();
+    });
+    return stream;
+  };
   pi.registerProvider(PROVIDER_ID, {
     name: "Antigravity",
     api: PROVIDER_ID,
@@ -101,6 +113,8 @@ export function registerAntigravity(pi: ExtensionAPI) {
   });
   const release = () => {
     bridge.reset();
+    for (const temporary of temporaries) temporary.reset();
+    temporaries.clear();
     if (sessionId && bridges.get(sessionId) === bridge) bridges.delete(sessionId);
   };
   pi.on("session_start", (_event, ctx) => {

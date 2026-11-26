@@ -75,7 +75,7 @@ function checkedPromptBytes(prompt: any[]): number {
   const bytes = prompt.reduce((sum, block) => sum + Buffer.byteLength(
     block.type === "text" ? block.text : "", "utf8"), 0);
   if (bytes > MAX_PROMPT_TEXT_BYTES) {
-    throw new Error("Antigravity input exceeds 185 KB. Shorten the message or use another model.");
+    throw new Error("Antigravity input exceeds 185 KB. Use another model for this request.");
   }
   return bytes;
 }

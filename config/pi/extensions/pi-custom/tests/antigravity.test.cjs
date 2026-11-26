@@ -883,7 +883,7 @@ test("oversized actual UTF-8 input fails without prompting or retrying", async (
     const h = harness(t);
     const answer = await h.stream(messages).result();
     assert.equal(answer.stopReason, "error");
-    assert.equal(answer.errorMessage, "Antigravity input exceeds 185 KB. Shorten the message or use another model.");
+    assert.equal(answer.errorMessage, "Antigravity input exceeds 185 KB. Use another model for this request.");
     assert.equal(ai.isContextOverflow(answer), false);
     assert.equal(ai.isRetryableAssistantError(answer), false);
     assert.equal(h.connections.reduce((sum, connection) => sum + connection.prompts.length, 0), 0);
@@ -1193,6 +1193,76 @@ test("provider registration routes requests to their Pi session and isolates lif
   assert.equal(registry.has("antigravity-test-b"), true);
   assert.equal(b.provider.streamSimple(model, { messages: [] }, { sessionId: "antigravity-test-b" }), "antigravity-test-b");
   assert.equal(b.calls.length, 2);
+  assert.equal(b.provider.streamSimple(model, { messages: [] }), "antigravity-test-b");
+  assert.equal(b.calls.length, 3);
+});
+
+test("unknown routing IDs use disposable bridges without interrupting the main tool gap", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "pi-agy-disposable-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const stub = join(directory, "bridge.cjs");
+  writeFileSync(stub, "exports.PROVIDER_ID='antigravity'; exports.createAntigravityBridge=options=>exports.factory(options);");
+  const instances = [];
+  require(stub).factory = options => {
+    const h = harness(t, undefined, {}, options);
+    instances.push({ ...h, options });
+    return h.bridge;
+  };
+  const isolated = createJiti(__filename, { moduleCache: false, alias: {
+    "./antigravity/bridge.js": stub,
+    "@earendil-works/pi-ai/compat": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
+  } });
+  const { registerAntigravity: register } = await isolated.import(join(CUSTOM, "antigravity.ts"));
+  const handlers = new Map(), owner = randomUUID();
+  let provider;
+  register({ registerProvider(name, value) { provider = value; }, on(name, handler) { handlers.set(name, handler); } });
+  handlers.get("session_start")({}, { cwd: CUSTOM, sessionManager: {
+    getSessionId: () => owner, getSessionFile: () => undefined, getLeafId: () => undefined,
+  } });
+  t.after(() => handlers.get("session_shutdown")());
+  const request = (id, messages, options = {}) => provider.streamSimple(model,
+    ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages }), { ...options, sessionId: id });
+  const main = instances[0], original = [user("main request")];
+  const first = request(owner, original);
+  await until(() => main.connections[0]?.prompts.length);
+  const connection = main.connections[0];
+  let toolSettled = false;
+  const toolReply = connection.handlers.tool("echo", { value: "main result" });
+  void toolReply.then(() => { toolSettled = true; }, () => { toolSettled = true; });
+  const assistant = await first.result(), call = assistant.content.find(block => block.type === "toolCall");
+  for (const outcome of ["stop", "error", "aborted"]) {
+    const controller = new AbortController(), id = randomUUID();
+    const auxiliary = request(id, [user(outcome === "error" ? "x".repeat(185001) : "auxiliary request")], { signal: controller.signal });
+    assert.equal(instances.length, 2 + ["stop", "error", "aborted"].indexOf(outcome));
+    const temporary = instances.at(-1);
+    assert.equal(temporary.options.piSessionId(), id);
+    assert.equal(globalThis[Symbol.for("pi-custom:antigravity-bridges")].has(id), false);
+    for (const hook of ["save", "claim", "onImport"]) assert.equal(temporary.options[hook], undefined);
+    if (outcome !== "error") {
+      await until(() => temporary.connections[0]?.prompts.length);
+      if (outcome === "aborted") controller.abort();
+      else { temporary.connections[0].chunk("auxiliary answer"); temporary.connections[0].finish(); }
+    }
+    assert.equal((await auxiliary.result()).stopReason, outcome);
+    await tick();
+    assert.equal(temporary.connections[0].closed, true);
+    assert.equal(connection.closed, false);
+    assert.equal(toolSettled, false);
+    assert.equal(main.connections.length, 1);
+  }
+  const continued = request(owner, [...original, assistant,
+    { role: "toolResult", toolCallId: call.id, toolName: "echo", isError: false, content: [{ type: "text", text: "main result" }], timestamp: 0 }]);
+  assert.deepEqual(await toolReply, { content: [{ type: "text", text: "main result" }], isError: false });
+  connection.chunk("main answer"); connection.finish();
+  assert.equal((await continued.result()).stopReason, "stop");
+  assert.equal(main.connections.length, 1);
+  assert.equal(connection.prompts.length, 1);
+  const pending = request(randomUUID(), [user("pending auxiliary")]);
+  const temporary = instances.at(-1);
+  await until(() => temporary.connections[0]?.prompts.length);
+  handlers.get("session_shutdown")();
+  assert.equal((await pending.result()).stopReason, "error");
+  assert.equal(temporary.connections[0].closed, true);
 });
 
 test("non-durable Pi sessions retain ownership and route import notices only to their own UI", async (t) => {

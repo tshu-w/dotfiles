@@ -1795,7 +1795,7 @@ async function nativeCase(runtime, input, synthetic = false, runRoot, protectedR
       recordError("stream_result", { name: "Error", message: result.errorMessage }, profileRoot);
       if (result.errorMessage === "Antigravity cannot import this history. Compact with another model or start a new conversation.") differences.add(window.rejectedAdmission ?? admissionReason(messages.slice(0, historyBoundary)));
       if (result.errorMessage === "Antigravity cannot fit the latest turn. Compact with another model or start a new conversation.") differences.add("history_budget_exceeded");
-      if (result.errorMessage === "Antigravity input exceeds 185 KB. Shorten the message or use another model.") differences.add("live_prompt_budget_exceeded");
+      if (result.errorMessage === "Antigravity input exceeds 185 KB. Use another model for this request.") differences.add("live_prompt_budget_exceeded");
     }
     if (!imported) differences.add("history_not_imported");
     if (window.promptExceeded && (requests.length || livePrompts.length || result.stopReason === "stop")) differences.add("live_prompt_budget_bypassed");
