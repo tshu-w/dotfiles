@@ -111,10 +111,11 @@ function checkedPromptBytes(prompt: any[]): number {
   return bytes;
 }
 
+class TruncatedContextError extends Error {}
+
 function requireIntactContext(snapshot: NativeUsageSnapshot) {
-  if (snapshot.contextIntegrity.status !== "intact") {
-    throw new Error(snapshot.contextIntegrity.status === "truncated" ? PROMPT_TOO_LONG : "Antigravity native context unavailable");
-  }
+  if (snapshot.contextIntegrity.status === "truncated") throw new TruncatedContextError(PROMPT_TOO_LONG);
+  if (snapshot.contextIntegrity.status !== "intact") throw new Error("Antigravity native context unavailable");
 }
 
 const DEFAULT_PROFILE = "antigravity-cli";
@@ -164,6 +165,7 @@ export function createAntigravityBridge(options: {
   let prompting = false;
   let toolDelivered = false;
   let promptUsage: { used?: number; ordinal: number } | undefined;
+  let promptResponse: Promise<any> | undefined;
   let usageReader: ReturnType<typeof createNativeUsageReader> | undefined;
   let publishedGeneration: number | undefined;
   let publishedOrdinal = 0;
@@ -233,11 +235,38 @@ export function createAntigravityBridge(options: {
     prompting = false;
     toolDelivered = false;
     promptUsage = undefined;
+    promptResponse = undefined;
     usageReader = undefined;
     publishedGeneration = undefined;
     publishedOrdinal = 0;
     reportedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     queue = Promise.resolve();
+  }
+
+  async function failContext(error: unknown) {
+    const aborted = new DOMException(error instanceof Error ? error.message : String(error), "AbortError");
+    if (!(error instanceof TruncatedContextError) || toolDelivered) {
+      reset(aborted);
+      return;
+    }
+    // Fence model/tool callbacks, but keep RPC replies alive for cancellation.
+    const epoch = ++generation, active = connection!, id = sessionId!, response = promptResponse!, pending = tools;
+    let confirmed = false;
+    try {
+      if (!active.initialized.agentCapabilities.sessionCapabilities?.close) throw aborted;
+      active.cancel(id);
+      if ((await response).stopReason !== "cancelled" || epoch !== generation) throw aborted;
+      const acknowledgement = await active.request("session/close", { sessionId: id });
+      if (!acknowledgement || typeof acknowledgement !== "object" || Array.isArray(acknowledgement)) throw aborted;
+      confirmed = true;
+    } catch { /* Unconfirmed cancellation must not enable another attempt. */ }
+    for (const tool of pending) tool.reject(aborted);
+    if (epoch === generation) {
+      connection = undefined;
+      tools = [];
+    }
+    try { await active.close(); } catch { confirmed = false; }
+    if (epoch === generation) reset(confirmed ? error : aborted);
   }
 
   function publishUsage(snapshot: NativeUsageSnapshot, raw: typeof reportedUsage, source: "native_generation" | "acp_used", acp?: Record<string, unknown>) {
@@ -448,7 +477,7 @@ export function createAntigravityBridge(options: {
               declaresToolSummary: Object.hasOwn(availableTools.find(tool => tool.name === name)?.parameters?.properties ?? {}, "toolSummary"),
               resolve, reject, emitted: false });
             try { emitTool(); }
-            catch (error) { reset(new DOMException(error instanceof Error ? error.message : String(error), "AbortError")); }
+            catch (error) { void failContext(error); }
           });
         },
       }, availableTools, settings.env, settings.signal, profile);
@@ -583,7 +612,8 @@ export function createAntigravityBridge(options: {
       if ((!settings.sessionId || settings.sessionId === owner)
         && importedLosses && Object.values(importedLosses).some(count => count > 0)) options.onImport?.(importedLosses);
       usageReader!.beginPrompt();
-      response = await connection!.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
+      promptResponse = connection!.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
+      response = await promptResponse;
       await queue;
     } catch (error) {
       if (epoch === generation) reset(error instanceof Error ? error : new Error(String(error)));
@@ -614,11 +644,12 @@ export function createAntigravityBridge(options: {
       publishUsage(snapshot, raw, "acp_used", acp);
       requireIntactContext(snapshot);
     } catch (error) {
-      reset(new DOMException(error instanceof Error ? error.message : String(error), "AbortError"));
+      await failContext(error);
       return;
     }
     prompting = false;
     promptUsage = undefined;
+    promptResponse = undefined;
     if (["refusal", "max_turn_requests"].includes(response.stopReason)) reset(new Error(`Antigravity stopped: ${response.stopReason}`));
     else if (!output.content.some((block) => block.type === "text" && block.text.trim())) {
       reset(new Error("Antigravity finished without a text response; check tool permissions and ACP events"));

@@ -76,6 +76,7 @@ const agentCapabilities = {
   _meta: { antigravity: { systemPrompt: { append: true } } },
   mcpCapabilities: { http: true },
   promptCapabilities: { image: true, embeddedContext: true },
+  sessionCapabilities: { close: {} },
 };
 
 function harness(t, initialized = { agentCapabilities }, session = {}, options = {}) {
@@ -107,6 +108,11 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
     const connection = {
       cwd, handlers: { ...handlers, update }, tools, profile, initialized: options.initialized?.(profile) ?? initialized, mcpServer: { name: "pi", type: "http", url: `http://fixture.invalid/mcp/${connections.length}` },
       calls: [], prompts: [], watchdogs: [], closed: false,
+      cancel(sessionId) {
+        this.calls.push({ method: "session/cancel", params: { sessionId } });
+        if (options.cancel) return options.cancel(this);
+        this.prompts.at(-1).resolve({ stopReason: "cancelled" });
+      },
       close() { this.closed = true; return options.stopped?.(this) ?? Promise.resolve(); },
       setPromptWatchdog(sessionId, settings) { this.watchdogs.push({ sessionId, settings }); },
       request(method, params, settings) {
@@ -117,7 +123,7 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
           if (method === "session/new") options.newSession?.(this);
           return Promise.resolve({ sessionId: this.sessionId, ...session });
         }
-        if (method === "session/close") return Promise.resolve({});
+        if (method === "session/close") return options.sessionClose?.(this) ?? Promise.resolve({});
         if (method === "session/set_config_option" || method === "session/set_model") return Promise.resolve({});
         if (method === "session/prompt") {
           used = undefined;
@@ -841,23 +847,164 @@ test("unavailable native tool usage stops before delivering a Pi tool", async (t
   assert.equal(connection.closed, true);
 });
 
+test("truncated request waits for shutdown before reporting recoverable overflow", { timeout: 3000 }, async (t) => {
+  const stopped = deferred();
+  const h = harness(t, undefined, {}, { toolIntegrity: { status: "truncated" }, stopped: () => stopped.promise });
+  const { stream, connection } = await started(h, [user("tool")]);
+  let settled = false;
+  const result = stream.result().then(answer => { settled = true; return answer; });
+  const rejected = assert.rejects(connection.handlers.tool("echo", { value: "side effect" }), /prompt is too long/);
+  await until(() => connection.closed);
+  await rejected;
+  assert.equal(settled, false, "overflow must not be published before shutdown completes");
+  connection.chunk("Late text");
+  connection.finish();
+  await tick();
+  assert.equal(settled, false);
+  stopped.resolve();
+  const answer = await result;
+  assert.equal(answer.stopReason, "error");
+  assert.equal(ai.isContextOverflow(answer, model.contextWindow), true);
+  assert.equal(ai.isRetryableAssistantError(answer), false);
+  assert.deepEqual(answer.content, []);
+  assert.equal(answer.usage.totalTokens, 1);
+  assert.equal(connection.prompts.length, 1);
+});
+
+test("truncation requires original cancellation and session-close acknowledgements in order", async (t) => {
+  const cancelled = deferred(), closed = deferred();
+  const h = harness(t, undefined, {}, { toolIntegrity: { status: "truncated" },
+    cancel(connection) { cancelled.promise.then(response => connection.prompts.at(-1).resolve(response)); },
+    sessionClose: () => closed.promise,
+  });
+  const { stream, connection } = await started(h, [user("tool")]);
+  let delivered = false, settled = false;
+  const rejection = assert.rejects(connection.handlers.tool("echo", {}), /prompt is too long/).then(() => { delivered = true; });
+  const result = stream.result().then(answer => { settled = true; return answer; });
+  await tick();
+  assert.equal(connection.calls.at(-1).method, "session/cancel");
+  assert.equal(connection.closed, false);
+  assert.equal(delivered, false);
+  cancelled.resolve({ stopReason: "cancelled" });
+  await until(() => connection.calls.at(-1).method === "session/close");
+  assert.equal(connection.closed, false);
+  assert.equal(settled, false);
+  closed.resolve({});
+  await rejection;
+  const answer = await result;
+  assert.equal(connection.closed, true);
+  assert.equal(answer.stopReason, "error");
+  assert.equal(ai.isContextOverflow(answer, model.contextWindow), true);
+});
+
+test("truncation with unconfirmed cancellation or session close stays aborted", async (t) => {
+  for (const mode of ["capability", "cancel-send", "prompt-error", "wrong-terminal", "close-error", "close-malformed"]) {
+    const h = harness(t, mode === "capability" ? { agentCapabilities: { ...agentCapabilities, sessionCapabilities: {} } } : undefined, {}, {
+      toolIntegrity: { status: "truncated" },
+      cancel(connection) {
+        if (mode === "cancel-send") throw new Error("cancel send failed");
+        if (mode === "prompt-error") connection.prompts.at(-1).reject(new Error("local prompt rejection"));
+        else connection.prompts.at(-1).resolve({ stopReason: mode === "wrong-terminal" ? "end_turn" : "cancelled" });
+      },
+      sessionClose() {
+        if (mode === "close-error") return Promise.reject(new Error("close rejected"));
+        return Promise.resolve(mode === "close-malformed" ? null : {});
+      },
+    });
+    const { stream, connection } = await started(h, [user("tool")]);
+    await assert.rejects(connection.handlers.tool("echo", {}), /prompt is too long/);
+    const answer = await stream.result();
+    assert.equal(answer.stopReason, "aborted", mode);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false, mode);
+    assert.equal(connection.closed, true, mode);
+    assert.deepEqual(answer.content, []);
+  }
+});
+
+test("truncation with failed shutdown stays aborted", async (t) => {
+  for (const synchronous of [false, true]) {
+    const h = harness(t, undefined, {}, {
+      toolIntegrity: { status: "truncated" },
+      stopped() { if (synchronous) throw new Error("shutdown failed"); return Promise.reject(new Error("shutdown failed")); },
+    });
+    const { stream, connection } = await started(h, [user("tool")]);
+    await assert.rejects(connection.handlers.tool("echo", {}), /prompt is too long/);
+    const answer = await stream.result();
+    assert.equal(answer.stopReason, "aborted");
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+    assert.deepEqual(answer.content, []);
+  }
+});
+
+test("cancelled or superseded truncation cannot publish a late overflow", async (t) => {
+  for (const supersede of [false, true]) {
+    const stopped = deferred(), controller = new AbortController();
+    const h = harness(t, undefined, {}, { toolIntegrity: { status: "truncated" }, stopped: () => stopped.promise });
+    const { stream, connection } = await started(h, [user("tool")], 0, { signal: controller.signal });
+    await assert.rejects(connection.handlers.tool("echo", {}), /prompt is too long/);
+    await until(() => connection.closed);
+    if (supersede) h.bridge.reset(); else controller.abort();
+    const interrupted = await stream.result();
+    assert.equal(interrupted.stopReason, supersede ? "error" : "aborted");
+    assert.equal(ai.isContextOverflow(interrupted, model.contextWindow), false);
+    const next = await started(h, [user("new request")], 1);
+    stopped.resolve();
+    await tick();
+    assert.equal(next.connection.closed, false);
+    next.connection.chunk("New answer"); next.connection.finish();
+    const answer = await next.stream.result();
+    assert.equal(answer.stopReason, "stop");
+    assert.equal(answer.content[0].text, "New answer");
+  }
+});
+
+test("overflow text without typed native truncation remains aborted", async (t) => {
+  const h = harness(t, undefined, {}, { usageReader: () => ({
+    beginPrompt() {},
+    readTool() { throw new Error("Antigravity prompt is too long. Shorten the input or use another model."); },
+  }) });
+  const { stream, connection } = await started(h, [user("tool")]);
+  await assert.rejects(connection.handlers.tool("echo", {}), /prompt is too long/);
+  const answer = await stream.result();
+  assert.equal(answer.stopReason, "aborted");
+  assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+});
+
+test("truncation at another tool cannot recover after any prior tool delivery", async (t) => {
+  const options = {};
+  const h = harness(t, undefined, {}, options);
+  const messages = [user("tool")], { stream, connection } = await started(h, messages);
+  const firstResult = connection.handlers.tool("echo", { value: "first" });
+  const first = await stream.result();
+  const next = h.stream([...messages, first, { role: "toolResult", toolCallId: first.content[0].id,
+    toolName: "echo", content: [{ type: "text", text: "executed once" }] }]);
+  await firstResult;
+  options.toolIntegrity = { status: "truncated" };
+  await assert.rejects(connection.handlers.tool("echo", { value: "second" }), /prompt is too long/);
+  const answer = await next.result();
+  assert.equal(answer.stopReason, "aborted");
+  assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+  assert.equal(answer.content.some(block => block.type === "toolCall"), false);
+  assert.equal(connection.prompts.length, 1);
+});
+
 test("unknown or truncated native context stops before a Pi tool can execute", async (t) => {
   for (const status of ["unknown", "truncated"]) {
     const h = harness(t, undefined, {}, { toolIntegrity: { status } });
     const { stream, connection } = await started(h, [user("tool")]);
     await assert.rejects(connection.handlers.tool("echo", { value: "side effect" }), status === "truncated" ? /prompt is too long/ : /native context unavailable/);
     const answer = await stream.result();
-    assert.equal(answer.stopReason, "aborted");
+    assert.equal(answer.stopReason, status === "truncated" ? "error" : "aborted");
     assert.equal(answer.content.some(block => block.type === "toolCall"), false);
     assert.equal(answer.usage.totalTokens, 1, "retain measured usage despite integrity failure");
     assert.equal(ai.isRetryableAssistantError(answer), false);
-    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), status === "truncated");
     assert.equal(connection.closed, true);
     assert.equal(connection.prompts.length, 1);
   }
 });
 
-test("late integrity failure cannot return a summary or replay a completed native attempt", async (t) => {
+test("late integrity failure without a cancelled prompt remains aborted", async (t) => {
   for (const status of ["unknown", "truncated"]) for (const mode of ["ordinary", "independent", "after-tool"]) {
     const h = harness(t, undefined, {}, { independent: mode === "independent", lastIntegrity: { status } });
     const messages = [user("summary")], first = await started(h, messages);
@@ -1902,7 +2049,7 @@ if (process.env.ACP_FIXTURE_STOP_FILE) {
   }, 100));
 }
 const send = (message) => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...message})+'\\n');
-let permissionPrompt, permissionReplies = [];
+let permissionPrompt, waitingPrompt, permissionReplies = [];
 readline.createInterface({input:process.stdin}).on('line', line => {
   const m = JSON.parse(line);
   if (!m.method) {
@@ -1924,7 +2071,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'still working'}}}});
     send({id:m.id,result:{ok:true}});
   } else if (m.method === 'session/prompt') {
-    if (m.params.wait) { send({method:'session/update',params:{sessionId:m.params.sessionId,waiting:true}}); return; }
+    if (m.params.wait) { waitingPrompt = m; send({method:'session/update',params:{sessionId:m.params.sessionId,waiting:true}}); return; }
     permissionPrompt = m.id;
     const cases = [
       {name:'mcp_pi_echo'},
@@ -1935,6 +2082,11 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       {title:'Run mcp_pi_echo'},
     ];
     cases.forEach(({sessionId = m.params.sessionId, ...toolCall}, i) => send({id:'permission-'+i,method:'session/request_permission',params:{sessionId,toolCall,options:[{optionId:'always',kind:'allow_always'},{optionId:'once',kind:'allow_once'},{optionId:'no',kind:'reject_once'}]}}));
+  } else if (m.method === 'session/cancel') {
+    send({method:'session/update',params:{sessionId:m.params.sessionId,cancelReceived:true,hadId:Object.hasOwn(m,'id')}});
+    if (process.env.ACP_FIXTURE_MODE !== 'cancel-silent') send({id:waitingPrompt.id,result:{stopReason:'cancelled'}});
+  } else if (m.method === 'session/close') {
+    send({id:m.id,result:{}});
   } else if (m.method === 'exercise') {
     for (const [i, method] of ['session/request_permission','fs/read_text_file','fs/write_text_file','terminal/create','terminal/output','terminal/kill','terminal/release','terminal/wait_for_exit'].entries()) send({id:'agent-'+i,method,params:{options:[{optionId:'yes',kind:'allow_always'}]}});
     send({id:m.id,result:{ok:true}});
@@ -2161,6 +2313,50 @@ test("tool execution suspends the watchdog and continuation updates its resumed 
   t.mock.timers.tick(2000);
   t.mock.timers.reset();
   await new Promise((resolve) => setTimeout(resolve, 100));
+});
+
+test("cancel sends a notification and preserves the original prompt terminal response", async (t) => {
+  fixture(t);
+  const updates = [];
+  const connection = await createAcpConnection(root, { update: event => updates.push(event), tool: async () => ({ content: [] }) });
+  t.after(() => connection.close());
+  const prompt = connection.request("session/prompt", { sessionId: "cancel", wait: true });
+  await waitForTransport(() => updates.some(event => event.waiting));
+  connection.cancel("cancel");
+  assert.deepEqual(await prompt, { stopReason: "cancelled" });
+  assert.deepEqual(updates.find(event => event.cancelReceived), { sessionId: "cancel", cancelReceived: true, hadId: false });
+  assert.deepEqual(await connection.request("session/close", { sessionId: "cancel" }), {});
+  assert.throws(() => connection.cancel("cancel"), /no active prompt/);
+});
+
+test("cancel deadline survives a parked MCP request and late prompt activity", async (t) => {
+  fixture(t, "cancel-silent");
+  const began = deferred(), result = deferred();
+  const connection = await createAcpConnection(root, {
+    update() {}, tool: async () => { began.resolve(); return result.promise; },
+  }, [tool]);
+  t.after(() => connection.close());
+  const client = new Client({ name: "fixture", version: "1" });
+  t.after(() => client.close());
+  const headers = Object.fromEntries(connection.mcpServer.headers.map(({ name, value }) => [name, value]));
+  await client.connect(new StreamableHTTPClientTransport(new URL(connection.mcpServer.url), { requestInit: { headers } }));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const rejected = assert.rejects(connection.request("session/prompt", { sessionId: "parked", wait: true }, { timeoutMs: 0 }),
+    { name: "AbortError", message: "ACP cancellation timed out" });
+  await connection.request("echo", {});
+  const call = client.callTool({ name: "echo", arguments: {} }, undefined, { timeout: 2_000_000 }).catch(() => {});
+  await began.promise;
+  connection.cancel("parked");
+  await connection.request("activity", { sessionId: "parked" });
+  t.mock.timers.tick(29_999);
+  await connection.request("activity", { sessionId: "parked" });
+  assert.equal(connection.closed, false);
+  t.mock.timers.tick(1);
+  await rejected;
+  result.resolve({ content: [] });
+  await call;
+  t.mock.timers.tick(2000);
+  t.mock.timers.reset();
 });
 
 test("zero disables the prompt watchdog but leaves ordinary RPC deadlines independent", async (t) => {

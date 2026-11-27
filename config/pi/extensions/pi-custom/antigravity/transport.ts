@@ -39,6 +39,7 @@ type PendingRequest = {
   timeoutMs: number;
   toolWaits: number;
   sent?: boolean;
+  cancelling?: boolean;
   timer?: ReturnType<typeof setTimeout>;
   removeAbort?(): void;
 };
@@ -132,6 +133,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   const pending = new Map<number, PendingRequest>();
 
   function watch(entry: PendingRequest) {
+    if (entry.cancelling) return;
     clearTimeout(entry.timer);
     if (closed || ![...pending.values()].includes(entry) || !entry.timeoutMs || entry.toolWaits) return;
     entry.timer = setTimeout(() => close(new Error(`ACP request timed out: ${entry.method}`)), entry.timeoutMs);
@@ -172,6 +174,15 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
   function send(message: any) {
     if (closed) throw new Error("ACP connection closed");
     child.stdin.write(`${JSON.stringify(message)}\n`, (error) => { if (error) close(new Error("ACP write failed")); });
+  }
+
+  function cancel(sessionId: string) {
+    const entry = [...pending.values()].find(entry => entry.method === "session/prompt" && entry.sessionId === sessionId);
+    if (!entry) throw new Error("Antigravity has no active prompt to cancel");
+    send({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId } });
+    entry.cancelling = true;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => close(new Error("ACP cancellation timed out")), 30_000);
   }
 
   function request(method: string, params: any, options: AcpRequestOptions = {}): Promise<any> {
@@ -258,7 +269,7 @@ export async function createAcpConnection(cwd: string, callbacks: AcpCallbacks, 
     const initialized = await request("initialize", {
       protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "pi", version: "1.0.0" },
     });
-    return { request, setPromptWatchdog, close: () => { close(); return stopped; }, get closed() { return closed; }, mcpServer, initialized };
+    return { request, cancel, setPromptWatchdog, close: () => { close(); return stopped; }, get closed() { return closed; }, mcpServer, initialized };
   } catch (error) {
     close();
     await stopped;

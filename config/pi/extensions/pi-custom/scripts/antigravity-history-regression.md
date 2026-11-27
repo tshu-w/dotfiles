@@ -20,6 +20,19 @@ remain. Estimates are not native token counts: missing or conflicting native
 context evidence stops the request without replay. Real tool-time metadata
 availability and long-input interpretation still require explicit acceptance.
 
+Confirmed `MAX_TOKEN_LIMIT` truncation can request Pi overflow recovery only
+before any tool delivery in that ACP prompt: send `session/cancel`, receive the
+original prompt's `cancelled` response, successfully close that session, then
+await transport shutdown. The agent must advertise session-close support. Old
+model/tool callbacks are fenced while protocol replies remain receivable; a
+30-second cancellation deadline stays active even during the parked MCP call.
+Missing confirmation, shutdown failure, caller cancellation, unknown context,
+and failures after any tool delivery do not gain overflow recovery. An already
+completed prompt is not substituted for the required cancellation confirmation.
+This does not provide mid-tool compaction or tool-result-only resumption;
+transport closure alone cannot prevent native restart recovery of old work and
+is not proof of every native descendant's lifetime.
+
 Within one prompt, a successfully verified older generation retains its integrity
 witness if only its breakdown disappears and its usage and context bounds remain
 unchanged. The latest generation and never-verified generations still require
