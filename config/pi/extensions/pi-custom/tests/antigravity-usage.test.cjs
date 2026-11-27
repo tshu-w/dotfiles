@@ -18,9 +18,9 @@ function gen(idx,input=2984,cacheRead=0,output=71,options={}){
   const chat=blob(options.missingUsage?Buffer.alloc(0):field(4,usage),...(options.context===undefined?[]:[field(9,field(10,options.context))]));
   return {idx,data:blob(field(1,chat),...(options.packed?[field(2,blob(...(options.steps??[1,2]).map(varint))) ]:(options.steps??[1,2]).map(i=>field(2,i))))};
 }
-function contextMetadata({reason,estimated=100,maximum=256000,reportedTotal=estimated,groups=[estimated]}={}){
+function contextMetadata({reason,estimated=100,maximum=256000,reportedTotal=estimated,groups=[estimated],clearBreakdown=false}={}){
   return blob(field(1,estimated),...(reason===undefined?[]:[field(2,reason)]),
-    field(3,blob(...groups.map(value=>field(1,field(4,value))),field(2,reportedTotal))),field(4,maximum));
+    ...(clearBreakdown?[]:[field(3,blob(...groups.map(value=>field(1,field(4,value))),field(2,reportedTotal)))]),field(4,maximum));
 }
 function tools(options={}){
   const args=options.args??{fixtureVersion:1,toolSummary:'synthetic description'};
@@ -44,6 +44,7 @@ function fixture(options={}){
     constructor(p,flags){assert.equal(p,file);assert.equal(flags.readOnly,true);state.opened++;this.isTransaction=false;}
     exec(sql){state.sql.push(sql);assert.ok(['BEGIN','ROLLBACK','PRAGMA busy_timeout=0'].includes(sql));
       if(options.busy&&sql==='BEGIN')throw Object.assign(Error('database busy'),{errcode:5});
+      if(sql==='ROLLBACK'&&state.rollbackFailure){state.rollbackFailure=false;throw Error('synthetic rollback failure');}
       if(sql==='BEGIN')this.isTransaction=true;if(sql==='ROLLBACK')this.isTransaction=false;
     }
     prepare(sql){state.sql.push(sql);return {
@@ -160,6 +161,77 @@ test('context integrity only aggregates generations after this prompt baseline',
   const reader=f.make();reader.beginPrompt();
   f.state.generations.push(gen(1,2214,935,10,{context:contextMetadata()}));
   assert.equal(reader.readCompletion(3159).contextIntegrity.status,'intact');
+});
+
+function contextCleanupFixture(){
+  const f=fixture();
+  f.state.generations=[gen(0,77273,0,70,{context:contextMetadata({estimated:88920,maximum:512000,clearBreakdown:true})})];
+  f.reader=f.make();f.reader.beginPrompt();
+  f.state.generations.push(gen(1,2207,75224,62,{context:contextMetadata({estimated:89068,maximum:512000})}));
+  f.state.steps=tools();
+  return f;
+}
+function clearEarlierBreakdown(f,{input=2207,cacheRead=75224,output=62,cacheWrite=0,...context}={}){
+  f.state.generations[1]=gen(1,input,cacheRead,output,{cacheWrite,context:contextMetadata({estimated:89068,maximum:512000,clearBreakdown:true,...context})});
+  f.state.generations.push(gen(2,2197,75382,26,{context:contextMetadata({estimated:89165,maximum:512000})}));
+}
+test('validated tool-generation witness survives later removal of only its breakdown',()=>{
+  const f=contextCleanupFixture();
+  const tool=f.reader.readTool('fixture',{fixtureVersion:1},false);
+  assert.equal(tool.generationIndex,1);assert.equal(tool.totalTokens,77493);assert.equal(tool.contextIntegrity.status,'intact');
+  clearEarlierBreakdown(f);
+  const final=f.reader.readCompletion(77605);
+  assert.equal(final.generationIndex,2);assert.equal(final.contextIntegrity.status,'intact');
+});
+test('earlier missing breakdown without a successfully validated witness stays unknown',()=>{
+  const f=contextCleanupFixture();clearEarlierBreakdown(f);
+  assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
+});
+test('a previously witnessed generation disappearing entirely remains unknown',()=>{
+  const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);
+  clearEarlierBreakdown(f);f.state.generations.splice(1,1);
+  assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
+});
+test('cached witness never replaces missing breakdown of the latest generation',()=>{
+  const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);
+  clearEarlierBreakdown(f);f.state.generations.pop();
+  assert.equal(f.reader.readCompletion(77493).contextIntegrity.status,'unknown');
+});
+test('explicit MAX_TOKEN_LIMIT overrides a previously complete generation witness',()=>{
+  const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);
+  clearEarlierBreakdown(f,{reason:2});
+  const final=f.reader.readCompletion(77605);
+  assert.equal(final.contextIntegrity.status,'truncated');assert.equal(final.contextIntegrity.generationIndex,1);
+});
+test('changed counters or context scalars cannot reuse the previous complete witness',()=>{
+  for(const change of [{input:2208},{cacheRead:75225},{output:63},{cacheWrite:1},{estimated:89069},{maximum:512001}]){
+    const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);clearEarlierBreakdown(f,change);
+    if(change.cacheWrite)unknown(()=>f.reader.readCompletion(77605));
+    else assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
+  }
+});
+test('TTL or malformed present breakdown cannot reuse the previous complete witness',()=>{
+  for(const malformed of [false,true]){
+    const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);
+    clearEarlierBreakdown(f,{reason:malformed?0:1});
+    if(malformed)f.state.generations[1]=gen(1,2207,75224,62,{context:blob(contextMetadata({estimated:89068,maximum:512000,clearBreakdown:true}),field(3,Buffer.from([10,255])))});
+    assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
+  }
+});
+test('failed transaction cleanup cannot seed a complete generation witness',()=>{
+  for(const failure of ['closeFailure','rollbackFailure']){
+    const f=contextCleanupFixture();f.state[failure]=true;
+    unknown(()=>f.reader.readTool('fixture',{fixtureVersion:1},false));
+    clearEarlierBreakdown(f);
+    assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
+  }
+});
+test('beginPrompt clears generation witnesses from the previous prompt',()=>{
+  const f=contextCleanupFixture();f.reader.readTool('fixture',{fixtureVersion:1},false);
+  // Reuse indices in the synthetic fixture to make any stale cache observable.
+  f.state.generations=f.state.generations.slice(0,1);f.state.steps=[];f.reader.beginPrompt();
+  clearEarlierBreakdown(f);
+  assert.equal(f.reader.readCompletion(77605).contextIntegrity.status,'unknown');
 });
 
 test('native first tool and final generation counters stay distinct from cumulative ACP usage',()=>{

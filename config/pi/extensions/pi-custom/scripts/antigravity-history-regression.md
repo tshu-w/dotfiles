@@ -16,6 +16,13 @@ remain. Estimates are not native token counts: missing or conflicting native
 context evidence stops the request without replay. Real tool-time metadata
 availability and long-input interpretation still require explicit acceptance.
 
+Within one prompt, a successfully verified older generation retains its integrity
+witness if only its breakdown disappears and its usage and context bounds remain
+unchanged. The latest generation and never-verified generations still require
+complete live evidence. Missing generation rows, malformed records, changed
+counters, and explicit truncation cannot borrow that earlier witness; failed
+transactions never establish one.
+
 This script is excluded from `npm test`. Real samples retain all SDK-converted
 system deltas and recorded tool declarations through `normalizeContext`. The
 production bridge resolves the active system prompt and tool set, then separates

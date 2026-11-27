@@ -59,28 +59,35 @@ function counter(fields: Fields, number: number): number {
   if (typeof value !== "bigint" || value > BigInt(Number.MAX_SAFE_INTEGER)) unavailable();
   return Number(value);
 }
-function contextIntegrity(fields: Fields, generationIndex: number): NativeContextIntegrity {
+function contextEvidence(fields: Fields, usage: NativeGenerationUsage, verified?: string): { context: NativeContextIntegrity; witness?: string } {
   try {
     // CortexStepGeneratorMetadata.chat_model -> chat_start_metadata ->
     // context_window_metadata. Only MAX_TOKEN_LIMIT has calibrated loss evidence.
     const context = child(child(child(fields, 1), 9), 10);
     const reason = counter(context, 2);
-    if (reason === 2) return { status: "truncated", generationIndex, reason: "max_token_limit" };
-    if (reason !== 0) return { status: "unknown" };
-    const estimated = counter(context, 1), maximum = counter(context, 4), breakdown = child(context, 3);
+    if (reason === 2) return { context: { status: "truncated", generationIndex: usage.index, reason: "max_token_limit" } };
+    if (reason !== 0) return { context: { status: "unknown" } };
+    const estimated = counter(context, 1), maximum = counter(context, 4);
     const validCount = (value: number) => value >= 0 && value <= 0x7fffffff;
-    if (!validCount(estimated) || !validCount(maximum) || estimated === 0 || maximum === 0 || estimated > maximum
-      || counter(breakdown, 2) !== estimated) return { status: "unknown" };
+    if (!validCount(estimated) || !validCount(maximum) || estimated === 0 || maximum === 0 || estimated > maximum)
+      return { context: { status: "unknown" } };
+    const witness = [usage.input, usage.output, usage.cacheRead, usage.cacheWrite, estimated, maximum].join(":");
+    // Native storage can discard an older generation's breakdown. Retain only
+    // evidence already verified for that generation with unchanged counters.
+    if (!context.has(3)) return witness === verified
+      ? { context: { status: "intact" } } : { context: { status: "unknown" } };
+    const breakdown = child(context, 3);
+    if (counter(breakdown, 2) !== estimated) return { context: { status: "unknown" } };
     let sum = 0;
     for (const group of breakdown.get(1) ?? []) {
-      if (group.wire !== 2 || !Buffer.isBuffer(group.value)) return { status: "unknown" };
+      if (group.wire !== 2 || !Buffer.isBuffer(group.value)) return { context: { status: "unknown" } };
       const count = counter(parse(group.value), 4);
-      if (!validCount(count)) return { status: "unknown" };
+      if (!validCount(count)) return { context: { status: "unknown" } };
       sum += count;
-      if (!Number.isSafeInteger(sum)) return { status: "unknown" };
+      if (!Number.isSafeInteger(sum)) return { context: { status: "unknown" } };
     }
-    return { status: sum === estimated ? "intact" : "unknown" };
-  } catch { return { status: "unknown" }; }
+    return sum === estimated ? { context: { status: "intact" }, witness } : { context: { status: "unknown" } };
+  } catch { return { context: { status: "unknown" } }; }
 }
 function indices(fields: Fields): number[] {
   const result: number[] = [];
@@ -127,6 +134,7 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
   let identity: { dev: number; ino: number };
   let baseline: { generation: number; step: number } | undefined;
   const consumedCalls = new Set<string>();
+  const verifiedContexts = new Map<number, string>();
   const file = join(profile, "conversations", sessionId + ".db");
   const check = () => {
     if (!isAbsolute(profile) || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(sessionId)) unavailable();
@@ -185,7 +193,8 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
       const fields = parse(stored.data), usage = child(child(fields, 1), 4);
       const result = { index: Number(row.idx), input: counter(usage, 2), output: counter(usage, 3), cacheRead: counter(usage, 5), cacheWrite: counter(usage, 4) };
       total(result);
-      return { usage: result, steps: indices(fields), context: contextIntegrity(fields, result.index) };
+      return { usage: result, steps: indices(fields), ...contextEvidence(fields, result,
+        result.index < Number(generationRows.at(-1)!.idx) ? verifiedContexts.get(result.index) : undefined) };
     });
     const steps = stepRows.map(row => {
       const stored = db.prepare("SELECT step_type,metadata,step_payload FROM steps WHERE idx=?").get(row.idx);
@@ -196,15 +205,27 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
   }
   function snapshot(generations: ReturnType<typeof fresh>["generations"], selected: NativeGenerationUsage): NativeUsageSnapshot {
     const observed = generations.filter(row => row.usage.index <= selected.index);
+    const present = new Set(observed.map(row => row.usage.index));
     const integrity: NativeContextIntegrity = observed.find(row => row.context.status === "truncated")?.context
-      ?? { status: observed.some(row => row.context.status === "unknown") ? "unknown" : "intact" };
-    return { generationIndex: selected.index, input: selected.input, output: selected.output, cacheRead: selected.cacheRead,
-      cacheWrite: selected.cacheWrite, totalTokens: total(selected), generations: observed.map(row => ({ ...row.usage })), contextIntegrity: integrity };
+      ?? { status: observed.some(row => row.context.status === "unknown") || [...verifiedContexts.keys()].some(index => !present.has(index))
+        ? "unknown" : "intact" };
+    return { snapshot: { generationIndex: selected.index, input: selected.input, output: selected.output, cacheRead: selected.cacheRead,
+      cacheWrite: selected.cacheWrite, totalTokens: total(selected), generations: observed.map(row => ({ ...row.usage })), contextIntegrity: integrity },
+      witnesses: observed.map(row => ({ index: row.usage.index, witness: row.witness, status: row.context.status })) };
+  }
+  function remember(result: ReturnType<typeof snapshot>): NativeUsageSnapshot {
+    // Publish evidence only after transaction rollback and close both succeed.
+    for (const { index, witness, status } of result.witnesses) {
+      if (witness) verifiedContexts.set(index, witness);
+      else if (status !== "intact") verifiedContexts.delete(index);
+    }
+    return result.snapshot;
   }
   return {
     beginPrompt(): void {
       baseline = undefined;
       consumedCalls.clear();
+      verifiedContexts.clear();
       const value = transaction(db => {
         const generation = db.prepare("SELECT MAX(idx) AS idx FROM gen_metadata").get()?.idx ?? -1;
         const step = db.prepare("SELECT MAX(idx) AS idx FROM steps").get()?.idx ?? -1;
@@ -247,22 +268,22 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
         const pair = pairs[0];
         const candidates = generations.filter(row => row.steps.includes(pair.planner) && row.steps.includes(pair.generic));
         if (candidates.length !== 1 || candidates[0] !== generations.at(-1) || total(candidates[0].usage) <= 0) unavailable();
-        return { key: pair.key, snapshot: snapshot(generations, candidates[0].usage) };
+        return { key: pair.key, ...snapshot(generations, candidates[0].usage) };
       });
       // A failed transaction/close must never consume a call. Successful reads
       // allocate one native call to one callback, even before another DB update.
       consumedCalls.add(result.key);
-      return result.snapshot;
+      return remember(result);
     },
     readCompletion(used: number): NativeUsageSnapshot {
-      return transaction(db => {
+      return remember(transaction(db => {
         if (!Number.isSafeInteger(used) || used < 0) unavailable();
         const { generations } = fresh(db, false), candidates = generations.filter(row => total(row.usage) === used);
         // Arithmetic and ordering only; the bridge must additionally require a
         // fresh owned usage_update ordinal. This is not a native generation ID.
         if (candidates.length !== 1 || candidates[0] !== generations.at(-1)) unavailable();
         return snapshot(generations, candidates[0].usage);
-      });
+      }));
     },
   };
 }
