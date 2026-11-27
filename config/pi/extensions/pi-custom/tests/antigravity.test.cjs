@@ -48,9 +48,30 @@ const agentCapabilities = {
 
 function harness(t, initialized = { agentCapabilities }, session = {}, options = {}) {
   const connections = [];
-  const bridge = createAntigravityBridge({ ...options, cwd: () => CUSTOM, connect: async (cwd, handlers, tools, env, signal, profile) => {
+  const usageReader = () => {
+    let toolUsage;
+    return {
+      beginPrompt() { toolUsage = undefined; },
+      readTool() {
+        toolUsage = options.toolUsage ?? { index: 0, input: 1, output: 0, cacheRead: 0, cacheWrite: 0 };
+        return { ...toolUsage, generationIndex: toolUsage.index, totalTokens: toolUsage.input + toolUsage.cacheRead + toolUsage.output, generations: [toolUsage] };
+      },
+      readCompletion(used) {
+        const row = (typeof options.lastUsage === "function" ? options.lastUsage(used) : options.lastUsage)
+          ?? { index: toolUsage ? 1 : 0, input: used, output: 0, cacheRead: 0, cacheWrite: 0 };
+        return { ...row, generationIndex: row.index, totalTokens: used, generations: (typeof options.generations === "function" ? options.generations(used) : options.generations) ?? [...(toolUsage ? [toolUsage] : []), row] };
+      },
+    };
+  };
+  const bridge = createAntigravityBridge({ usageReader, ...options, cwd: () => CUSTOM, connect: async (cwd, handlers, tools, env, signal, profile) => {
+    let used;
+    const update = params => {
+      if (params.sessionId === connection.sessionId && params.update?.sessionUpdate === "usage_update"
+        && Number.isSafeInteger(params.update.used) && params.update.used > 0) used = params.update.used;
+      handlers.update(params);
+    };
     const connection = {
-      cwd, handlers, tools, profile, initialized: options.initialized?.(profile) ?? initialized, mcpServer: { name: "pi", type: "http", url: `http://fixture.invalid/mcp/${connections.length}` },
+      cwd, handlers: { ...handlers, update }, tools, profile, initialized: options.initialized?.(profile) ?? initialized, mcpServer: { name: "pi", type: "http", url: `http://fixture.invalid/mcp/${connections.length}` },
       calls: [], prompts: [], watchdogs: [], closed: false,
       close() { this.closed = true; return options.stopped?.(this) ?? Promise.resolve(); },
       setPromptWatchdog(sessionId, settings) { this.watchdogs.push({ sessionId, settings }); },
@@ -65,6 +86,7 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
         if (method === "session/close") return Promise.resolve({});
         if (method === "session/set_config_option" || method === "session/set_model") return Promise.resolve({});
         if (method === "session/prompt") {
+          used = undefined;
           const pending = deferred();
           this.prompts.push({ params, settings, ...pending });
           return pending.promise;
@@ -72,9 +94,13 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
         throw new Error(`Unexpected request: ${method}`);
       },
       chunk(text, sessionUpdate = "agent_message_chunk", sessionId = this.sessionId) {
-        handlers.update({ sessionId, update: { sessionUpdate, content: { type: "text", text } } });
+        update({ sessionId, update: { sessionUpdate, content: { type: "text", text } } });
       },
-      finish(response = { stopReason: "end_turn" }) { this.prompts.at(-1).resolve(response); },
+      finish(response = { stopReason: "end_turn" }) {
+        const total = response.usage ? (response.usage.inputTokens ?? 0) + (response.usage.outputTokens ?? 0) + (response.usage.cachedReadTokens ?? 0) : 1;
+        if (!options.omitUsageUpdate) update({ sessionId: this.sessionId, update: { sessionUpdate: "usage_update", used: used ?? total } });
+        this.prompts.at(-1).resolve(response);
+      },
     };
     connections.push(connection);
     await options.connectionReady?.();
@@ -564,8 +590,130 @@ test("branch reset during native writer stop aborts import without writing or fa
   assert.equal(h.connections[0].prompts.length, 0);
 });
 
-test("text and thinking chunks have balanced events and quota usage includes caches", { timeout: 3000 }, async (t) => {
-  const h = harness(t, { agentCapabilities: { ...agentCapabilities, promptCapabilities: undefined } });
+test("native final usage separates current occupancy from raw cumulative input and output", async (t) => {
+  const h = harness(t, undefined, {}, { lastUsage: { index: 1, input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 },
+    generations: [{ index: 0, input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 }, { index: 1, input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 }] });
+  const { stream, connection } = await started(h, [user("usage")]);
+  connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 3159 } });
+  connection.chunk("done");
+  connection.finish({ stopReason: "end_turn", usage: {
+    inputTokens: 5198, cachedReadTokens: 935, outputTokens: 81, thoughtTokens: 42, totalTokens: 6214,
+  }, _meta: { quota: { token_count: { input_tokens: null, output_tokens: null } } } });
+  const answer = await stream.result();
+  assert.deepEqual([answer.usage.input, answer.usage.cacheRead, answer.usage.output, answer.usage.totalTokens], [2224, 935, 10, 3159]);
+  assert.deepEqual(answer.usage.antigravity.raw, { input: 5198, output: 81, cacheRead: 935, cacheWrite: 0 });
+  assert.equal(answer.usage.input + answer.usage.cacheRead, answer.usage.totalTokens);
+  assert.deepEqual(answer.usage.antigravity.acp, { inputTokens: 5198, outputTokens: 81, cachedReadTokens: 935, cachedWriteTokens: null, thoughtTokens: 42, totalTokens: 6214 });
+});
+
+test("Pi compacts successful over-window occupancy without replaying the completed turn", async () => {
+  const { AgentSession } = await jiti.import(join(PI_PACKAGE, "dist/core/agent-session.js"));
+  for (const used of [256000, 256001]) {
+    const selected = { ...model, contextWindow: 256000 }, calls = [];
+    const session = {
+      model: selected,
+      settingsManager: { getCompactionSettings: () => ({ enabled: true, reserveTokens: 0 }) },
+      _modelForMessage: () => selected,
+      _findPersistedMessageEntryId: () => undefined,
+      sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
+      _runAutoCompaction: async (reason, willRetry) => { calls.push({ reason, willRetry }); return false; },
+    };
+    const answer = { role: "assistant", provider: model.provider, model: model.id, stopReason: "stop", timestamp: 1,
+      usage: { input: used - 935, cacheRead: 935, output: 10, cacheWrite: 0, totalTokens: used } };
+    assert.equal(await AgentSession.prototype._checkCompaction.call(session, answer), false);
+    assert.deepEqual(calls, used === 256000 ? [] : [{ reason: "overflow", willRetry: false }]);
+  }
+});
+
+test("independent usage remains raw when Pi combines split-summary results", async (t) => {
+  const h = harness(t, undefined, {}, { independent: true,
+    lastUsage: { index: 0, input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 } });
+  const { stream, connection } = await started(h, [user("summary")]);
+  connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 3159 } });
+  connection.chunk("summary"); connection.finish();
+  const answer = await stream.result();
+  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.cacheRead, answer.usage.totalTokens], [2214, 10, 935, 3159]);
+  const { combineUsage } = await jiti.import(join(PI_PACKAGE, "dist/core/usage-totals.js"));
+  const combined = combineUsage(answer.usage, answer.usage);
+  assert.deepEqual([combined.input, combined.output, combined.cacheRead, combined.totalTokens], [4428, 20, 1870, 6318]);
+  assert.equal(combined.antigravity, undefined);
+});
+
+test("multiple tools in one native generation share occupancy without duplicating raw accounting", async (t) => {
+  const firstRow = { index: 0, input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 };
+  const lastRow = { index: 2, input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 };
+  const h = harness(t, undefined, {}, { toolUsage: firstRow, lastUsage: lastRow,
+    generations: [firstRow, { index: 1, input: 100, output: 2, cacheRead: 50, cacheWrite: 0 }, lastRow] });
+  const messages = [user("two tools")], { stream, connection } = await started(h, messages);
+  const replies = [connection.handlers.tool("echo", { value: "first" }), connection.handlers.tool("echo", { value: "second" })];
+  let current = stream;
+  const raw = [];
+  for (let index = 0; index < 2; index++) {
+    const answer = await current.result();
+    raw.push(answer.usage.antigravity.raw);
+    assert.equal(answer.stopReason, "toolUse");
+    assert.equal(answer.usage.totalTokens, 3055);
+    assert.equal(answer.usage.input + answer.usage.cacheRead, 3055);
+    messages.push(answer, { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }] });
+    current = h.stream(messages);
+    await replies[index];
+  }
+  connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 3159 } });
+  connection.chunk("done");
+  connection.finish({ stopReason: "end_turn", usage: { inputTokens: 5298, outputTokens: 83, cachedReadTokens: 935, cachedWriteTokens: 0 } });
+  const final = await current.result();
+  assert.equal(final.stopReason, "stop");
+  raw.push(final.usage.antigravity.raw);
+  assert.deepEqual(raw, [
+    { input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 },
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    { input: 2314, output: 12, cacheRead: 985, cacheWrite: 0 },
+  ]);
+  assert.equal(final.usage.input + final.usage.cacheRead, 3159);
+  assert.equal(final.usage.output, 10);
+  assert.equal(final.usage.antigravity.acp.cachedReadTokens, 935, "ambiguous ACP cache scope does not replace per-generation accounting");
+  assert.equal(connection.prompts.length, 1);
+});
+
+test("missing or stale used observations cannot publish an occupancy pair or retry", async (t) => {
+  for (const phase of ["missing", "stale", "same-generation", "same-generation-new-update"]) {
+    const h = harness(t, undefined, {}, { omitUsageUpdate: true,
+      ...(phase.startsWith("same-generation") ? { lastUsage: { index: 0, input: 1, output: 0, cacheRead: 0, cacheWrite: 0 } } : {}),
+    });
+    const messages = [user("usage")], first = await started(h, messages);
+    let stream = first.stream;
+    if (phase !== "missing") {
+      first.connection.handlers.update({ sessionId: first.connection.sessionId, update: { sessionUpdate: "usage_update", used: 1 } });
+      const reply = first.connection.handlers.tool("echo", { value: "done" });
+      const answer = await stream.result();
+      stream = h.stream([...messages, answer, { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }] }]);
+      await reply;
+    }
+    if (phase === "same-generation-new-update") first.connection.handlers.update({ sessionId: first.connection.sessionId, update: { sessionUpdate: "usage_update", used: 1 } });
+    first.connection.chunk("done"); first.connection.finish();
+    const answer = await stream.result();
+    assert.equal(answer.stopReason, "aborted", phase);
+    assert.equal(answer.usage.antigravity, undefined);
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+    assert.equal(first.connection.prompts.length, 1);
+  }
+});
+
+test("unavailable native tool usage stops before delivering a Pi tool", async (t) => {
+  const h = harness(t, undefined, {}, { usageReader: () => ({ beginPrompt() {}, readTool() { throw new Error("Antigravity native usage unavailable"); } }) });
+  const { stream, connection } = await started(h, [user("tool")]);
+  await assert.rejects(connection.handlers.tool("echo", { value: "side effect" }), /native usage unavailable/);
+  const answer = await stream.result();
+  assert.equal(answer.stopReason, "aborted");
+  assert.equal(answer.content.some(block => block.type === "toolCall"), false);
+  assert.equal(connection.closed, true);
+});
+
+test("text and thinking chunks have balanced events and native usage is independent of quota", { timeout: 3000 }, async (t) => {
+  const h = harness(t, { agentCapabilities: { ...agentCapabilities, promptCapabilities: undefined } }, {}, {
+    lastUsage: { index: 0, input: 16, output: 10, cacheRead: 4, cacheWrite: 0 },
+  });
   const { stream, connection } = await started(h, [user("hello")]);
   assert.deepEqual(connection.tools, [tool]);
   const session = connection.calls[0];
@@ -578,17 +726,23 @@ test("text and thinking chunks have balanced events and quota usage includes cac
   connection.chunk("ignored", "agent_message_chunk", "unrelated-session");
   connection.chunk("pl", "agent_thought_chunk"); connection.chunk("an", "agent_thought_chunk");
   connection.chunk("hello"); connection.chunk(" back");
-  connection.finish({ stopReason: "end_turn", usage: { inputTokens: 999, outputTokens: 999, cachedReadTokens: 4, cachedWriteTokens: 2, thoughtTokens: 3 }, _meta: { quota: { token_count: { input_tokens: 20, output_tokens: 7 } } } });
+  connection.finish({ stopReason: "end_turn", usage: { inputTokens: 16, outputTokens: 10, cachedReadTokens: 4, cachedWriteTokens: 0, thoughtTokens: 3 }, _meta: { quota: { token_count: { input_tokens: 20, output_tokens: 7 } } } });
   const answer = await stream.result();
   assert.equal(answer.stopReason, "stop");
   assert.deepEqual(answer.content, [{ type: "thinking", thinking: "plan" }, { type: "text", text: "hello back" }]);
-  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.cacheRead, answer.usage.cacheWrite, answer.usage.totalTokens], [16, 10, 4, 2, 32]);
+  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.cacheRead, answer.usage.cacheWrite, answer.usage.totalTokens], [26, 10, 4, 0, 30]);
   const events = []; for await (const event of stream) events.push(event.type);
   assert.deepEqual(events, ["start", "thinking_start", "thinking_delta", "thinking_delta", "thinking_end", "text_start", "text_delta", "text_delta", "text_end", "done"]);
 });
 
 test("last valid prompt usage update sets occupancy without changing cumulative usage or leaking across prompts", async (t) => {
-  const h = harness(t), history = [user("compact")];
+  const h = harness(t, undefined, {}, {
+    lastUsage: used => ({ index: used === 17341 ? 1 : 0, input: used - (used === 17341 ? 120 : 5), output: used === 17341 ? 120 : 5, cacheRead: 0, cacheWrite: 0 }),
+    generations: used => used === 17341 ? [
+      { index: 0, input: 496586, output: 0, cacheRead: 0, cacheWrite: 0 },
+      { index: 1, input: 17221, output: 120, cacheRead: 0, cacheWrite: 0 },
+    ] : [{ index: 0, input: 20, output: 5, cacheRead: 0, cacheWrite: 0 }],
+  }), history = [user("compact")];
   const { stream, connection } = await started(h, history);
   const update = (used, sessionId = connection.sessionId) => connection.handlers.update({ sessionId, update: { sessionUpdate: "usage_update", used, size: 1048576 } });
   update(496586); update(17341); update(999, "unrelated-session");
@@ -596,8 +750,9 @@ test("last valid prompt usage update sets occupancy without changing cumulative 
   connection.chunk("compacted");
   connection.finish({ stopReason: "end_turn", usage: { inputTokens: 513807, outputTokens: 120, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 0, totalTokens: 513927 } });
   const answer = await stream.result();
-  assert.deepEqual(answer.usage, { input: 513807, output: 120, cacheRead: 0, cacheWrite: 0, totalTokens: 17341,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+  assert.equal(answer.usage.input, 17341);
+  assert.equal(answer.usage.input + answer.usage.cacheRead, answer.usage.totalTokens);
+  assert.deepEqual(answer.usage.antigravity.raw, { input: 513807, output: 120, cacheRead: 0, cacheWrite: 0 });
   update(800000);
   const next = h.stream([...history, answer, user("next")]);
   await until(() => connection.prompts.length === 2);
@@ -605,7 +760,7 @@ test("last valid prompt usage update sets occupancy without changing cumulative 
   connection.finish({ stopReason: "end_turn", usage: { inputTokens: 20, outputTokens: 5 } });
   const continued = await next.result();
   assert.equal(continued.usage.totalTokens, 25);
-  assert.equal(continued.usage.input, 20);
+  assert.equal(continued.usage.input, 25);
   assert.equal(continued.usage.output, 5);
 });
 
@@ -958,7 +1113,7 @@ test("a parked MCP request emits a Pi tool call and resumes only with its transc
   const pending = connection.handlers.tool("echo", { value: "hello" }).then((value) => { released = true; return value; });
   const answer = await stream.result();
   assert.equal(answer.stopReason, "toolUse");
-  assert.equal(answer.usage.totalTokens, 0);
+  assert.equal(answer.usage.totalTokens, 1);
   connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 23 } });
   assert.equal(released, false);
   assert.deepEqual(answer.content[0], { type: "text", text: "before tool" });
@@ -976,9 +1131,14 @@ test("a parked MCP request emits a Pi tool call and resumes only with its transc
   connection.chunk("finished"); connection.finish();
   const final = await next.result();
   assert.equal(final.stopReason, "stop");
+  const independentFailure = await h.stream([...history, answer, result, final, user("next")], {
+    onPayload: () => { throw new Error("503 overloaded"); },
+  }).result();
+  assert.equal(independentFailure.stopReason, "error");
+  assert.equal(ai.isRetryableAssistantError(independentFailure), true);
   assert.deepEqual(final.content, [{ type: "text", text: "finished" }]);
   assert.equal(final.usage.totalTokens, 23);
-  assert.equal(final.usage.input + final.usage.output, 0);
+  assert.equal(final.usage.input + final.usage.cacheRead, 23);
 });
 
 test("changing thinking during a tool gap rejects rebuilding from its tool result", async (t) => {
@@ -1028,6 +1188,72 @@ test("an interrupted prompt aborts the tool-result continuation without retrying
     assert.equal(connection.prompts.length, 1);
     const events = []; for await (const event of next) events.push(event.type);
     assert.deepEqual(events, beforeContinuation ? ["error"] : ["start", "error"]);
+  }
+});
+
+test("failures after tool delivery cannot trigger retry or overflow recovery", { timeout: 3000 }, async (t) => {
+  for (const phase of ["tool-gap", "continuation", "length", "payload"]) {
+    const h = harness(t), history = [user("use echo")];
+    const { stream, connection } = await started(h, history);
+    const pending = connection.handlers.tool("echo", { value: "side effect" }).catch(error => error);
+    const answer = await stream.result();
+    const result = { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }], isError: false, timestamp: 0 };
+    if (phase === "tool-gap") {
+      connection.prompts[0].reject(new Error("prompt is too long"));
+      await pending;
+    }
+    const next = h.stream([...history, answer, result], phase === "payload" ? {
+      onPayload: () => { throw new Error("503 overloaded: prompt is too long"); },
+    } : {});
+    if (phase !== "tool-gap" && phase !== "payload") {
+      await pending;
+      if (phase === "length") { connection.chunk("partial"); connection.finish({ stopReason: "max_tokens" }); }
+      else connection.prompts[0].reject(new Error("503 overloaded"));
+    }
+    const failure = await next.result();
+    assert.equal(failure.stopReason, "aborted", phase);
+    if (phase === "payload") assert.ok(await pending instanceof Error);
+    assert.equal(ai.isRetryableAssistantError(failure), false);
+    assert.equal(ai.isContextOverflow(failure, model.contextWindow), false);
+    assert.equal(ai.isRecoverableLength(failure, model.maxTokens), false);
+    assert.equal(connection.closed, true);
+    assert.equal(h.connections.length, 1);
+    assert.equal(connection.prompts.length, 1);
+  }
+});
+
+test("a late tool-gap payload failure cannot reset another continuation or the next prompt", async (t) => {
+  for (const phase of ["same-prompt", "next-prompt", "resolved-next-tool"]) {
+    const h = harness(t), messages = [user("tool")];
+    const { stream, connection } = await started(h, messages);
+    const reply = connection.handlers.tool("echo", { value: "done" });
+    const toolAnswer = await stream.result();
+    messages.push(toolAnswer, { role: "toolResult", toolCallId: toolAnswer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }] });
+    const payload = deferred();
+    const late = h.stream(messages, { onPayload: () => payload.promise });
+    let current = h.stream(messages);
+    await reply;
+    if (phase !== "same-prompt") {
+      connection.chunk("first completed"); connection.finish();
+      messages.push(await current.result(), user("next"));
+      current = h.stream(messages);
+      await until(() => connection.prompts.length === 2);
+    }
+    let nextReply, nextTool;
+    if (phase === "resolved-next-tool") {
+      nextReply = connection.handlers.tool("echo", { value: "second prompt" });
+      nextTool = await current.result();
+      payload.resolve(undefined);
+    } else payload.reject(new Error("503 overloaded"));
+    assert.equal((await late.result()).stopReason, "aborted");
+    assert.equal(connection.closed, false, phase);
+    if (nextTool) {
+      current = h.stream([...messages, nextTool, { role: "toolResult", toolCallId: nextTool.content[0].id, toolName: "echo", content: [{ type: "text", text: "second done" }] }]);
+      assert.deepEqual(await nextReply, { content: [{ type: "text", text: "second done" }], isError: undefined });
+    }
+    connection.chunk("completed"); connection.finish();
+    assert.equal((await current.result()).stopReason, "stop", phase);
+    assert.equal(h.connections.length, 1);
   }
 });
 
@@ -1197,7 +1423,34 @@ test("provider registration routes requests to their Pi session and isolates lif
   assert.equal(b.calls.length, 3);
 });
 
-test("unknown routing IDs use disposable bridges without interrupting the main tool gap", async (t) => {
+test("one-token warming requests are rejected before opening a connection", async (t) => {
+  const h = harness(t);
+  const answer = await h.stream([user("warm")], { maxTokens: 1, disableContinuation: true }).result();
+  assert.equal(answer.errorMessage, "Antigravity ACP does not support cache-warming replays");
+  assert.equal(h.connections.length, 0);
+});
+
+test("disabled continuation bypasses a registered bridge before touching its state", async (t) => {
+  const handlers = new Map(), id = randomUUID();
+  let provider;
+  registerAntigravity({ registerProvider(name, value) { provider = value; }, on(name, handler) { handlers.set(name, handler); } });
+  handlers.get("session_start")({}, { cwd: CUSTOM, sessionManager: { getSessionId: () => id } });
+  t.after(() => handlers.get("session_shutdown")());
+  const bridge = globalThis[Symbol.for("pi-custom:antigravity-bridges")].get(id);
+  let calls = 0, resets = 0;
+  bridge.streamSimple = () => { calls++; throw new Error("Main bridge must not receive the independent request"); };
+  bridge.reset = () => { resets++; };
+  const stream = provider.streamSimple(model, { messages: [] }, {
+    sessionId: id, disableContinuation: true, fetch: () => { throw new Error("No network expected"); },
+  });
+  const answer = await stream.result();
+  assert.equal(answer.errorMessage, "Antigravity ACP cannot use custom fetch");
+  assert.equal(calls, 0);
+  assert.equal(resets, 0);
+  assert.equal(globalThis[Symbol.for("pi-custom:antigravity-bridges")].get(id), bridge);
+});
+
+for (const disableContinuation of [false, true]) test(`${disableContinuation ? "Disabled continuation" : "Unknown routing IDs"} uses disposable bridges without interrupting the main tool gap`, async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "pi-agy-disposable-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const stub = join(directory, "bridge.cjs");
@@ -1231,12 +1484,13 @@ test("unknown routing IDs use disposable bridges without interrupting the main t
   void toolReply.then(() => { toolSettled = true; }, () => { toolSettled = true; });
   const assistant = await first.result(), call = assistant.content.find(block => block.type === "toolCall");
   for (const outcome of ["stop", "error", "aborted"]) {
-    const controller = new AbortController(), id = randomUUID();
-    const auxiliary = request(id, [user(outcome === "error" ? "x".repeat(185001) : "auxiliary request")], { signal: controller.signal });
+    const controller = new AbortController(), id = disableContinuation ? owner : randomUUID();
+    const auxiliary = request(id, [user(outcome === "error" ? "x".repeat(185001) : "auxiliary request")], { signal: controller.signal, disableContinuation });
     assert.equal(instances.length, 2 + ["stop", "error", "aborted"].indexOf(outcome));
     const temporary = instances.at(-1);
     assert.equal(temporary.options.piSessionId(), id);
-    assert.equal(globalThis[Symbol.for("pi-custom:antigravity-bridges")].has(id), false);
+    assert.equal(temporary.options.independent, true);
+    assert.equal(globalThis[Symbol.for("pi-custom:antigravity-bridges")].has(id), disableContinuation);
     for (const hook of ["save", "claim", "onImport"]) assert.equal(temporary.options[hook], undefined);
     if (outcome !== "error") {
       await until(() => temporary.connections[0]?.prompts.length);
@@ -1263,6 +1517,38 @@ test("unknown routing IDs use disposable bridges without interrupting the main t
   handlers.get("session_shutdown")();
   assert.equal((await pending.result()).stopReason, "error");
   assert.equal(temporary.connections[0].closed, true);
+});
+
+test("independent requests without a routing ID can import history without continuation persistence", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "pi-agy-independent-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const stub = join(directory, "bridge.cjs"), instances = [];
+  writeFileSync(stub, "exports.PROVIDER_ID='antigravity'; exports.createAntigravityBridge=options=>exports.factory(options);");
+  require(stub).factory = options => {
+    const h = importFixture(t, options);
+    instances.push({ ...h, options });
+    return h.bridge;
+  };
+  const isolated = createJiti(__filename, { moduleCache: false, alias: {
+    "./antigravity/bridge.js": stub,
+    "@earendil-works/pi-ai/compat": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
+  } });
+  const { registerAntigravity: register } = await isolated.import(join(CUSTOM, "antigravity.ts"));
+  let provider;
+  register({ registerProvider(name, value) { provider = value; }, on() {} });
+  const stream = provider.streamSimple(model, ai.normalizeContext({ messages: importedHistory() }), {
+    disableContinuation: true, ...instances[0].settings,
+  });
+  const temporary = instances[1];
+  assert.match(temporary.options.piSessionId(), /^[0-9a-f-]{36}$/);
+  for (const hook of ["save", "claim", "onImport"]) assert.equal(temporary.options[hook], undefined);
+  await until(() => temporary.connections[1]?.prompts.length);
+  assert.equal(temporary.connections[1].calls[0].method, "session/resume");
+  temporary.connections[1].chunk("summary"); temporary.connections[1].finish();
+  assert.equal((await stream.result()).stopReason, "stop");
+  await tick();
+  assert.equal(temporary.connections[1].closed, true);
+  assert.equal(instances[0].connections.length, 0);
 });
 
 test("non-durable Pi sessions retain ownership and route import notices only to their own UI", async (t) => {

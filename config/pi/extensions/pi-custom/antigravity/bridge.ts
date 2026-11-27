@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { AGENT_DEFINITION, createAcpConnection } from "./transport.js";
 import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, prepareHistory, writeHistory, type ImportLosses } from "./history.js";
+import { createNativeUsageReader, type NativeUsageSnapshot } from "./usage.js";
 import { rewriteToolReferences } from "../tool-references.js";
 import { withoutPiDefaults } from "../system-prompt.js";
 
@@ -98,15 +99,17 @@ export interface BridgeState {
 }
 
 type Connection = Awaited<ReturnType<typeof createAcpConnection>>;
-type PendingTool = { id: string; name: string; args: any; resolve(value: any): void; reject(error: Error): void; emitted: boolean };
+type PendingTool = { id: string; name: string; args: any; declaresToolSummary: boolean; resolve(value: any): void; reject(error: Error): void; emitted: boolean };
 
 export function createAntigravityBridge(options: {
   cwd(): string;
   piSessionId?(): string | undefined;
+  independent?: boolean;
   onImport?(losses: ImportLosses): void;
   save?(state: BridgeState): boolean | void;
   claim?(state: BridgeState): boolean;
   connect?: typeof createAcpConnection;
+  usageReader?: typeof createNativeUsageReader;
 }) {
   let checkpoint: BridgeState | undefined;
   let checkpointShared = false;
@@ -118,11 +121,17 @@ export function createAntigravityBridge(options: {
   let configuration: string | undefined;
   let history: any[] = [];
   let stream: AssistantMessageEventStream | undefined;
+  let streamRevision = 0;
   let output: AssistantMessage | undefined;
   let request: SimpleStreamOptions = {};
   let model: Model<any>;
   let prompting = false;
-  let promptUsage: { used?: number } | undefined;
+  let toolDelivered = false;
+  let promptUsage: { used?: number; ordinal: number } | undefined;
+  let usageReader: ReturnType<typeof createNativeUsageReader> | undefined;
+  let publishedGeneration: number | undefined;
+  let publishedOrdinal = 0;
+  let reportedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   let generation = 0;
   let queue: Promise<void> = Promise.resolve();
   let tools: PendingTool[] = [];
@@ -167,6 +176,7 @@ export function createAntigravityBridge(options: {
   }
 
   function reset(error = new Error("Antigravity session context changed")) {
+    if (toolDelivered && error.name !== "AbortError") error = new DOMException(error.message, "AbortError");
     const pending = !stream && error.name === "AbortError" ? tools.find((tool) => tool.emitted) : undefined;
     interruptedTool = pending ? { id: pending.id, error } : undefined;
     generation++;
@@ -185,14 +195,52 @@ export function createAntigravityBridge(options: {
     checkpointShared = false;
     history = [];
     prompting = false;
+    toolDelivered = false;
     promptUsage = undefined;
+    usageReader = undefined;
+    publishedGeneration = undefined;
+    publishedOrdinal = 0;
+    reportedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     queue = Promise.resolve();
+  }
+
+  function publishUsage(snapshot: NativeUsageSnapshot, raw: typeof reportedUsage, source: "native_generation" | "acp_used", acp?: Record<string, unknown>) {
+    const delta = { ...raw };
+    for (const field of ["input", "output", "cacheRead", "cacheWrite"] as const) {
+      delta[field] -= reportedUsage[field];
+      if (!Number.isSafeInteger(delta[field]) || delta[field] < 0) throw new Error("Antigravity native usage unavailable");
+    }
+    if (source === "acp_used" && (promptUsage!.ordinal <= publishedOrdinal
+      || (publishedGeneration !== undefined && snapshot.generationIndex <= publishedGeneration))) {
+      throw new Error("Antigravity native usage unavailable");
+    }
+    Object.assign(output!.usage, {
+      ...(options.independent ? {
+        ...delta, totalTokens: delta.input + delta.output + delta.cacheRead + delta.cacheWrite,
+      } : {
+        input: snapshot.totalTokens - snapshot.cacheRead, output: snapshot.output,
+        cacheRead: snapshot.cacheRead, cacheWrite: snapshot.cacheWrite, totalTokens: snapshot.totalTokens,
+      }),
+      antigravity: { raw: delta, last: {
+        input: snapshot.input, output: snapshot.output, cacheRead: snapshot.cacheRead, cacheWrite: snapshot.cacheWrite,
+      }, source, ...(acp ? { acp } : {}) },
+    });
+    reportedUsage = raw;
+    publishedGeneration = snapshot.generationIndex;
+    publishedOrdinal = promptUsage?.ordinal ?? 0;
   }
 
   function emitTool() {
     const tool = tools.find((entry) => !entry.emitted);
     if (!tool || !stream || !output) return;
+    const snapshot = usageReader!.readTool(tool.name, tool.args, tool.declaresToolSummary);
+    const raw = snapshot.generations.reduce((sum, row) => ({
+      input: sum.input + row.input, output: sum.output + row.output,
+      cacheRead: sum.cacheRead + row.cacheRead, cacheWrite: sum.cacheWrite + row.cacheWrite,
+    }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    publishUsage(snapshot, raw, "native_generation");
     tool.emitted = true;
+    toolDelivered = true;
     closeBlock();
     const index = output.content.length;
     output.content.push({ type: "toolCall", id: tool.id, name: tool.name, arguments: tool.args });
@@ -213,6 +261,7 @@ export function createAntigravityBridge(options: {
       if (event?.sessionUpdate === "usage_update") {
         if (prompting && activePrompt && activePrompt === promptUsage && Number.isSafeInteger(event.used) && event.used > 0) {
           activePrompt.used = event.used;
+          activePrompt.ordinal++;
         }
         return;
       }
@@ -239,9 +288,11 @@ export function createAntigravityBridge(options: {
 
   async function start(target: AssistantMessageEventStream, selected: Model<any>, context: TranscriptContext, settings: SimpleStreamOptions) {
     const startedGeneration = generation;
+    const startedPrompt = promptUsage, startedStreamRevision = streamRevision;
+    const followsTool = prompting && toolDelivered;
     settings.signal?.throwIfAborted();
     if (settings.fetch) throw new Error("Antigravity ACP cannot use custom fetch");
-    if ((settings as any).disableContinuation) throw new Error("Antigravity ACP does not support cache-warming replays");
+    if (settings.maxTokens === 1) throw new Error("Antigravity ACP does not support cache-warming replays");
     const system = getCurrentSystemMessage(context.messages);
     const originalPrompt = system ? getSystemMessageText(system) : "";
     const initial = {
@@ -250,6 +301,12 @@ export function createAntigravityBridge(options: {
       messages: context.messages.filter((message) => message.role !== "system"),
     };
     const payload = await settings.onPayload?.(initial, selected) ?? initial;
+    if (followsTool && (startedPrompt !== promptUsage || startedStreamRevision !== streamRevision)) {
+      if (interruptedTool && context.messages.some(message => message.role === "toolResult" && message.toolCallId === interruptedTool!.id)) {
+        throw interruptedTool.error;
+      }
+      throw new DOMException("Antigravity tool continuation is no longer current", "AbortError");
+    }
     const effective = payload as { systemPrompt: string; tools: any[]; messages: any[] };
     let systemPrompt = effective.systemPrompt;
     if (systemPrompt === originalPrompt && system?.sections) {
@@ -292,6 +349,7 @@ export function createAntigravityBridge(options: {
     model = selected;
     request = settings;
     stream = target;
+    streamRevision++;
     output = outputFor(selected);
     const abort = () => reset(new Error("Antigravity request aborted"));
     removeAbort?.();
@@ -315,8 +373,11 @@ export function createAntigravityBridge(options: {
           await queue;
           if (epoch !== generation) throw new Error("Antigravity session closed");
           return new Promise((resolve, reject) => {
-            tools.push({ id: `agy-${randomUUID()}`, name, args, resolve, reject, emitted: false });
-            emitTool();
+            tools.push({ id: `agy-${randomUUID()}`, name, args,
+              declaresToolSummary: Object.hasOwn(availableTools.find(tool => tool.name === name)?.parameters?.properties ?? {}, "toolSummary"),
+              resolve, reject, emitted: false });
+            try { emitTool(); }
+            catch (error) { reset(new DOMException(error instanceof Error ? error.message : String(error), "AbortError")); }
           });
         },
       }, availableTools, settings.env, settings.signal, profile);
@@ -418,6 +479,7 @@ export function createAntigravityBridge(options: {
       }
       configuration = config;
       selection = selectedConfig;
+      usageReader = (options.usageReader ?? createNativeUsageReader)(join(root, DEFAULT_PROFILE), sessionId!);
     }
     if (epoch !== generation) return;
     target.push({ type: "start", partial: output! });
@@ -435,7 +497,11 @@ export function createAntigravityBridge(options: {
     const unseen = restored ? messages.slice(restored.historyLength) : importedLength ? messages.slice(importedLength) : fresh ? messages : suffix;
     history = structuredClone(messages);
     prompting = true;
-    promptUsage = {};
+    toolDelivered = false;
+    promptUsage = { ordinal: 0 };
+    publishedGeneration = undefined;
+    publishedOrdinal = 0;
+    reportedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     let response: any;
     try {
       const prompt = promptContent(unseen);
@@ -446,6 +512,7 @@ export function createAntigravityBridge(options: {
       }
       if ((!settings.sessionId || settings.sessionId === owner)
         && importedLosses && Object.values(importedLosses).some(count => count > 0)) options.onImport?.(importedLosses);
+      usageReader!.beginPrompt();
       response = await connection!.request("session/prompt", { sessionId, prompt }, { timeoutMs: settings.timeoutMs });
       await queue;
     } catch (error) {
@@ -458,18 +525,28 @@ export function createAntigravityBridge(options: {
         ? "Antigravity cancelled the request" : "Antigravity finished while a Pi tool was pending"));
       return;
     }
-    prompting = false;
-    const usage = response.usage;
-    const tokens = response._meta?.quota?.token_count;
-    if (usage || tokens) {
-      output.usage.cacheRead = usage?.cachedReadTokens ?? 0;
-      output.usage.cacheWrite = usage?.cachedWriteTokens ?? 0;
-      output.usage.input = Math.max(0, (tokens?.input_tokens ?? usage?.inputTokens ?? 0) - output.usage.cacheRead);
-      output.usage.output = (tokens?.output_tokens ?? usage?.outputTokens ?? 0) + (usage?.thoughtTokens ?? 0);
-      output.usage.totalTokens = output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+    if (response.stopReason === "max_tokens" && toolDelivered) {
+      reset(new Error("Antigravity stopped after tool delivery: max_tokens"));
+      return;
     }
-    // Prompt usage is cumulative; the last update reports the active context size.
-    if (promptUsage?.used !== undefined) output.usage.totalTokens = promptUsage.used;
+    try {
+      if (promptUsage?.used === undefined) throw new Error("Antigravity native usage unavailable");
+      const snapshot = usageReader!.readCompletion(promptUsage.used);
+      const usage = response.usage;
+      const raw = snapshot.generations.reduce((sum, row) => ({
+        input: sum.input + row.input, output: sum.output + row.output,
+        cacheRead: sum.cacheRead + row.cacheRead, cacheWrite: sum.cacheWrite + row.cacheWrite,
+      }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+      const acp = usage ? Object.fromEntries(
+        ["inputTokens", "outputTokens", "cachedReadTokens", "cachedWriteTokens", "thoughtTokens", "totalTokens"].map(key =>
+          [key, Number.isSafeInteger(usage[key]) && usage[key] >= 0 ? usage[key] : null]),
+      ) : undefined;
+      publishUsage(snapshot, raw, "acp_used", acp);
+    } catch (error) {
+      reset(new DOMException(error instanceof Error ? error.message : String(error), "AbortError"));
+      return;
+    }
+    prompting = false;
     promptUsage = undefined;
     if (["refusal", "max_turn_requests"].includes(response.stopReason)) reset(new Error(`Antigravity stopped: ${response.stopReason}`));
     else if (!output.content.some((block) => block.type === "text" && block.text.trim())) {
@@ -489,10 +566,15 @@ export function createAntigravityBridge(options: {
     },
     streamSimple(selected: Model<any>, context: TranscriptContext, settings: SimpleStreamOptions = {}) {
       const target = createAssistantMessageEventStream();
+      const originalPrompt = promptUsage, originalStreamRevision = streamRevision;
+      const followsTool = prompting && toolDelivered;
       void start(target, selected, context, settings).catch((error) => {
         if (ended.has(target)) return;
+        const unsafe = followsTool || (stream === target && prompting && toolDelivered);
+        if (unsafe) error = new DOMException(error instanceof Error ? error.message : String(error), "AbortError");
         if (stream === target) reset(error instanceof Error ? error : new Error(String(error)));
         else {
+          if (unsafe && originalPrompt === promptUsage && originalStreamRevision === streamRevision) reset(error);
           const message = outputFor(selected);
           message.stopReason = settings.signal?.aborted || (error instanceof Error && error.name === "AbortError") ? "aborted" : "error";
           message.errorMessage = error instanceof Error ? error.message : String(error);

@@ -95,6 +95,20 @@ async function main() {
   assert.match(footer.render(100)[0], /CH0\.0%/, "cache hit rate uses latest assistant, not totals");
   entries.push({ type: "message", message: { role: "assistant", usage: {} } });
   assert.doesNotMatch(footer.render(100)[0], /CH/, "zero prompt tokens clear latest cache hit rate");
+  entries.splice(0, entries.length,
+    { type: "message", message: { role: "assistant", usage: {
+      input: 3055, output: 71, cacheRead: 0, cacheWrite: 0, totalTokens: 3055,
+      antigravity: { raw: { input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 },
+        last: { input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 } },
+    } } },
+    { type: "message", message: { role: "assistant", usage: {
+      input: 2224, output: 10, cacheRead: 935, cacheWrite: 0, totalTokens: 3159,
+      antigravity: { raw: { input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 },
+        last: { input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 } },
+    } } });
+  assert.match(footer.render(100)[0], /↑5\.2k ↓81 R935 CH29\.7%/, "raw totals and last-generation input remain separate from occupancy");
+  entries.push({ type: "compaction", usage: entries[1].message.usage });
+  assert.match(footer.render(100)[0], /↑7\.4k ↓91 R1\.9k CH29\.7%/, "compaction retains raw accounting inside usage");
   statuses.set("test", "working");
   assert.equal(footer.render(200).length, 1);
   const narrow = footer.render(20);

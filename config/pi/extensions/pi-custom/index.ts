@@ -440,14 +440,16 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
                   ? entry.usage
                   : undefined;
               if (entry.type === "message" && entry.message?.role === "assistant") {
-                const promptTokens = (u?.input ?? 0) + (u?.cacheRead ?? 0) + (u?.cacheWrite ?? 0);
-                latestCacheHitRate = promptTokens > 0 ? ((u?.cacheRead ?? 0) / promptTokens) * 100 : undefined;
+                const latest = u?.antigravity ? u.antigravity.last : u;
+                const promptTokens = (latest?.input ?? 0) + (latest?.cacheRead ?? 0) + (latest?.cacheWrite ?? 0);
+                latestCacheHitRate = promptTokens > 0 ? ((latest?.cacheRead ?? 0) / promptTokens) * 100 : undefined;
               }
-              if (!u) continue;
-              totalInput += u.input ?? 0;
-              totalOutput += u.output ?? 0;
-              totalCacheRead += u.cacheRead ?? 0;
-              totalCacheWrite += u.cacheWrite ?? 0;
+              const raw = u?.antigravity ? u.antigravity.raw : u;
+              if (!raw) continue;
+              totalInput += raw.input ?? 0;
+              totalOutput += raw.output ?? 0;
+              totalCacheRead += raw.cacheRead ?? 0;
+              totalCacheWrite += raw.cacheWrite ?? 0;
               totalCost += u.cost?.total ?? 0;
             }
             cached = { manager, sessionId, leafId, totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, latestCacheHitRate };

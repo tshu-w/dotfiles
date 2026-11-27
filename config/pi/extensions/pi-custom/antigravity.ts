@@ -72,10 +72,11 @@ export function registerAntigravity(pi: ExtensionAPI) {
   const temporaries = new Set<ReturnType<typeof createAntigravityBridge>>();
   const streamSimple: ReturnType<typeof createAntigravityBridge>["streamSimple"] = (model, transcript, request) => {
     const id = request?.sessionId;
-    const registered = id === undefined ? bridge : bridges.get(id);
+    const registered = request?.disableContinuation ? undefined : id === undefined ? bridge : bridges.get(id);
     if (registered) return registered.streamSimple(model, transcript, request);
     const cwd = context?.cwd ?? process.cwd();
-    const temporary = createAntigravityBridge({ cwd: () => cwd, piSessionId: () => id });
+    const temporaryId = id ?? randomUUID();
+    const temporary = createAntigravityBridge({ cwd: () => cwd, piSessionId: () => temporaryId, independent: true });
     temporaries.add(temporary);
     const stream = temporary.streamSimple(model, transcript, request);
     void stream.result().then(() => {
