@@ -34,9 +34,6 @@ export function registerAntigravity(pi: ExtensionAPI) {
       if (!context?.hasUI) return;
       const fields = [
         [losses.toolResultsTruncated, "tool result", "shortened"],
-        [losses.userTruncated, "user message", "shortened"],
-        [losses.earlierMessagesOmitted, "earlier message", "omitted"],
-        [losses.intermediateMessagesOmitted, "intermediate message", "omitted"],
         [losses.toolImagesOmitted, "image", "omitted"],
       ] as const;
       const items = fields.filter(([count]) => count > 0)

@@ -1,16 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import {
   createAssistantMessageEventStream, getCurrentSystemMessage, getCurrentTools, getSystemMessageText,
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { AGENT_DEFINITION, createAcpConnection } from "./transport.js";
-import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, PROMPT_TOO_LONG, prepareHistory, splitPromptText, writeHistory, type ImportLosses } from "./history.js";
+import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, PROMPT_TOO_LONG, boundedToolResultText, prepareHistory, splitPromptText, writeHistory, type ImportLosses } from "./history.js";
 import { createNativeUsageReader, type NativeUsageSnapshot } from "./usage.js";
 import { rewriteToolReferences } from "../tool-references.js";
 import { withoutPiDefaults } from "../system-prompt.js";
+
+// Pi aliases the package root to a file; use its models entry to locate the exported estimator.
+const { estimateMessageTokens } = createRequire(import.meta.resolve("@earendil-works/pi-ai/models"))("./utils/estimate.js");
 
 export const PROVIDER_ID = "antigravity";
 const routing = (hasTools: boolean) => hasTools
@@ -329,6 +333,29 @@ export function createAntigravityBridge(options: {
     interruptedTool = undefined;
     if (interrupted && messages.some((message) => message.role === "toolResult" && message.toolCallId === interrupted.id)) throw interrupted.error;
     if (startedGeneration !== generation) throw new Error("Pi session context changed before the request started");
+    let boundary = messages.length;
+    while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
+    const currentPrompt = promptContent(messages.slice(boundary));
+    const projected = [...messages.slice(0, boundary), ...(currentPrompt.length ? [{ role: "user", content: currentPrompt, timestamp: 0 }] : [])].flatMap(message => {
+      if (message.role === "user") {
+        const content = typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content;
+        if (content.every((block: any) => block.type === "text")) {
+          return splitPromptText(content.map((block: any) => block.text).join("")).map(text => ({ ...message, content: text }));
+        }
+      }
+      if (message.role === "toolResult") {
+        const text = boundedToolResultText(message.content.map((block: any) => block.type === "text" ? block.text : "[Pi omitted an image]").join("\n"), message.isError);
+        return [{ ...message, content: [{ type: "text", text: (message.isError ? "Encountered error in tool execution: " : "") + text }] }];
+      }
+      if (message.role === "assistant") return [{ ...message, content: message.content.filter((block: any) => block.type !== "thinking")
+        .map((block: any) => block.type === "toolCall" ? { ...block, name: `mcp_pi_${block.name}` } : block) }];
+      return [message];
+    });
+    const estimated = estimateMessageTokens({ role: "system", timestamp: 0,
+      content: [routing(effective.tools.length > 0), systemPrompt].filter(Boolean).join("\n\n"),
+      toolsAdded: effective.tools.map(tool => ({ name: `mcp_pi_${tool.name}`, description: tool.description, parameters: tool.parameters })),
+    }) + projected.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+    if (estimated > selected.contextWindow) throw new Error(PROMPT_TOO_LONG);
     const requestedRoot = geminiRoot(options.cwd(), settings.env);
     let root: string | undefined;
     try { root = realpathSync(requestedRoot); }
@@ -352,9 +379,6 @@ export function createAntigravityBridge(options: {
     const pending = tools.find((entry) => entry.emitted);
     const continuation = pending && suffix.length === 1 && suffix[0].role === "toolResult" && suffix[0].toolCallId === pending.id;
     if (connection && (configuration !== config || !prefix || (prompting ? !continuation || selection !== selectedConfig : !suffix.length || !suffix.every((message) => message.role === "user")))) reset();
-    let boundary = messages.length;
-    while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
-    const currentPrompt = promptContent(messages.slice(boundary));
     const currentBytes = currentPrompt.reduce((sum, block) => sum + (block.type === "text" ? Buffer.byteLength(block.text) : 0), 0);
     let chunks: string[] | undefined;
     if (currentBytes > MAX_PROMPT_TEXT_BYTES) {
@@ -410,10 +434,10 @@ export function createAntigravityBridge(options: {
     let importedSession: string | undefined;
     let importedLosses: ImportLosses | undefined;
     if (fresh && !restored && (chunks || messages.some(message => message.role !== "user"))) {
-      const promptBytes = chunks ? Buffer.byteLength(chunks.at(-1)!) : checkedPromptBytes(currentPrompt);
+      if (!chunks) checkedPromptBytes(currentPrompt);
       const projection = [...messages.slice(0, boundary), ...(chunks?.slice(0, -1).map(content => ({ role: "user" as const, content, timestamp: 0 })) ?? [])];
       const prepared = projection.length > 0 && boundary < messages.length
-        ? prepareHistory(projection, promptBytes, !!chunks || !!options.independent) : undefined;
+        ? prepareHistory(projection) : undefined;
       if (boundary === messages.length && messages.at(-1)?.role === "toolResult") {
         throw new Error("Antigravity cannot resume from a tool result. Send a new message to continue.");
       }

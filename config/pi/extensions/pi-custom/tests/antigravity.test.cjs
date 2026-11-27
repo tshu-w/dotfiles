@@ -15,11 +15,12 @@ const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"
 const jiti = createJiti(__filename, {
   alias: {
     "@earendil-works/pi-ai/compat": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
+    "@earendil-works/pi-ai/models": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/models.js"),
     "@earendil-works/pi-ai": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
     "@earendil-works/pi-coding-agent": join(PI_PACKAGE, "dist/index.js"),
   },
 });
-let createAntigravityBridge, registerAntigravity, ai, model;
+let createAntigravityBridge, registerAntigravity, ai, model, estimateMessageTokens, splitPromptText;
 const user = (content) => ({ role: "user", content, timestamp: 0 });
 const tool = { name: "echo", description: "Echo input", parameters: { type: "object", properties: { value: { type: "string" } }, required: ["value"] } };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -37,8 +38,26 @@ before(async () => {
   ({ createAntigravityBridge } = await jiti.import(join(CUSTOM, "antigravity/bridge.ts")));
   ({ registerAntigravity } = await jiti.import(join(CUSTOM, "antigravity.ts")));
   ai = await jiti.import("@earendil-works/pi-ai");
+  ({ estimateMessageTokens } = await jiti.import(join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/utils/estimate.js")));
+  ({ splitPromptText } = await jiti.import(join(CUSTOM, "antigravity/history.ts")));
   model = { ...ai.getModel("anthropic", "claude-haiku-4-5"), id: "gemini-test", provider: "antigravity", api: "antigravity" };
 });
+
+function fitInputBudget(unit, tokens) {
+  const count = text => splitPromptText(text).reduce((sum, chunk) => sum + estimateMessageTokens(user(chunk)), 0);
+  let low = 0, high = Math.ceil(tokens * 4 / unit.length);
+  assert.ok(count(unit.repeat(high)) > tokens);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (count(unit.repeat(middle)) <= tokens) low = middle;
+    else high = middle - 1;
+  }
+  let text = unit.repeat(low);
+  while (count(text + "x") <= tokens) text += "x";
+  assert.equal(count(text), tokens);
+  assert.equal(count(text + "x"), tokens + 1);
+  return text;
+}
 
 const agentCapabilities = {
   _meta: { antigravity: { systemPrompt: { append: true } } },
@@ -246,15 +265,17 @@ test("long current input rebuilds live and resumed sessions without changing old
   }
 });
 
-test("independent imports reject the old cap instead of silently windowing history", async (t) => {
+test("independent imports preserve history beyond the removed byte cap", async (t) => {
   const h = importFixture(t, { independent: true });
   const messages = [user("old"), { role: "assistant", content: [{ type: "text", text: "a".repeat(400000) }], stopReason: "stop" },
     user("recent"), { role: "assistant", content: [{ type: "text", text: "b".repeat(100000) }], stopReason: "stop" }, user("summarize")];
   const original = structuredClone(messages);
-  const answer = await h.stream(messages, h.settings).result();
-  assert.equal(answer.errorMessage, "Antigravity prompt is too long. Shorten the input or use another model.");
-  assert.equal(ai.isContextOverflow(answer), true);
-  assert.equal(h.connections.length, 0);
+  const { stream, connection } = await started(h, messages, 1, h.settings);
+  const rows = importedRows(h.databases[0]);
+  assert.deepEqual(rows.map(row => nativeField(row.step_payload, row.step_type === 14 ? 19 : 20, row.step_type === 14 ? 2 : 1).toString()),
+    ["old", "a".repeat(400000), "recent", "b".repeat(100000)]);
+  connection.chunk("Summary"); connection.finish();
+  assert.equal((await stream.result()).stopReason, "stop");
   assert.deepEqual(messages, original);
 });
 
@@ -284,7 +305,7 @@ test("imports the whole prefix once after writer stop and sends only the new use
   stopped.resolve();
   await until(() => h.connections[1]?.prompts.length);
   const initial = h.connections[0], resumed = h.connections[1];
-  assert.deepEqual(notices, [{ userTruncated: 0, toolResultsTruncated: 1, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 1 }]);
+  assert.deepEqual(notices, [{ toolResultsTruncated: 1, toolImagesOmitted: 1 }]);
   assert.deepEqual(initial.calls.map(x => x.method), ["session/new", "session/close"]);
   assert.deepEqual(initial.tools, []);
   assert.deepEqual(initial.calls[0].params.mcpServers, []);
@@ -438,7 +459,7 @@ test("ordinary checkpoint resume also rejects a mismatched returned session ID",
   assert.equal(h.connections[1].prompts.length, 0);
 });
 
-test("history budgeting trims whole turns or intermediate groups while preserving the full filtered checkpoint ledger", async (t) => {
+test("history retains every turn and intermediate group with the full filtered checkpoint ledger", async (t) => {
   for (const middleGap of [false, true]) {
     let saved;
     const notices = [];
@@ -447,19 +468,18 @@ test("history budgeting trims whole turns or intermediate groups while preservin
       user("old-user".repeat(12_500)),
       { role: "assistant", content: [{ type: "text", text: "old-reply".repeat(12_500) }], stopReason: "stop" },
       { role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop" },
-      user("a".repeat(170_000)),
+      user("a".repeat(100_000)),
       { role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop" },
       { role: "assistant", content: [{ type: "text", text: "b".repeat(170_000) }], stopReason: "stop" },
       user("c".repeat(75_000)), user("d".repeat(75_000)),
     ];
-    if (middleGap) messages.splice(5, 0, { role: "assistant", content: [{ type: "text", text: "intermediate".repeat(10_000) }], stopReason: "stop" });
+    if (middleGap) messages.splice(5, 0, { role: "assistant", content: [{ type: "text", text: "intermediate".repeat(5_000) }], stopReason: "stop" });
     const original = structuredClone(messages);
     const next = await started(h, messages, 1, h.settings);
     const rows = importedRows(h.databases[0]);
-    assert.deepEqual(rows.map(row => row.step_type), [14, 15]);
-    assert.equal(Buffer.from(rows[0].step_payload).includes(Buffer.from("[Pi omitted 3 earlier messages]")), true);
-    assert.equal(Buffer.from(rows[0].step_payload).includes(Buffer.from("\n\n[Pi omitted 2 intermediate messages]\n\n")), middleGap);
-    assert.deepEqual(notices, [{ userTruncated: 0, toolResultsTruncated: 0, earlierMessagesOmitted: 3, intermediateMessagesOmitted: middleGap ? 2 : 0, toolImagesOmitted: 0 }]);
+    assert.deepEqual(rows.map(row => nativeField(row.step_payload, row.step_type === 14 ? 19 : 20, row.step_type === 14 ? 2 : 1).toString()),
+      messages.slice(0, -2).map(message => typeof message.content === "string" ? message.content : message.content[0].text).filter(Boolean));
+    assert.deepEqual(notices, []);
     assert.deepEqual(next.connection.prompts[0].params.prompt, [
       { type: "text", text: messages.at(-2).content }, { type: "text", text: "\n\n" }, { type: "text", text: messages.at(-1).content },
     ]);
@@ -478,7 +498,7 @@ test("history budgeting trims whole turns or intermediate groups while preservin
     assert.equal(resumed.connection.calls[0].method, "session/resume");
     assert.deepEqual(resumed.connection.prompts[0].params.prompt, [{ type: "text", text: "follow up" }]);
     assert.equal(h.databases.length, 1);
-    assert.equal(notices.length, 1);
+    assert.equal(notices.length, 0);
     resumed.connection.chunk("finished"); resumed.connection.finish();
     assert.equal((await resumed.stream.result()).stopReason, "stop");
     assert.deepEqual(messages, original);
@@ -1165,11 +1185,77 @@ test("changed history uses a new session and failed prompts discard the checkpoi
   assert.equal(next.connection.prompts.length, 1);
 });
 
+test("full calibrated windows admit ASCII and Chinese input without subtracting reserve twice", { timeout: 10000 }, async (t) => {
+  const { SettingsManager } = await jiti.import(join(PI_PACKAGE, "dist/index.js"));
+  const { catalogModel } = await jiti.import(join(CUSTOM, "antigravity/catalog.ts"));
+  const systemTokens = estimateMessageTokens({ role: "system", content: "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.\n\nUse Pi tools only.",
+    toolsAdded: [{ ...tool, name: "mcp_pi_echo" }], timestamp: 0 });
+  for (const id of ["gemini-4-hydrogen", "gemini-4-neon"]) for (const unit of ["x", "汉字🧪"]) {
+    const selected = { ...model, id, contextWindow: catalogModel(id).contextWindow };
+    assert.equal(SettingsManager.inMemory({}).getCompactionSettings(selected).reserveTokens, 16384);
+    const text = fitInputBudget(unit, selected.contextWindow - systemTokens);
+    const h = importFixture(t, { independent: unit !== "x" });
+    const input = value => ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages: [user(value)] });
+    const stream = h.bridge.streamSimple(selected, input(text), h.settings);
+    await until(() => h.connections[1]?.prompts.length);
+    const active = h.connections[1];
+    const chunks = [...importedRows(h.databases[0]).map(row => nativeField(row.step_payload, 19, 2).toString()), active.prompts[0].params.prompt[0].text];
+    assert.equal(chunks.join(""), text);
+    active.chunk("Done"); active.finish();
+    assert.equal((await stream.result()).stopReason, "stop");
+    const over = await h.bridge.streamSimple(selected, input(text + "x"), h.settings).result();
+    assert.equal(over.errorMessage, "Antigravity prompt is too long. Shorten the input or use another model.");
+    assert.equal(ai.isContextOverflow(over), true);
+    assert.equal(h.connections.length, 2);
+    assert.equal(active.prompts.length, 1);
+  }
+});
+
+test("summary admission counts bounded tool results, image placeholders and native error framing rather than old usage", { timeout: 10000 }, async (t) => {
+  const { boundedToolResultText } = await jiti.import(join(CUSTOM, "antigravity/history.ts"));
+  const selected = { ...model, contextWindow: 256000 };
+  const call = { role: "assistant", content: [{ type: "toolCall", id: "past", name: "echo", arguments: { value: "past" } }], stopReason: "toolUse", usage: { totalTokens: 999999999 }, timestamp: 0 };
+  const result = { role: "toolResult", toolCallId: "past", toolName: "echo", isError: true,
+    content: [{ type: "text", text: "r".repeat(1000000) }, { type: "image", mimeType: "image/png", data: "AA==" }], timestamp: 0 };
+  const system = { role: "system", content: "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.\n\nUse Pi tools only.",
+    toolsAdded: [{ ...tool, name: "mcp_pi_echo" }], timestamp: 0 };
+  const fixed = estimateMessageTokens(system) + estimateMessageTokens({ ...call, content: [{ ...call.content[0], name: "mcp_pi_echo" }] })
+    + estimateMessageTokens({ ...result, content: [{ type: "text", text: "Encountered error in tool execution: " + boundedToolResultText(result.content[0].text + "\n[Pi omitted an image]", true) }] })
+    + estimateMessageTokens(user("Write the summary now."));
+  const messages = [user(fitInputBudget("p", selected.contextWindow - fixed)), call, result, user("Write the summary now.")];
+  const h = importFixture(t, { independent: true });
+  const input = () => ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages });
+  const stream = h.bridge.streamSimple(selected, input(), h.settings);
+  await until(() => h.connections[1]?.prompts.length);
+  h.connections[1].chunk("Summary"); h.connections[1].finish();
+  assert.equal((await stream.result()).stopReason, "stop");
+  messages[0].content += "x";
+  const over = await h.bridge.streamSimple(selected, input(), h.settings).result();
+  assert.equal(ai.isContextOverflow(over), true);
+  assert.equal(h.connections[1].prompts.length, 1);
+});
+
+test("admission overflow after tool delivery stops without releasing its result or retrying", async (t) => {
+  const h = harness(t), messages = [user("tool")];
+  const { stream, connection } = await started(h, messages);
+  const reply = connection.handlers.tool("echo", { value: "done" });
+  const answer = await stream.result();
+  const rejected = assert.rejects(reply, /prompt is too long/);
+  const result = { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", isError: false, content: [{ type: "text", text: "r".repeat(100000) }] };
+  const failed = await h.bridge.streamSimple({ ...model, contextWindow: 1000 }, ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages: [...messages, answer, result] })).result();
+  await rejected;
+  assert.equal(failed.stopReason, "aborted");
+  assert.equal(ai.isContextOverflow(failed), false);
+  assert.equal(ai.isRetryableAssistantError(failed), false);
+  assert.equal(connection.prompts.length, 1);
+  assert.equal(connection.closed, true);
+});
+
 test("oversized mixed images and full-history overflow fail before opening a target", async (t) => {
   for (const independent of [false, true]) for (const messages of [
     [user([{ type: "text", text: "x".repeat(185001) }, { type: "image", mimeType: "image/png", data: "AA==" }])],
-    [user("x".repeat(185000)), { role: "assistant", content: [{ type: "text", text: "y".repeat(185000) }], stopReason: "stop" }, user("z".repeat(185001))],
-    [user("x".repeat(500001))],
+    [user("x".repeat(185000)), { role: "assistant", content: [{ type: "text", text: "y".repeat(model.contextWindow * 4) }], stopReason: "stop" }, user("z".repeat(185001))],
+    [user("x".repeat(model.contextWindow * 4 + 1))],
   ]) {
     const h = importFixture(t, { independent });
     const answer = await h.stream(messages, h.settings).result();
@@ -1717,14 +1803,14 @@ exports.createAntigravityBridge = options => {
     return { id, provider, notices };
   };
   const a = registerSession(true), b = registerSession(true), headless = registerSession(false);
-  const zero = { userTruncated: 0, toolResultsTruncated: 0, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 0 };
-  const plural = { ...zero, toolResultsTruncated: 2, earlierMessagesOmitted: 3, toolImagesOmitted: 4 };
+  const zero = { toolResultsTruncated: 0, toolImagesOmitted: 0 };
+  const plural = { toolResultsTruncated: 2, toolImagesOmitted: 4 };
   assert.equal(b.provider.streamSimple(model, {}, { sessionId: a.id, losses: plural }), a.id);
-  assert.deepEqual(a.notices, [["Antigravity imported this history with 2 tool results shortened, 3 earlier messages omitted, 4 images omitted.", "warning"]]);
+  assert.deepEqual(a.notices, [["Antigravity imported this history with 2 tool results shortened, 4 images omitted.", "warning"]]);
   assert.deepEqual(b.notices, []);
   const singular = Object.fromEntries(Object.keys(zero).map(key => [key, 1]));
   assert.equal(a.provider.streamSimple(model, {}, { sessionId: b.id, losses: singular }), b.id);
-  assert.deepEqual(b.notices, [["Antigravity imported this history with 1 tool result shortened, 1 user message shortened, 1 earlier message omitted, 1 intermediate message omitted, 1 image omitted.", "warning"]]);
+  assert.deepEqual(b.notices, [["Antigravity imported this history with 1 tool result shortened, 1 image omitted.", "warning"]]);
   a.provider.streamSimple(model, {}, { sessionId: a.id, losses: zero });
   a.provider.streamSimple(model, {}, { sessionId: headless.id, losses: singular });
   assert.equal(a.notices.length, 1);
@@ -2084,13 +2170,13 @@ test("offline startup restores the cached catalog without starting agy", async (
   assert.deepEqual(await config.refreshModels(context()), []);
 });
 
-test("cached Gemini models reuse Google limits and verified ACP thinking levels without renaming", async () => {
+test("cached Gemini models use calibrated native windows and verified ACP thinking levels", async () => {
   const ids = ["gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon"];
   const restored = await provider().refreshModels(context({ stored: { models: ids.map(id => ({ id, provider: "antigravity" })) } }));
   for (const entry of restored) {
     const google = ai.getModels("google").find(model => model.id === entry.id);
     assert.equal(entry.name, google.name);
-    assert.equal(entry.contextWindow, google.contextWindow);
+    assert.equal(entry.contextWindow, entry.id === "gemini-4-hydrogen" ? 256000 : 512000);
     assert.equal(entry.maxTokens, google.maxTokens);
     assert.deepEqual(entry.thinkingLevelMap, google.thinkingLevelMap);
     assert.deepEqual(ai.getSupportedThinkingLevels(entry), entry.id === "gemini-4-carbon"

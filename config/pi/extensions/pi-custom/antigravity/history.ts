@@ -5,8 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import type { JsonObject, JsonValue, Message } from "@earendil-works/pi-ai";
 
 export const MAX_PROMPT_TEXT_BYTES = 185_000;
-// Revision covers text splitting, turn boundaries, omission counts and markers.
-export const HISTORY_IMPORT_POLICY = { revision: 5, maxBytes: 500_000 } as const;
+// Revision covers lossless history projection and per-item normalization.
+export const HISTORY_IMPORT_POLICY = { revision: 6 } as const;
 export const PROMPT_TOO_LONG = "Antigravity prompt is too long. Shorten the input or use another model.";
 
 export function splitPromptText(text: string): string[] {
@@ -29,20 +29,17 @@ export function splitPromptText(text: string): string[] {
 // Native agy 1.5.15 schema. The caller gates the CLI version, creates a fresh
 // session, stops its creator, and supplies its file identity in the shared profile.
 // This module never starts agy or writes shared conversation indexes.
-// Validate whole histories before windowing; signatures/thinking are excluded.
+// Validate whole histories; signatures/thinking are excluded.
 type TextStep = { role: "user" | "assistant"; text: string };
 type Call = { id: string; name: string; arguments: JsonObject };
 export type PreparedHistory = readonly (TextStep | { role: "image"; text: string; data: string } | { role: "call"; calls: Call[]; text?: string } | { role: "result"; call: Call; text: string; isError: boolean })[];
 
 export type ImportLosses = {
-  userTruncated: number;
   toolResultsTruncated: number;
-  earlierMessagesOmitted: number;
-  intermediateMessagesOmitted: number;
   toolImagesOmitted: number;
 };
 
-export function formatOmission(count: number, unit: "byte" | "earlier message" | "intermediate message"): string {
+export function formatOmission(count: number, unit: "byte"): string {
   return `[Pi omitted ${count} ${unit}${count === 1 ? "" : "s"}]`;
 }
 
@@ -72,15 +69,17 @@ function truncateText(text: string, limit: number): string {
   return bytes.subarray(0, head).toString("utf8") + `\n\n${formatOmission(tail - head, "byte")}\n\n` + bytes.subarray(tail).toString("utf8");
 }
 
+export function boundedToolResultText(text: string, isError: boolean): string {
+  return truncateText(text, resultTextLimit(isError));
+}
+
 // User images require [Text, PNG]. Completed call batches retain one planner step
 // and adjacent, ID-matched results normalized to call order in the target only.
 // Native MCP joins result text blocks with LF;
 // tool-result images become explicit placeholders before target-only truncation.
-export function prepareHistory(messages: readonly Message[], promptTextBytes = 0, preserve = false): { steps: PreparedHistory; losses: ImportLosses } | undefined {
+export function prepareHistory(messages: readonly Message[]): { steps: PreparedHistory; losses: ImportLosses } | undefined {
   const steps: (PreparedHistory[number])[] = [];
-  const truncatedSources = new Set<number>();
-  const turns: { sourceIndex: number; stepIndex: number; texts: string[] }[] = [];
-  const groups: { sourceIndex: number; stepIndex: number }[] = [];
+  const losses: ImportLosses = { toolResultsTruncated: 0, toolImagesOmitted: 0 };
   const pairedIds = new Set<string>();
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index];
@@ -93,18 +92,12 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
         if (bytes.toString("base64") !== data || !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) return undefined;
         steps.push({ role: "image", text: message.content[0].text, data });
       } else return undefined;
-      if (index === 0 || messages[index - 1].role !== "user") {
-        turns.push({ sourceIndex: index, stepIndex: steps.length - 1, texts: [] });
-      }
-      const originalText = steps[steps.length - 1].text!;
-      turns[turns.length - 1].texts.push(originalText);
     } else if (message.role === "assistant") {
       if (message.deferred !== undefined || message.errorMessage !== undefined) return undefined;
       const visible = message.content.filter(block => block.type !== "thinking");
       if (!visible.length && message.content.length && message.stopReason === "stop") continue;
       if (!visible.length) return undefined;
       const first = visible[0];
-      const group = { sourceIndex: index, stepIndex: steps.length };
       if (visible.length === 1 && first.type === "text") {
         if (message.stopReason !== "stop") return undefined;
         if (first.text === "") continue;
@@ -139,87 +132,31 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
           if (!call || result.toolName !== call.name || typeof result.isError !== "boolean"
             || !result.content.length || !result.content.every(block => block.type === "text" || block.type === "image")) return undefined;
           const text = result.content.map(block => block.type === "text" ? block.text : "[Pi omitted an image]").join("\n");
-          if (Buffer.byteLength(text) > resultTextLimit(result.isError)) truncatedSources.add(index);
+          losses.toolImagesOmitted += result.content.filter(block => block.type === "image").length;
           completed.set(call, { text, isError: result.isError });
           pending.delete(result.toolCallId);
         }
         for (const call of calls) steps.push({ role: "result", call, ...completed.get(call)! });
       }
-      if (steps[group.stepIndex].role === "call" || steps[group.stepIndex].text) groups.push(group);
     } else return undefined;
   }
   // UTF-8 encoding replaces lone UTF-16 surrogates; reject rather than alter text.
   if (steps.some(step => ("text" in step && step.text !== undefined && !step.text.isWellFormed())
     || ("call" in step && !step.call.name.isWellFormed()))) return undefined;
+  if (!steps.length) return undefined;
+  const projected: PreparedHistory[number][] = [];
   for (const step of steps) {
     if (step.role === "image" && Buffer.byteLength(step.text) > MAX_PROMPT_TEXT_BYTES) throw new Error(PROMPT_TOO_LONG);
     // Native adds the error prefix before applying its own 48 KiB result limit.
-    if (step.role === "result") step.text = truncateText(step.text, resultTextLimit(step.isError));
+    if (step.role === "result") {
+      const bounded = boundedToolResultText(step.text, step.isError);
+      if (bounded !== step.text) losses.toolResultsTruncated++;
+      step.text = bounded;
+    }
+    if (step.role === "user") projected.push(...splitPromptText(step.text).map(text => ({ role: "user" as const, text })));
+    else projected.push(step);
   }
-  if (!steps.length) return undefined;
-  // Count only the final retained source ranges, never unsuccessful candidates.
-  const finish = (retained: PreparedHistory, earlier = 0, middleStart = 0, middleEnd = 0) => {
-    const losses: ImportLosses = { userTruncated: 0, toolResultsTruncated: 0,
-      earlierMessagesOmitted: earlier, intermediateMessagesOmitted: middleEnd - middleStart, toolImagesOmitted: 0 };
-    for (let index = earlier; index < messages.length; index++) {
-      if (index >= middleStart && index < middleEnd) continue;
-      const message = messages[index];
-      if (message.role === "user" && truncatedSources.has(index)) losses.userTruncated++;
-      if (message.role === "toolResult") {
-        if (truncatedSources.has(index)) losses.toolResultsTruncated++;
-        losses.toolImagesOmitted += message.content.filter(block => block.type === "image").length;
-      }
-    }
-    const projected: PreparedHistory[number][] = [];
-    for (const step of retained) {
-      if (step.role === "user") projected.push(...splitPromptText(step.text).map(text => ({ role: "user" as const, text })));
-      else {
-        if (step.role === "image" && Buffer.byteLength(step.text) > MAX_PROMPT_TEXT_BYTES) throw new Error(PROMPT_TOO_LONG);
-        projected.push(step);
-      }
-    }
-    return { steps: projected, losses };
-  };
-  // Count projected text and each call's JSON arguments once, not names, IDs,
-  // image data, native framing or the native error prefix.
-  const sizes = steps.map(step => Buffer.byteLength(step.text ?? "") + (step.role === "call"
-    ? step.calls.reduce((sum, call) => sum + Buffer.byteLength(JSON.stringify(call.arguments)), 0) : 0));
-  let remainingBytes = promptTextBytes + sizes.reduce((sum, size) => sum + size, 0);
-  if (remainingBytes <= HISTORY_IMPORT_POLICY.maxBytes) return finish(steps);
-  if (preserve) throw new Error(PROMPT_TOO_LONG);
-  let omittedSteps = 0;
-  for (const turn of turns) {
-    if (!turn.sourceIndex) continue;
-    while (omittedSteps < turn.stepIndex) remainingBytes -= sizes[omittedSteps++];
-    // Reproject the original user text, never an already truncated copy.
-    const markedInput = `${formatOmission(turn.sourceIndex, "earlier message")}\n\n${turn.texts[0]}`;
-    const markedText = markedInput;
-    if (remainingBytes - sizes[turn.stepIndex] + Buffer.byteLength(markedText) <= HISTORY_IMPORT_POLICY.maxBytes) {
-      const retained = steps.slice(turn.stepIndex);
-      retained[0] = { ...retained[0], text: markedText };
-      return finish(retained, turn.sourceIndex);
-    }
-  }
-  // Keep the latest user run and at least its last visible assistant group.
-  // Mark the middle gap in existing user text, never by inventing a user turn.
-  const turn = turns.at(-1);
-  if (turn) {
-    const userEnd = turn.sourceIndex + turn.texts.length;
-    const latestGroups = groups.filter(group => group.sourceIndex >= userEnd);
-    for (const group of latestGroups.slice(1)) {
-      while (omittedSteps < group.stepIndex) remainingBytes -= sizes[omittedSteps++];
-      const users = turn.texts.map((text, index) => {
-        const head = index === 0 && turn.sourceIndex ? `${formatOmission(turn.sourceIndex, "earlier message")}\n\n` : "";
-        const tail = index === turn.texts.length - 1 ? `\n\n${formatOmission(group.sourceIndex - userEnd, "intermediate message")}\n\n` : "";
-        const markedInput = head + text + tail;
-        return { ...steps[turn.stepIndex + index], text: markedInput };
-      });
-      if (remainingBytes + users.reduce((sum, user) => sum + Buffer.byteLength(user.text), 0) <= HISTORY_IMPORT_POLICY.maxBytes) {
-        return finish([...users, ...steps.slice(group.stepIndex)], turn.sourceIndex, userEnd, group.sourceIndex);
-      }
-    }
-  }
-  throw new Error("Antigravity cannot fit the latest turn. Compact with another model or start a new conversation.");
+  return { steps: projected, losses };
 }
 
 function varint(value: number): Buffer {

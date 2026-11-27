@@ -15,6 +15,7 @@ async function main() {
     alias: {
       "@earendil-works/pi-coding-agent": `${PI_PACKAGE}/dist/index.js`,
       "@earendil-works/pi-ai/compat": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/compat.js`,
+      "@earendil-works/pi-ai/models": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/models.js`,
       "@earendil-works/pi-ai": `${PI_PACKAGE}/node_modules/@earendil-works/pi-ai/dist/compat.js`,
       "@earendil-works/pi-tui": `${PI_PACKAGE}/node_modules/@earendil-works/pi-tui/dist/index.js`,
     },

@@ -3,6 +3,11 @@ import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { createAcpConnection } from "./transport.js";
 
 type CatalogModel = Extract<ProviderModelConfig, { type?: "chat" }>;
+const CONTEXT_WINDOWS: Record<string, number> = {
+  "gemini-4-hydrogen": 256_000,
+  "gemini-4-neon": 512_000,
+  "gemini-4-carbon": 512_000,
+};
 
 export function catalogModel(id: string): CatalogModel {
   const model = getModels("google").find((model) => model.id === id)!;
@@ -12,7 +17,7 @@ export function catalogModel(id: string): CatalogModel {
     ...(reasoning ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
     compat: { supportsMidConvoSystemMessages: false },
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: model.contextWindow, maxTokens: model.maxTokens,
+    contextWindow: CONTEXT_WINDOWS[id] ?? model.contextWindow, maxTokens: model.maxTokens,
   };
 }
 

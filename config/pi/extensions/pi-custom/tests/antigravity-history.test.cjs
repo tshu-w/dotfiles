@@ -5,8 +5,8 @@ const { join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { randomUUID } = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
-let prepareHistory, writeHistory, HISTORY_IMPORT_POLICY, formatOmission;
-before(async () => ({ prepareHistory, writeHistory, HISTORY_IMPORT_POLICY, formatOmission } = await import("../antigravity/history.ts")));
+let prepareHistory, writeHistory, HISTORY_IMPORT_POLICY, formatOmission, boundedToolResultText;
+before(async () => ({ prepareHistory, writeHistory, HISTORY_IMPORT_POLICY, formatOmission, boundedToolResultText } = await import("../antigravity/history.ts")));
 const prepareSteps = (...args) => prepareHistory(...args)?.steps;
 const user = (text) => ({ role: "user", content: text, timestamp: 0 });
 const assistant = (content, stopReason = "stop") => ({ role: "assistant", content, stopReason, timestamp: 0 });
@@ -353,10 +353,10 @@ test("reserves the native error prefix before clipping to preserve the original 
 test("splits historical users losslessly while preserving full assistant text", (t) => {
   for (const body of ["x".repeat(185001), "中文".repeat(40000), "😀".repeat(50000) + "\n\nFINAL instruction"]) {
     const input = [user(body)], original = structuredClone(input);
-    const prepared = prepareHistory(input, 0, true);
+    const prepared = prepareHistory(input);
     assert.equal(prepared.steps.map(step => step.text).join(""), body);
     assert.ok(prepared.steps.every(step => step.role === "user" && Buffer.byteLength(step.text) <= 185000 && step.text.isWellFormed()));
-    assert.equal(prepared.losses.userTruncated, 0);
+    assert.deepEqual(prepared.losses, { toolResultsTruncated: 0, toolImagesOmitted: 0 });
     const fixture = target(t);
     assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared.steps, undefined, fixture.identity), true);
     assert.equal(rows(fixture.path).map(row => at(row.step_payload, 19, 2).toString()).join(""), body);
@@ -371,106 +371,62 @@ test("splits historical users losslessly while preserving full assistant text", 
   assert.equal(prepareSteps([user("x".repeat(185000))])[0].text.length, 185000);
 });
 
-test("windows history at the earliest fitting complete source user run", () => {
-  assert.deepEqual(HISTORY_IMPORT_POLICY, { revision: 5, maxBytes: 500000 });
-  const input = [user("old"), assistant([text("a".repeat(200000))]),
-    user("b".repeat(110000)), user("keep-b"), assistant([text("c".repeat(100000))]),
-    user("last"), assistant([text("d".repeat(250000))])];
-  const before = structuredClone(input);
-  const retained = prepareSteps(input);
-  assert.deepEqual(retained.map(step => step.role), ["user", "user", "assistant", "user", "assistant"]);
-  assert.equal(retained[0].text, "[Pi omitted 2 earlier messages]\n\n" + input[2].content);
-  assert.equal(retained[1].text, "keep-b");
-  const withPrompt = prepareSteps(input, 39990);
-  assert.deepEqual(withPrompt.map(step => step.role), ["user", "assistant"]);
-  assert.equal(withPrompt[0].text, "[Pi omitted 5 earlier messages]\n\nlast");
-  assert.equal(withPrompt[1].text, "d".repeat(250000));
-  assert.deepEqual(input, before);
-  const calls = ["one", "two"].map(id => ({ type: "toolCall", id, name: "echo", arguments: { value: "x".repeat(200000) } }));
-  const results = [...calls].reverse().map(call => ({ role: "toolResult", toolCallId: call.id, toolName: call.name,
-    isError: false, content: [text(call.id)], timestamp: 0 }));
-  const grouped = [user("old"), assistant([text("a".repeat(200000))]), user("keep"), assistant(calls, "toolUse"), ...results];
-  const groupedBefore = structuredClone(grouped);
-  const batch = prepareSteps(grouped);
-  assert.deepEqual(batch.map(step => step.role), ["user", "call", "result", "result"]);
-  assert.equal(batch[0].text, "[Pi omitted 2 earlier messages]\n\nkeep");
-  assert.equal(batch[1].calls.length, 2);
-  assert.deepEqual(batch.slice(2).map(step => step.text), ["one", "two"]);
-  assert.throws(() => prepareSteps(grouped, 100000), /cannot fit the latest turn/);
-  assert.deepEqual(grouped, groupedBefore);
+test("preserves more than 500 KB across complete turns and parallel tool batches", (t) => {
+  assert.deepEqual(HISTORY_IMPORT_POLICY, { revision: 6 });
+  const input = [];
+  for (let turn = 0; turn < 3; turn++) {
+    const calls = ["one", "two"].map(name => ({ type: "toolCall", id: turn + name, name: "echo", arguments: { value: name.repeat(30000) } }));
+    input.push(user("u".repeat(110000)), assistant([text("a".repeat(100000))]), assistant(calls, "toolUse"),
+      ...[...calls].reverse().map(call => ({ role: "toolResult", toolCallId: call.id, toolName: "echo", isError: false, content: [text(call.id)], timestamp: 0 })),
+      assistant([text("end " + turn)]));
+  }
+  const original = structuredClone(input), prepared = prepareHistory(input);
+  assert.ok(prepared.steps.reduce((sum, step) => sum + Buffer.byteLength(step.text ?? ""), 0) > 500000);
+  assert.deepEqual(prepared.steps.map(step => step.role), Array.from({ length: 3 }, () => ["user", "assistant", "call", "result", "result", "assistant"]).flat());
+  assert.deepEqual(prepared.losses, { toolResultsTruncated: 0, toolImagesOmitted: 0 });
+  const fixture = target(t);
+  assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared.steps, undefined, fixture.identity), true);
+  const written = rows(fixture.path);
+  assert.equal(written.length, input.length);
+  for (let turn = 0; turn < 3; turn++) {
+    const offset = turn * 6;
+    assert.equal(at(written[offset].step_payload, 19, 2).toString(), input[offset].content);
+    assert.equal(at(written[offset + 1].step_payload, 20, 1).toString(), input[offset + 1].content[0].text);
+    assert.deepEqual(prepared.steps[offset + 2].calls.map(call => call.arguments), input[offset + 2].content.map(call => call.arguments));
+    assert.deepEqual(prepared.steps.slice(offset + 3, offset + 5).map(step => step.text), [turn + "one", turn + "two"]);
+    assert.equal(at(written[offset + 5].step_payload, 20, 1).toString(), "end " + turn);
+  }
+  assert.deepEqual(input, original);
 });
 
-test("counts projected text, call arguments and current prompt exactly at the window limit", () => {
-  const completed = pair("not-counted-name", "e".repeat(60000));
-  completed[0].content.unshift(text("leading"));
-  completed[0].content[1].arguments = { value: "a".repeat(320000) };
-  completed[1].isError = true;
-  const input = [user("u"), ...completed];
-  const before = structuredClone(input);
-  const baseline = prepareSteps(input);
-  assert.equal(Buffer.byteLength(baseline[2].text), 49115);
-  const historyBytes = 1 + 7 + Buffer.byteLength(JSON.stringify(completed[0].content[1].arguments)) + 49115;
-  const promptBytes = HISTORY_IMPORT_POLICY.maxBytes - historyBytes;
-  const exact = prepareSteps(input, promptBytes);
-  assert.deepEqual(exact.map(step => step.role), ["user", "call", "result"]);
-  assert.equal(exact[0].text, "u");
-  assert.equal(exact[2].text, baseline[2].text);
-  assert.equal(exact[2].isError, true);
-  assert.throws(() => prepareSteps(input, promptBytes + 1), {
-    message: "Antigravity cannot fit the latest turn. Compact with another model or start a new conversation.",
-  });
-  assert.deepEqual(input, before);
+test("preserves user text above 1 MB in bounded UTF-8 chunks without changing delimiters or tail instructions", (t) => {
+  for (const body of ["x".repeat(1100000), ("中文😀\r\n\r\n").repeat(80000) + "FINAL instruction"]) {
+    assert.ok(Buffer.byteLength(body) > 1000000);
+    const input = [user(body)], original = structuredClone(input), prepared = prepareHistory(input);
+    assert.ok(prepared.steps.every(step => step.role === "user" && step.text.isWellFormed() && Buffer.byteLength(step.text) <= 185000));
+    assert.equal(prepared.steps.map(step => step.text).join(""), body);
+    const fixture = target(t);
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared.steps, undefined, fixture.identity), true);
+    assert.equal(rows(fixture.path).map(row => at(row.step_payload, 19, 2).toString()).join(""), body);
+    assert.deepEqual(input, original);
+  }
 });
 
-test("counts omitted source messages and preserves marked image text", () => {
-  const input = [user("old"), assistant([text("a".repeat(200000))]),
-    assistant([{ type: "thinking", thinking: "hidden" }]),
-    user([text("x".repeat(150000)), png]), assistant([text("b".repeat(300000))])];
-  const before = structuredClone(input), retained = prepareSteps(input);
-  assert.deepEqual(retained.map(step => step.role), ["image", "assistant"]);
-  assert.equal(retained[0].text, "[Pi omitted 3 earlier messages]\n\n" + "x".repeat(150000));
-  assert.equal(retained[0].data, png.data);
-  assert.deepEqual(input, before);
+test("shared tool normalization preserves the exact native byte limits and error prefix budget", () => {
+  for (const isError of [false, true]) {
+    const limit = 48 * 1024 - (isError ? 37 : 0);
+    const exact = "x".repeat(limit);
+    assert.equal(boundedToolResultText(exact, isError), exact);
+    const body = "😀".repeat(20000) + "FINAL";
+    const bounded = boundedToolResultText(body, isError);
+    assert.ok(Buffer.byteLength(bounded) <= limit);
+    assert.ok(bounded.isWellFormed());
+    assert.ok(bounded.endsWith("FINAL"));
+    const input = pair("echo", body);
+    input[1].isError = isError;
+    assert.equal(prepareSteps(input)[1].text, bounded);
+  }
   assert.throws(() => prepareSteps([user([text("x".repeat(185001)), png])]), /Antigravity prompt is too long/);
-  assert.equal(prepareSteps([user("old"), pair()[0], user("latest")]), undefined);
-});
-
-test("windows within an oversized user turn without splitting assistant tool batches", () => {
-  const calls = ["one", "two"].map(id => ({ type: "toolCall", id, name: "echo", arguments: { value: "x".repeat(100000) } }));
-  const results = [...calls].reverse().map(call => ({ role: "toolResult", toolCallId: call.id, toolName: call.name,
-    isError: false, content: [text(call.id)], timestamp: 0 }));
-  for (const earlier of [[], [user("old"), assistant([text("o".repeat(200000))])]]) {
-    const input = [...earlier, user("task"), assistant([text("a".repeat(200000))]),
-      assistant(calls, "toolUse"), ...results, assistant([text("b".repeat(200000))]),
-      assistant([{ type: "thinking", thinking: "hidden tail" }])];
-    const before = structuredClone(input);
-    const head = earlier.length ? "[Pi omitted 2 earlier messages]\n\n" : "";
-    const retained = prepareSteps(input);
-    assert.deepEqual(retained.map(step => step.role), ["user", "call", "result", "result", "assistant"]);
-    assert.equal(retained[0].text, head + "task\n\n[Pi omitted 1 intermediate message]\n\n");
-    assert.equal(retained[1].calls.length, 2);
-    assert.deepEqual(retained.slice(2, 4).map(step => step.text), ["one", "two"]);
-    const smaller = prepareSteps(input, 100000);
-    assert.deepEqual(smaller.map(step => step.role), ["user", "assistant"]);
-    assert.equal(smaller[0].text, head + "task\n\n[Pi omitted 4 intermediate messages]\n\n");
-    assert.equal(smaller[1].text, "b".repeat(200000));
-    assert.deepEqual(input, before);
-  }
-  for (const trailing of [[], [assistant([{ type: "thinking", thinking: "hidden" }])], [assistant([text("")])]]) {
-    assert.throws(() => prepareSteps([user("task"), assistant([text("old")]),
-      assistant([text("x".repeat(500000))]), ...trailing]), /cannot fit the latest turn/);
-  }
-});
-
-test("splits marked historical users without truncating their original text", () => {
-  const input = [user("old"), assistant([text("o".repeat(100000))]), user("x".repeat(250000)),
-    assistant([text("a".repeat(200000))]), assistant([text("b".repeat(200000))])];
-  const before = structuredClone(input), retained = prepareSteps(input);
-  assert.ok(retained.slice(0, -1).every(step => step.role === "user" && Buffer.byteLength(step.text) <= 185000));
-  assert.equal(retained.slice(0, -1).map(step => step.text).join(""),
-    "[Pi omitted 2 earlier messages]\n\n" + "x".repeat(250000) + "\n\n[Pi omitted 1 intermediate message]\n\n");
-  assert.equal(retained.at(-1).text, "b".repeat(200000));
-  assert.deepEqual(input, before);
 });
 
 test("omits validated empty assistant text but preserves whitespace and empty call-leading text", () => {
@@ -492,16 +448,11 @@ test("omits validated empty assistant text but preserves whitespace and empty ca
     assert.equal(prepareSteps([user("task"), invalid]), undefined);
   }
   assert.equal(prepareSteps([assistant([text("")])]), undefined);
-  const windowed = prepareSteps([user("old"), assistant([text("x".repeat(500000))]),
-    assistant([text("")]), user("keep"), assistant([text("answer")])]);
-  assert.equal(windowed[0].text, "[Pi omitted 3 earlier messages]\n\nkeep");
 });
 
 test("formats singular and plural omission markers without changing their units", () => {
   for (const [count, unit, expected] of [
     [1, "byte", "[Pi omitted 1 byte]"], [2, "byte", "[Pi omitted 2 bytes]"],
-    [1, "earlier message", "[Pi omitted 1 earlier message]"], [2, "earlier message", "[Pi omitted 2 earlier messages]"],
-    [1, "intermediate message", "[Pi omitted 1 intermediate message]"], [2, "intermediate message", "[Pi omitted 2 intermediate messages]"],
   ]) assert.equal(formatOmission(count, unit), expected);
 });
 
@@ -512,51 +463,10 @@ test("reports exact loss fields without counting literal markers or invisible as
   const before = structuredClone(input);
   const prepared = prepareHistory(input);
   assert.deepEqual(Object.keys(prepared).sort(), ["losses", "steps"]);
-  assert.deepEqual(prepared.losses, { userTruncated: 0, toolResultsTruncated: 0,
-    earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 0 });
+  assert.deepEqual(prepared.losses, { toolResultsTruncated: 0, toolImagesOmitted: 0 });
   assert.equal(prepared.steps[0].text, literal);
   assert.equal(prepared.steps.at(-1).text, literal);
   assert.deepEqual(input, before);
-  const singular = prepareHistory([assistant([text("x".repeat(300000))]), user("keep"),
-    assistant([text("y".repeat(300000))])]);
-  assert.equal(singular.steps[0].text, "[Pi omitted 1 earlier message]\n\nkeep");
-  assert.deepEqual(singular.losses, { userTruncated: 0, toolResultsTruncated: 0,
-    earlierMessagesOmitted: 1, intermediateMessagesOmitted: 0, toolImagesOmitted: 0 });
-});
-
-test("counts losses only in the final retained source range including clipped image placeholders", () => {
-  const dropped = pair("old_echo");
-  dropped[0].content[0].id = dropped[1].toolCallId = "dropped-call";
-  dropped[1].content = [text("a".repeat(40000)), png, png, text("b".repeat(40000))];
-  const kept = pair();
-  kept[1].content = [text("a".repeat(40000)), png, png, text("b".repeat(40000))];
-  const input = [user("o".repeat(250000)), assistant([text("old".repeat(100000))]), ...dropped,
-    user("u".repeat(250000)), assistant([text("gap".repeat(100000))]), ...kept,
-    assistant([text("tail".repeat(50000))])];
-  const before = structuredClone(input);
-  const prepared = prepareHistory(input);
-  assert.ok(prepared.steps.slice(0, -3).every(step => step.role === "user"));
-  assert.deepEqual(prepared.losses, { userTruncated: 0, toolResultsTruncated: 1,
-    earlierMessagesOmitted: 4, intermediateMessagesOmitted: 1, toolImagesOmitted: 2 });
-  assert.ok(prepared.steps[0].text.startsWith("[Pi omitted 4 earlier messages]\n\n"));
-  assert.ok(prepared.steps.at(-4).text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
-  assert.equal(prepared.steps.at(-2).text.includes("[Pi omitted an image]"), false);
-  assert.ok(Buffer.byteLength(prepared.steps[0].text) <= 185000);
-  assert.ok(Buffer.byteLength(prepared.steps.at(-2).text) <= 49152);
-  assert.deepEqual(input, before);
-  for (const [messages, earlier, intermediate] of [
-    [[assistant([text("a".repeat(400000))]), user("u".repeat(185000)), assistant([text("b".repeat(100000))])], 1, 0],
-    [[user("u".repeat(185000)), assistant([text("a".repeat(200000))]), assistant([text("b".repeat(200000))])], 0, 1],
-  ]) {
-    const original = structuredClone(messages);
-    const retained = prepareHistory(messages);
-    assert.deepEqual(retained.losses, { userTruncated: 0, toolResultsTruncated: 0,
-      earlierMessagesOmitted: earlier, intermediateMessagesOmitted: intermediate, toolImagesOmitted: 0 });
-    assert.ok(Buffer.byteLength(retained.steps[0].text) <= 185000);
-    if (earlier) assert.ok(retained.steps[0].text.startsWith("[Pi omitted 1 earlier message]\n\n"));
-    else assert.ok(retained.steps.at(-2).text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
-    assert.deepEqual(messages, original);
-  }
 });
 
 test("counts only truncated result messages separately from source image blocks", () => {
@@ -568,8 +478,7 @@ test("counts only truncated result messages separately from source image blocks"
   const input = [user("x".repeat(185001)), user([text("y".repeat(185000)), png]), ...first, ...second];
   const before = structuredClone(input);
   const prepared = prepareHistory(input);
-  assert.deepEqual(prepared.losses, { userTruncated: 0, toolResultsTruncated: 2,
-    earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 2 });
+  assert.deepEqual(prepared.losses, { toolResultsTruncated: 2, toolImagesOmitted: 2 });
   assert.deepEqual(prepared.steps.map(step => step.role), ["user", "user", "image", "call", "result", "call", "result"]);
   assert.ok(Buffer.byteLength(prepared.steps[4].text) <= 49152);
   assert.ok(Buffer.byteLength(prepared.steps[6].text) <= 49115);
