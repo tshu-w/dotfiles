@@ -1,5 +1,12 @@
 # Local history regression (opt-in)
 
+This runner's oracle is pinned to historical import policy revision 4. Its saved
+results remain historical evidence, not acceptance of the current lossless user
+splitting or native-context integrity checks. Do not use it for a new production
+acceptance run until its oracle is updated. Current offline checks are in
+`tests/antigravity-history.test.cjs`, `tests/antigravity-usage.test.cjs`, and
+`tests/antigravity.test.cjs`.
+
 This script is excluded from `npm test`. Real samples retain all SDK-converted
 system deltas and recorded tool declarations through `normalizeContext`. The
 production bridge resolves the active system prompt and tool set, then separates

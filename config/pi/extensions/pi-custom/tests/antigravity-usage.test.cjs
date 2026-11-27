@@ -15,7 +15,12 @@ function field(tag,value){if(typeof value==='number'||typeof value==='bigint')re
 const blob=(...fields)=>Buffer.concat(fields);
 function gen(idx,input=2984,cacheRead=0,output=71,options={}){
   const usage=blob(field(2,input),field(3,output),...(options.omitRead?[]:[field(5,cacheRead)]),field(4,options.cacheWrite??0),...(options.extra??[]));
-  return {idx,data:blob(field(1,options.missingUsage?Buffer.alloc(0):field(4,usage)),...(options.packed?[field(2,blob(...(options.steps??[1,2]).map(varint))) ]:(options.steps??[1,2]).map(i=>field(2,i))))};
+  const chat=blob(options.missingUsage?Buffer.alloc(0):field(4,usage),...(options.context===undefined?[]:[field(9,field(10,options.context))]));
+  return {idx,data:blob(field(1,chat),...(options.packed?[field(2,blob(...(options.steps??[1,2]).map(varint))) ]:(options.steps??[1,2]).map(i=>field(2,i))))};
+}
+function contextMetadata({reason,estimated=100,maximum=256000,reportedTotal=estimated,groups=[estimated]}={}){
+  return blob(field(1,estimated),...(reason===undefined?[]:[field(2,reason)]),
+    field(3,blob(...groups.map(value=>field(1,field(4,value))),field(2,reportedTotal))),field(4,maximum));
 }
 function tools(options={}){
   const args=options.args??{fixtureVersion:1,toolSummary:'synthetic description'};
@@ -100,6 +105,61 @@ test('real SQLite interface reads owned synthetic WAL data across prompt, tool a
     assert.equal(reader.readCompletion(3159).totalTokens,3159);
     reader.beginPrompt();unknown(()=>reader.readCompletion(3159));
   }finally{db.close();}
+});
+
+test('complete native context witness accepts absent and explicit zero reason',()=>{
+  const f=started();seed(f,{context:contextMetadata()});
+  assert.equal(f.reader.readTool('fixture',{fixtureVersion:1},false).contextIntegrity.status,'intact');
+  f.state.generations.push(gen(1,2214,935,10,{context:contextMetadata({reason:0,estimated:256000})}));
+  assert.equal(f.reader.readCompletion(3159).contextIntegrity.status,'intact');
+});
+test('MAX_TOKEN_LIMIT is explicit truncation at both tool and completion checkpoints',()=>{
+  const f=started();seed(f,{context:field(2,2)});
+  const tool=f.reader.readTool('fixture',{fixtureVersion:1},false);
+  assert.equal(tool.contextIntegrity.status,'truncated');assert.equal(tool.contextIntegrity.reason,'max_token_limit');assert.equal(tool.contextIntegrity.generationIndex,0);
+  assert.equal(f.reader.readCompletion(3055).contextIntegrity.status,'truncated');
+});
+test('missing, placeholder, TTL and unknown-enum context are unknown rather than intact or overflow',()=>{
+  for(const context of [undefined,Buffer.alloc(0),field(2,0),contextMetadata({reason:1}),contextMetadata({reason:99})]){
+    const f=started();seed(f,{context});
+    assert.equal(f.reader.readTool('fixture',{fixtureVersion:1},false).contextIntegrity.status,'unknown');
+    assert.equal(f.reader.readCompletion(3055).contextIntegrity.status,'unknown');
+  }
+});
+test('malformed context scalar or inconsistent completeness witness is unknown',()=>{
+  for(const context of [
+    blob(contextMetadata(),field(2,0),field(2,2)),
+    blob(contextMetadata(),field(2,'wrong-wire')),
+    Buffer.from([10,255]),
+    contextMetadata({estimated:0}),contextMetadata({maximum:0}),contextMetadata({maximum:2147483648}),
+    contextMetadata({estimated:300000,maximum:256000}),
+    contextMetadata({reportedTotal:99}),contextMetadata({groups:[99]}),
+    blob(field(1,100),field(4,256000)),
+  ]){
+    const f=started();seed(f,{context});
+    assert.equal(f.reader.readTool('fixture',{fixtureVersion:1},false).contextIntegrity.status,'unknown');
+    assert.equal(f.reader.readCompletion(3055).contextIntegrity.status,'unknown');
+  }
+});
+test('latest intact context cannot erase earlier truncation or unknown within the prompt',()=>{
+  for(const [context,status] of [[field(2,2),'truncated'],[undefined,'unknown']]){
+    const f=started();seed(f,{context});
+    f.state.generations.push(gen(1,2214,935,10,{context:contextMetadata()}));
+    const result=f.reader.readCompletion(3159);
+    assert.equal(result.contextIntegrity.status,status);
+    if(status==='truncated')assert.equal(result.contextIntegrity.generationIndex,0);
+  }
+});
+test('explicit truncation takes precedence over another fresh generation with unknown context',()=>{
+  const f=started();seed(f);
+  f.state.generations.push(gen(1,2214,935,10,{context:field(2,2)}));
+  assert.equal(f.reader.readCompletion(3159).contextIntegrity.status,'truncated');
+});
+test('context integrity only aggregates generations after this prompt baseline',()=>{
+  const f=fixture();f.state.generations=[gen(0,2984,0,71,{context:field(2,2)})];
+  const reader=f.make();reader.beginPrompt();
+  f.state.generations.push(gen(1,2214,935,10,{context:contextMetadata()}));
+  assert.equal(reader.readCompletion(3159).contextIntegrity.status,'intact');
 });
 
 test('native first tool and final generation counters stay distinct from cumulative ACP usage',()=>{

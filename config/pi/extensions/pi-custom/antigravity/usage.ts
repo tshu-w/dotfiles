@@ -3,12 +3,15 @@ import { isAbsolute, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export type NativeGenerationUsage = { index: number; input: number; output: number; cacheRead: number; cacheWrite: number };
+export type NativeContextIntegrity = { status: "intact" | "unknown" }
+  | { status: "truncated"; generationIndex: number; reason: "max_token_limit" };
 // input/output are native per-generation counters. Core context input is
 // totalTokens - cacheRead, not this raw input counter.
 export type NativeUsageSnapshot = Omit<NativeGenerationUsage, "index"> & {
   generationIndex: number;
   totalTokens: number;
   generations: NativeGenerationUsage[];
+  contextIntegrity: NativeContextIntegrity;
 };
 type Field = { wire: number; value: bigint | Buffer };
 type Fields = Map<number, Field[]>;
@@ -55,6 +58,29 @@ function counter(fields: Fields, number: number): number {
   const value = scalar(fields, number, 0) ?? 0n;
   if (typeof value !== "bigint" || value > BigInt(Number.MAX_SAFE_INTEGER)) unavailable();
   return Number(value);
+}
+function contextIntegrity(fields: Fields, generationIndex: number): NativeContextIntegrity {
+  try {
+    // CortexStepGeneratorMetadata.chat_model -> chat_start_metadata ->
+    // context_window_metadata. Only MAX_TOKEN_LIMIT has calibrated loss evidence.
+    const context = child(child(child(fields, 1), 9), 10);
+    const reason = counter(context, 2);
+    if (reason === 2) return { status: "truncated", generationIndex, reason: "max_token_limit" };
+    if (reason !== 0) return { status: "unknown" };
+    const estimated = counter(context, 1), maximum = counter(context, 4), breakdown = child(context, 3);
+    const validCount = (value: number) => value >= 0 && value <= 0x7fffffff;
+    if (!validCount(estimated) || !validCount(maximum) || estimated === 0 || maximum === 0 || estimated > maximum
+      || counter(breakdown, 2) !== estimated) return { status: "unknown" };
+    let sum = 0;
+    for (const group of breakdown.get(1) ?? []) {
+      if (group.wire !== 2 || !Buffer.isBuffer(group.value)) return { status: "unknown" };
+      const count = counter(parse(group.value), 4);
+      if (!validCount(count)) return { status: "unknown" };
+      sum += count;
+      if (!Number.isSafeInteger(sum)) return { status: "unknown" };
+    }
+    return { status: sum === estimated ? "intact" : "unknown" };
+  } catch { return { status: "unknown" }; }
 }
 function indices(fields: Fields): number[] {
   const result: number[] = [];
@@ -159,7 +185,7 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
       const fields = parse(stored.data), usage = child(child(fields, 1), 4);
       const result = { index: Number(row.idx), input: counter(usage, 2), output: counter(usage, 3), cacheRead: counter(usage, 5), cacheWrite: counter(usage, 4) };
       total(result);
-      return { usage: result, steps: indices(fields) };
+      return { usage: result, steps: indices(fields), context: contextIntegrity(fields, result.index) };
     });
     const steps = stepRows.map(row => {
       const stored = db.prepare("SELECT step_type,metadata,step_payload FROM steps WHERE idx=?").get(row.idx);
@@ -169,8 +195,11 @@ export function createNativeUsageReader(profile: string, sessionId: string) {
     return { generations, steps };
   }
   function snapshot(generations: ReturnType<typeof fresh>["generations"], selected: NativeGenerationUsage): NativeUsageSnapshot {
+    const observed = generations.filter(row => row.usage.index <= selected.index);
+    const integrity: NativeContextIntegrity = observed.find(row => row.context.status === "truncated")?.context
+      ?? { status: observed.some(row => row.context.status === "unknown") ? "unknown" : "intact" };
     return { generationIndex: selected.index, input: selected.input, output: selected.output, cacheRead: selected.cacheRead,
-      cacheWrite: selected.cacheWrite, totalTokens: total(selected), generations: generations.filter(row => row.usage.index <= selected.index).map(row => ({ ...row.usage })) };
+      cacheWrite: selected.cacheWrite, totalTokens: total(selected), generations: observed.map(row => ({ ...row.usage })), contextIntegrity: integrity };
   }
   return {
     beginPrompt(): void {

@@ -5,8 +5,26 @@ import { DatabaseSync } from "node:sqlite";
 import type { JsonObject, JsonValue, Message } from "@earendil-works/pi-ai";
 
 export const MAX_PROMPT_TEXT_BYTES = 185_000;
-// Revision covers turn boundaries, omission counts and marker formatting.
-export const HISTORY_IMPORT_POLICY = { revision: 4, maxBytes: 500_000 } as const;
+// Revision covers text splitting, turn boundaries, omission counts and markers.
+export const HISTORY_IMPORT_POLICY = { revision: 5, maxBytes: 500_000 } as const;
+export const PROMPT_TOO_LONG = "Antigravity prompt is too long. Shorten the input or use another model.";
+
+export function splitPromptText(text: string): string[] {
+  const bytes = Buffer.from(text, "utf8"), chunks: string[] = [];
+  let start = 0;
+  while (bytes.length - start > MAX_PROMPT_TEXT_BYTES) {
+    let end = start + MAX_PROMPT_TEXT_BYTES;
+    while ((bytes[end] & 0xc0) === 0x80) end--;
+    const candidate = bytes.subarray(start, end).toString("utf8");
+    const paragraphs = [...candidate.matchAll(/(?:\r?\n){2,}/g)];
+    const paragraph = paragraphs.at(-1);
+    if (paragraph) end = start + Buffer.byteLength(candidate.slice(0, paragraph.index + paragraph[0].length));
+    chunks.push(bytes.subarray(start, end).toString("utf8"));
+    start = end;
+  }
+  chunks.push(bytes.subarray(start).toString("utf8"));
+  return chunks;
+}
 
 // Native agy 1.5.15 schema. The caller gates the CLI version, creates a fresh
 // session, stops its creator, and supplies its file identity in the shared profile.
@@ -58,7 +76,7 @@ function truncateText(text: string, limit: number): string {
 // and adjacent, ID-matched results normalized to call order in the target only.
 // Native MCP joins result text blocks with LF;
 // tool-result images become explicit placeholders before target-only truncation.
-export function prepareHistory(messages: readonly Message[], promptTextBytes = 0): { steps: PreparedHistory; losses: ImportLosses } | undefined {
+export function prepareHistory(messages: readonly Message[], promptTextBytes = 0, preserve = false): { steps: PreparedHistory; losses: ImportLosses } | undefined {
   const steps: (PreparedHistory[number])[] = [];
   const truncatedSources = new Set<number>();
   const turns: { sourceIndex: number; stepIndex: number; texts: string[] }[] = [];
@@ -68,7 +86,7 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
     const message = messages[index];
     if (message.role === "user") {
       if (typeof message.content === "string") steps.push({ role: "user", text: message.content });
-      else if (message.content.length === 1 && message.content[0].type === "text") steps.push({ role: "user", text: message.content[0].text });
+      else if (message.content.length && message.content.every(block => block.type === "text")) steps.push({ role: "user", text: message.content.map(block => block.text).join("") });
       else if (message.content.length === 2 && message.content[0].type === "text" && message.content[1].type === "image" && message.content[1].mimeType === "image/png") {
         const data = message.content[1].data;
         const bytes = Buffer.from(data, "base64");
@@ -80,7 +98,6 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
       }
       const originalText = steps[steps.length - 1].text!;
       turns[turns.length - 1].texts.push(originalText);
-      if (Buffer.byteLength(originalText) > MAX_PROMPT_TEXT_BYTES) truncatedSources.add(index);
     } else if (message.role === "assistant") {
       if (message.deferred !== undefined || message.errorMessage !== undefined) return undefined;
       const visible = message.content.filter(block => block.type !== "thinking");
@@ -134,11 +151,10 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
   // UTF-8 encoding replaces lone UTF-16 surrogates; reject rather than alter text.
   if (steps.some(step => ("text" in step && step.text !== undefined && !step.text.isWellFormed())
     || ("call" in step && !step.call.name.isWellFormed()))) return undefined;
-  for (const step of steps) if (step.role === "user" || step.role === "image" || step.role === "result") {
+  for (const step of steps) {
+    if (step.role === "image" && Buffer.byteLength(step.text) > MAX_PROMPT_TEXT_BYTES) throw new Error(PROMPT_TOO_LONG);
     // Native adds the error prefix before applying its own 48 KiB result limit.
-    const limit = step.role === "result"
-      ? resultTextLimit(step.isError) : MAX_PROMPT_TEXT_BYTES;
-    step.text = truncateText(step.text, limit);
+    if (step.role === "result") step.text = truncateText(step.text, resultTextLimit(step.isError));
   }
   if (!steps.length) return undefined;
   // Count only the final retained source ranges, never unsuccessful candidates.
@@ -154,7 +170,15 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
         losses.toolImagesOmitted += message.content.filter(block => block.type === "image").length;
       }
     }
-    return { steps: retained, losses };
+    const projected: PreparedHistory[number][] = [];
+    for (const step of retained) {
+      if (step.role === "user") projected.push(...splitPromptText(step.text).map(text => ({ role: "user" as const, text })));
+      else {
+        if (step.role === "image" && Buffer.byteLength(step.text) > MAX_PROMPT_TEXT_BYTES) throw new Error(PROMPT_TOO_LONG);
+        projected.push(step);
+      }
+    }
+    return { steps: projected, losses };
   };
   // Count projected text and each call's JSON arguments once, not names, IDs,
   // image data, native framing or the native error prefix.
@@ -162,17 +186,17 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
     ? step.calls.reduce((sum, call) => sum + Buffer.byteLength(JSON.stringify(call.arguments)), 0) : 0));
   let remainingBytes = promptTextBytes + sizes.reduce((sum, size) => sum + size, 0);
   if (remainingBytes <= HISTORY_IMPORT_POLICY.maxBytes) return finish(steps);
+  if (preserve) throw new Error(PROMPT_TOO_LONG);
   let omittedSteps = 0;
   for (const turn of turns) {
     if (!turn.sourceIndex) continue;
     while (omittedSteps < turn.stepIndex) remainingBytes -= sizes[omittedSteps++];
     // Reproject the original user text, never an already truncated copy.
     const markedInput = `${formatOmission(turn.sourceIndex, "earlier message")}\n\n${turn.texts[0]}`;
-    const markedText = truncateText(markedInput, MAX_PROMPT_TEXT_BYTES);
+    const markedText = markedInput;
     if (remainingBytes - sizes[turn.stepIndex] + Buffer.byteLength(markedText) <= HISTORY_IMPORT_POLICY.maxBytes) {
       const retained = steps.slice(turn.stepIndex);
       retained[0] = { ...retained[0], text: markedText };
-      if (Buffer.byteLength(markedInput) > MAX_PROMPT_TEXT_BYTES) truncatedSources.add(turn.sourceIndex);
       return finish(retained, turn.sourceIndex);
     }
   }
@@ -184,16 +208,13 @@ export function prepareHistory(messages: readonly Message[], promptTextBytes = 0
     const latestGroups = groups.filter(group => group.sourceIndex >= userEnd);
     for (const group of latestGroups.slice(1)) {
       while (omittedSteps < group.stepIndex) remainingBytes -= sizes[omittedSteps++];
-      const markedTruncations: number[] = [];
       const users = turn.texts.map((text, index) => {
         const head = index === 0 && turn.sourceIndex ? `${formatOmission(turn.sourceIndex, "earlier message")}\n\n` : "";
         const tail = index === turn.texts.length - 1 ? `\n\n${formatOmission(group.sourceIndex - userEnd, "intermediate message")}\n\n` : "";
         const markedInput = head + text + tail;
-        if (Buffer.byteLength(markedInput) > MAX_PROMPT_TEXT_BYTES) markedTruncations.push(turn.sourceIndex + index);
-        return { ...steps[turn.stepIndex + index], text: truncateText(markedInput, MAX_PROMPT_TEXT_BYTES) };
+        return { ...steps[turn.stepIndex + index], text: markedInput };
       });
       if (remainingBytes + users.reduce((sum, user) => sum + Buffer.byteLength(user.text), 0) <= HISTORY_IMPORT_POLICY.maxBytes) {
-        for (const index of markedTruncations) truncatedSources.add(index);
         return finish([...users, ...steps.slice(group.stepIndex)], turn.sourceIndex, userEnd, group.sourceIndex);
       }
     }

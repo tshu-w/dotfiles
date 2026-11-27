@@ -7,7 +7,7 @@ import {
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { AGENT_DEFINITION, createAcpConnection } from "./transport.js";
-import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, prepareHistory, writeHistory, type ImportLosses } from "./history.js";
+import { HISTORY_IMPORT_POLICY, MAX_PROMPT_TEXT_BYTES, PROMPT_TOO_LONG, prepareHistory, splitPromptText, writeHistory, type ImportLosses } from "./history.js";
 import { createNativeUsageReader, type NativeUsageSnapshot } from "./usage.js";
 import { rewriteToolReferences } from "../tool-references.js";
 import { withoutPiDefaults } from "../system-prompt.js";
@@ -76,9 +76,15 @@ function checkedPromptBytes(prompt: any[]): number {
   const bytes = prompt.reduce((sum, block) => sum + Buffer.byteLength(
     block.type === "text" ? block.text : "", "utf8"), 0);
   if (bytes > MAX_PROMPT_TEXT_BYTES) {
-    throw new Error("Antigravity input exceeds 185 KB. Shorten the input or use another model.");
+    throw new Error(PROMPT_TOO_LONG);
   }
   return bytes;
+}
+
+function requireIntactContext(snapshot: NativeUsageSnapshot) {
+  if (snapshot.contextIntegrity.status !== "intact") {
+    throw new Error(snapshot.contextIntegrity.status === "truncated" ? PROMPT_TOO_LONG : "Antigravity native context unavailable");
+  }
 }
 
 const DEFAULT_PROFILE = "antigravity-cli";
@@ -239,6 +245,7 @@ export function createAntigravityBridge(options: {
       cacheRead: sum.cacheRead + row.cacheRead, cacheWrite: sum.cacheWrite + row.cacheWrite,
     }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
     publishUsage(snapshot, raw, "native_generation");
+    requireIntactContext(snapshot);
     tool.emitted = true;
     toolDelivered = true;
     closeBlock();
@@ -345,6 +352,20 @@ export function createAntigravityBridge(options: {
     const pending = tools.find((entry) => entry.emitted);
     const continuation = pending && suffix.length === 1 && suffix[0].role === "toolResult" && suffix[0].toolCallId === pending.id;
     if (connection && (configuration !== config || !prefix || (prompting ? !continuation || selection !== selectedConfig : !suffix.length || !suffix.every((message) => message.role === "user")))) reset();
+    let boundary = messages.length;
+    while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
+    const currentPrompt = promptContent(messages.slice(boundary));
+    const currentBytes = currentPrompt.reduce((sum, block) => sum + (block.type === "text" ? Buffer.byteLength(block.text) : 0), 0);
+    let chunks: string[] | undefined;
+    if (currentBytes > MAX_PROMPT_TEXT_BYTES) {
+      if (currentPrompt.some(block => block.type !== "text")) throw new Error(PROMPT_TOO_LONG);
+      const text = currentPrompt.map(block => block.text).join("");
+      if (!text.isWellFormed()) throw new Error("Antigravity cannot import this history. Compact with another model or start a new conversation.");
+      chunks = splitPromptText(text);
+      // Rebuild the complete source history into a fresh stopped target, never
+      // append chunks to the database of a live or restored session.
+      reset();
+    }
     const epoch = generation;
     model = selected;
     request = settings;
@@ -357,7 +378,7 @@ export function createAntigravityBridge(options: {
     removeAbort = () => settings.signal?.removeEventListener("abort", abort);
     settings.signal?.throwIfAborted();
     const fresh = !connection;
-    let restored = fresh && checkpoint?.configuration === config
+    let restored = fresh && !chunks && checkpoint?.configuration === config
       && messages.length > checkpoint.historyLength
       && historyKey(messages.slice(0, checkpoint.historyLength)) === checkpoint.historyKey
       && messages.slice(checkpoint.historyLength).every((message) => message.role === "user") ? checkpoint : undefined;
@@ -388,12 +409,11 @@ export function createAntigravityBridge(options: {
     let importedLength = 0;
     let importedSession: string | undefined;
     let importedLosses: ImportLosses | undefined;
-    if (fresh && !restored && messages.some(message => message.role !== "user")) {
-      let boundary = messages.length;
-      while (boundary > 0 && messages[boundary - 1].role === "user") boundary--;
-      const promptBytes = checkedPromptBytes(promptContent(messages.slice(boundary)));
-      const prepared = boundary > 0 && boundary < messages.length
-        ? prepareHistory(messages.slice(0, boundary), promptBytes) : undefined;
+    if (fresh && !restored && (chunks || messages.some(message => message.role !== "user"))) {
+      const promptBytes = chunks ? Buffer.byteLength(chunks.at(-1)!) : checkedPromptBytes(currentPrompt);
+      const projection = [...messages.slice(0, boundary), ...(chunks?.slice(0, -1).map(content => ({ role: "user" as const, content, timestamp: 0 })) ?? [])];
+      const prepared = projection.length > 0 && boundary < messages.length
+        ? prepareHistory(projection, promptBytes, !!chunks || !!options.independent) : undefined;
       if (boundary === messages.length && messages.at(-1)?.role === "toolResult") {
         throw new Error("Antigravity cannot resume from a tool result. Send a new message to continue.");
       }
@@ -504,7 +524,7 @@ export function createAntigravityBridge(options: {
     reportedUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     let response: any;
     try {
-      const prompt = promptContent(unseen);
+      const prompt = chunks ? [{ type: "text", text: chunks.at(-1)! }] : promptContent(unseen);
       checkedPromptBytes(prompt);
       const capabilities = connection!.initialized.agentCapabilities.promptCapabilities;
       if (prompt.some((block) => block.type === "image") && capabilities?.image !== true) {
@@ -542,6 +562,7 @@ export function createAntigravityBridge(options: {
           [key, Number.isSafeInteger(usage[key]) && usage[key] >= 0 ? usage[key] : null]),
       ) : undefined;
       publishUsage(snapshot, raw, "acp_used", acp);
+      requireIntactContext(snapshot);
     } catch (error) {
       reset(new DOMException(error instanceof Error ? error.message : String(error), "AbortError"));
       return;

@@ -286,7 +286,6 @@ test("rejects the entire history for unsupported visible layouts, states, argume
   let deepArguments = { text: "leaf" };
   for (let i = 0; i < 6000; i++) deepArguments = { nested: deepArguments };
   const invalid = [
-    [user([text("a"), text("b")])],
     [user([{ type: "image", mimeType: "image/png", data: "AA==" }])],
     [user([text("before"), png, text("after")])],
     [user([text("caption"), { ...png, data: "not base64" }])],
@@ -304,6 +303,7 @@ test("rejects the entire history for unsupported visible layouts, states, argume
     pair(""),
   ];
   invalid.forEach((messages, i) => assert.equal(prepareSteps([user("valid prefix"), ...messages]), undefined, `case ${i}`));
+  assert.equal(prepareSteps([user([text("a"), text("b")])])[0].text, "ab");
   assert.equal(prepareSteps([]), undefined);
   assert.equal(prepareSteps([assistant([{ type: "thinking", thinking: "hidden" }])]), undefined);
   assert.ok(prepareSteps([user([text("visible")]), assistant([{ type: "thinking", thinking: "hidden" }]), ...pair()]));
@@ -350,35 +350,29 @@ test("reserves the native error prefix before clipping to preserve the original 
   assert.deepEqual(input, before);
 });
 
-test("bounds only historical user text and preserves full assistant text", (t) => {
-  const footer = "\n\n[896 more lines in file. Use offset=129 to continue.]";
-  const body = "😀".repeat(50000) + footer;
-  const expected = "😀".repeat(23121) + "\n\n[Pi omitted 15088 bytes]\n\n" + "😀".repeat(23107) + footer;
-  const longAssistant = "SYNTHETIC_LARGE_ASSISTANT_乙\n".repeat(10000);
-  const mixed = pair();
-  mixed[0].content.unshift(text(longAssistant));
-  for (const input of [[user(body)], [assistant([text(longAssistant)])], mixed]) {
-    const before = structuredClone(input);
-    const targetText = input[0].role === "user" ? expected : longAssistant;
-    const prepared = prepareSteps(input);
-    assert.equal(Buffer.byteLength(prepared[0].text), input[0].role === "user" ? 184995 : 300000);
-    assert.equal(prepared[0].text, targetText);
+test("splits historical users losslessly while preserving full assistant text", (t) => {
+  for (const body of ["x".repeat(185001), "中文".repeat(40000), "😀".repeat(50000) + "\n\nFINAL instruction"]) {
+    const input = [user(body)], original = structuredClone(input);
+    const prepared = prepareHistory(input, 0, true);
+    assert.equal(prepared.steps.map(step => step.text).join(""), body);
+    assert.ok(prepared.steps.every(step => step.role === "user" && Buffer.byteLength(step.text) <= 185000 && step.text.isWellFormed()));
+    assert.equal(prepared.losses.userTruncated, 0);
     const fixture = target(t);
-    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared, undefined, fixture.identity), true);
-    const row = rows(fixture.path)[0];
-    assert.equal(at(row.step_payload, ...(input[0].role === "user" ? [19, 2] : [20, 1])).toString(), targetText);
-    if (input[0].role === "assistant") assert.equal(at(row.step_payload, 20, 8).toString(), longAssistant);
-    assert.deepEqual(input, before);
+    assert.equal(writeHistory(fixture.path, fixture.sessionId, prepared.steps, undefined, fixture.identity), true);
+    assert.equal(rows(fixture.path).map(row => at(row.step_payload, 19, 2).toString()).join(""), body);
+    assert.deepEqual(input, original);
   }
-  const boundary = "x".repeat(185000);
-  assert.equal(prepareSteps([user(boundary)])[0].text, boundary);
-  const malformed = "x".repeat(100000) + "\ud800" + "x".repeat(100000);
-  assert.equal(prepareSteps([user(malformed)]), undefined);
-  assert.equal(prepareSteps([assistant([text(malformed)])]), undefined);
+  const body = "a".repeat(180000) + "\r\n\r\n" + "中".repeat(4000) + "\n\nEND";
+  const prepared = prepareSteps([user(body)]);
+  assert.equal(prepared[0].text, "a".repeat(180000) + "\r\n\r\n");
+  assert.equal(prepared.map(step => step.text).join(""), body);
+  const longAssistant = "乙".repeat(100000);
+  assert.equal(prepareSteps([assistant([text(longAssistant)])])[0].text, longAssistant);
+  assert.equal(prepareSteps([user("x".repeat(185000))])[0].text.length, 185000);
 });
 
 test("windows history at the earliest fitting complete source user run", () => {
-  assert.deepEqual(HISTORY_IMPORT_POLICY, { revision: 4, maxBytes: 500000 });
+  assert.deepEqual(HISTORY_IMPORT_POLICY, { revision: 5, maxBytes: 500000 });
   const input = [user("old"), assistant([text("a".repeat(200000))]),
     user("b".repeat(110000)), user("keep-b"), assistant([text("c".repeat(100000))]),
     user("last"), assistant([text("d".repeat(250000))])];
@@ -428,19 +422,16 @@ test("counts projected text, call arguments and current prompt exactly at the wi
   assert.deepEqual(input, before);
 });
 
-test("counts omitted source messages and projects the marked original user only once", () => {
+test("counts omitted source messages and preserves marked image text", () => {
   const input = [user("old"), assistant([text("a".repeat(200000))]),
     assistant([{ type: "thinking", thinking: "hidden" }]),
-    user([text("x".repeat(250000)), png]), assistant([text("b".repeat(300000))])];
-  const before = structuredClone(input);
-  const retained = prepareSteps(input);
+    user([text("x".repeat(150000)), png]), assistant([text("b".repeat(300000))])];
+  const before = structuredClone(input), retained = prepareSteps(input);
   assert.deepEqual(retained.map(step => step.role), ["image", "assistant"]);
-  assert.equal(retained[0].text, "[Pi omitted 3 earlier messages]\n\n" + "x".repeat(92452)
-    + "\n\n[Pi omitted 65062 bytes]\n\n" + "x".repeat(92486));
+  assert.equal(retained[0].text, "[Pi omitted 3 earlier messages]\n\n" + "x".repeat(150000));
   assert.equal(retained[0].data, png.data);
-  assert.equal(retained[1].text.length, 300000);
   assert.deepEqual(input, before);
-  assert.equal(prepareSteps([user("old"), assistant([text("x".repeat(500000) + "\ud800")]), user("latest")]), undefined);
+  assert.throws(() => prepareSteps([user([text("x".repeat(185001)), png])]), /Antigravity prompt is too long/);
   assert.equal(prepareSteps([user("old"), pair()[0], user("latest")]), undefined);
 });
 
@@ -471,29 +462,15 @@ test("windows within an oversized user turn without splitting assistant tool bat
   }
 });
 
-test("projects original user text once with prefix and within-turn omission markers", () => {
-  for (const multipleUsers of [false, true]) {
-    const users = [user("x".repeat(250000))];
-    if (multipleUsers) users.push(user([text("y".repeat(250000)), png]));
-    const size = multipleUsers ? 100000 : 200000;
-    const input = [user("old"), assistant([text("o".repeat(100000))]), ...users,
-      assistant([text("a".repeat(size))]), assistant([text("b".repeat(size))]),
-      assistant([{ type: "thinking", thinking: "hidden tail" }])];
-    const before = structuredClone(input);
-    const retained = prepareSteps(input);
-    const tail = "\n\n[Pi omitted 1 intermediate message]\n\n";
-    assert.equal(retained.length, users.length + 1);
-    assert.equal(retained[0].text, "[Pi omitted 2 earlier messages]\n\n" + "x".repeat(92452)
-      + `\n\n[Pi omitted ${multipleUsers ? 65062 : 65101} bytes]\n\n`
-      + "x".repeat(multipleUsers ? 92486 : 92447) + (multipleUsers ? "" : tail));
-    if (multipleUsers) {
-      assert.equal(retained[1].role, "image");
-      assert.equal(retained[1].text, "y".repeat(92485) + "\n\n[Pi omitted 65068 bytes]\n\n" + "y".repeat(92447) + tail);
-      assert.equal(retained[1].data, png.data);
-    }
-    assert.equal(retained.at(-1).text, "b".repeat(size));
-    assert.deepEqual(input, before);
-  }
+test("splits marked historical users without truncating their original text", () => {
+  const input = [user("old"), assistant([text("o".repeat(100000))]), user("x".repeat(250000)),
+    assistant([text("a".repeat(200000))]), assistant([text("b".repeat(200000))])];
+  const before = structuredClone(input), retained = prepareSteps(input);
+  assert.ok(retained.slice(0, -1).every(step => step.role === "user" && Buffer.byteLength(step.text) <= 185000));
+  assert.equal(retained.slice(0, -1).map(step => step.text).join(""),
+    "[Pi omitted 2 earlier messages]\n\n" + "x".repeat(250000) + "\n\n[Pi omitted 1 intermediate message]\n\n");
+  assert.equal(retained.at(-1).text, "b".repeat(200000));
+  assert.deepEqual(input, before);
 });
 
 test("omits validated empty assistant text but preserves whitespace and empty call-leading text", () => {
@@ -558,14 +535,14 @@ test("counts losses only in the final retained source range including clipped im
     assistant([text("tail".repeat(50000))])];
   const before = structuredClone(input);
   const prepared = prepareHistory(input);
-  assert.deepEqual(prepared.steps.map(step => step.role), ["user", "call", "result", "assistant"]);
-  assert.deepEqual(prepared.losses, { userTruncated: 1, toolResultsTruncated: 1,
+  assert.ok(prepared.steps.slice(0, -3).every(step => step.role === "user"));
+  assert.deepEqual(prepared.losses, { userTruncated: 0, toolResultsTruncated: 1,
     earlierMessagesOmitted: 4, intermediateMessagesOmitted: 1, toolImagesOmitted: 2 });
   assert.ok(prepared.steps[0].text.startsWith("[Pi omitted 4 earlier messages]\n\n"));
-  assert.ok(prepared.steps[0].text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
-  assert.equal(prepared.steps[2].text.includes("[Pi omitted an image]"), false);
+  assert.ok(prepared.steps.at(-4).text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
+  assert.equal(prepared.steps.at(-2).text.includes("[Pi omitted an image]"), false);
   assert.ok(Buffer.byteLength(prepared.steps[0].text) <= 185000);
-  assert.ok(Buffer.byteLength(prepared.steps[2].text) <= 49152);
+  assert.ok(Buffer.byteLength(prepared.steps.at(-2).text) <= 49152);
   assert.deepEqual(input, before);
   for (const [messages, earlier, intermediate] of [
     [[assistant([text("a".repeat(400000))]), user("u".repeat(185000)), assistant([text("b".repeat(100000))])], 1, 0],
@@ -573,29 +550,29 @@ test("counts losses only in the final retained source range including clipped im
   ]) {
     const original = structuredClone(messages);
     const retained = prepareHistory(messages);
-    assert.deepEqual(retained.losses, { userTruncated: 1, toolResultsTruncated: 0,
+    assert.deepEqual(retained.losses, { userTruncated: 0, toolResultsTruncated: 0,
       earlierMessagesOmitted: earlier, intermediateMessagesOmitted: intermediate, toolImagesOmitted: 0 });
     assert.ok(Buffer.byteLength(retained.steps[0].text) <= 185000);
     if (earlier) assert.ok(retained.steps[0].text.startsWith("[Pi omitted 1 earlier message]\n\n"));
-    else assert.ok(retained.steps[0].text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
+    else assert.ok(retained.steps.at(-2).text.endsWith("\n\n[Pi omitted 1 intermediate message]\n\n"));
     assert.deepEqual(messages, original);
   }
 });
 
-test("counts truncated user and result messages separately from source image blocks", () => {
+test("counts only truncated result messages separately from source image blocks", () => {
   const first = pair(), second = pair();
   second[0].content[0].id = second[1].toolCallId = "second-call";
   first[1].content = [text("a".repeat(60000)), png];
   second[1].content = [png, text("b".repeat(60000))];
   second[1].isError = true;
-  const input = [user("x".repeat(185001)), user([text("y".repeat(185001)), png]), ...first, ...second];
+  const input = [user("x".repeat(185001)), user([text("y".repeat(185000)), png]), ...first, ...second];
   const before = structuredClone(input);
   const prepared = prepareHistory(input);
-  assert.deepEqual(prepared.losses, { userTruncated: 2, toolResultsTruncated: 2,
+  assert.deepEqual(prepared.losses, { userTruncated: 0, toolResultsTruncated: 2,
     earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 2 });
-  assert.deepEqual(prepared.steps.map(step => step.role), ["user", "image", "call", "result", "call", "result"]);
-  assert.ok(Buffer.byteLength(prepared.steps[3].text) <= 49152);
-  assert.ok(Buffer.byteLength(prepared.steps[5].text) <= 49115);
+  assert.deepEqual(prepared.steps.map(step => step.role), ["user", "user", "image", "call", "result", "call", "result"]);
+  assert.ok(Buffer.byteLength(prepared.steps[4].text) <= 49152);
+  assert.ok(Buffer.byteLength(prepared.steps[6].text) <= 49115);
   assert.deepEqual(input, before);
 });
 

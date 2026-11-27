@@ -54,12 +54,14 @@ function harness(t, initialized = { agentCapabilities }, session = {}, options =
       beginPrompt() { toolUsage = undefined; },
       readTool() {
         toolUsage = options.toolUsage ?? { index: 0, input: 1, output: 0, cacheRead: 0, cacheWrite: 0 };
-        return { ...toolUsage, generationIndex: toolUsage.index, totalTokens: toolUsage.input + toolUsage.cacheRead + toolUsage.output, generations: [toolUsage] };
+        return { ...toolUsage, generationIndex: toolUsage.index, totalTokens: toolUsage.input + toolUsage.cacheRead + toolUsage.output, generations: [toolUsage],
+          contextIntegrity: options.toolIntegrity ?? { status: "intact" } };
       },
       readCompletion(used) {
         const row = (typeof options.lastUsage === "function" ? options.lastUsage(used) : options.lastUsage)
           ?? { index: toolUsage ? 1 : 0, input: used, output: 0, cacheRead: 0, cacheWrite: 0 };
-        return { ...row, generationIndex: row.index, totalTokens: used, generations: (typeof options.generations === "function" ? options.generations(used) : options.generations) ?? [...(toolUsage ? [toolUsage] : []), row] };
+        return { ...row, generationIndex: row.index, totalTokens: used, generations: (typeof options.generations === "function" ? options.generations(used) : options.generations) ?? [...(toolUsage ? [toolUsage] : []), row],
+          contextIntegrity: options.lastIntegrity ?? { status: "intact" } };
       },
     };
   };
@@ -160,6 +162,102 @@ function importedRows(path) {
   try { return db.prepare("SELECT * FROM steps").all(); } finally { db.close(); }
 }
 
+function nativeField(bytes, ...path) {
+  const data = Buffer.from(bytes);
+  let offset = 0;
+  const integer = () => {
+    let value = 0, factor = 1, byte;
+    do { byte = data[offset++]; value += (byte & 127) * factor; factor *= 128; } while (byte & 128);
+    return value;
+  };
+  while (offset < data.length) {
+    const tag = integer();
+    let value;
+    if (tag % 8 === 0) value = integer();
+    else { assert.equal(tag % 8, 2); const size = integer(); value = data.subarray(offset, offset + size); offset += size; }
+    if (tag >> 3 === path[0]) return path.length === 1 ? value : nativeField(value, ...path.slice(1));
+  }
+}
+
+test("long first prompts preserve ASCII, Chinese, multibyte text and separators in one active request", async (t) => {
+  for (const inputs of [
+    ["x".repeat(184998) + "FINAL instruction crosses the split"],
+    ["中文".repeat(40000)],
+    ["😀".repeat(50000)],
+    ["a".repeat(180000) + "\r\n\r\n", "中".repeat(4000) + "\n\nEND instruction"],
+    [[{ type: "text", text: "x".repeat(100000) }, { type: "text", text: "y".repeat(90000) }]],
+  ]) {
+    const h = importFixture(t, { independent: true, onImport: () => assert.fail("Splitting is lossless") });
+    const messages = inputs.map(user), original = structuredClone(messages);
+    const expected = inputs.map(input => typeof input === "string" ? input : input.map(block => block.text).join("")).join("\n\n");
+    const { stream, connection } = await started(h, messages, 1, h.settings);
+    const rows = importedRows(h.databases[0]);
+    assert.ok(rows.every(row => row.step_type === 14));
+    const chunks = [...rows.map(row => nativeField(row.step_payload, 19, 2).toString()), connection.prompts[0].params.prompt[0].text];
+    assert.ok(chunks.every(chunk => chunk.isWellFormed() && Buffer.byteLength(chunk) <= 185000));
+    assert.equal(chunks.join(""), expected);
+    assert.equal(connection.prompts[0].params.prompt.length, 1);
+    assert.equal(h.connections[0].closed, true);
+    assert.equal(h.connections.reduce((sum, item) => sum + item.prompts.length, 0), 1);
+    connection.chunk("done"); connection.finish();
+    assert.equal((await stream.result()).stopReason, "stop");
+    assert.deepEqual(messages, original);
+  }
+});
+
+test("long current input rebuilds live and resumed sessions without changing old databases or Pi bookkeeping", async (t) => {
+  for (const restore of [false, true]) {
+    let saved;
+    const h = importFixture(t, { save: state => { saved = structuredClone(state); return true; }, claim: () => true });
+    const messages = importedHistory();
+    const first = await started(h, messages, 1, h.settings);
+    first.connection.chunk("first answer"); first.connection.finish();
+    messages.push(await first.stream.result());
+    h.bridge.settle();
+    const oldBytes = readFileSync(h.databases[0]);
+    if (restore) { h.bridge.reset(); h.bridge.restore(saved); }
+    messages.push(user("z".repeat(184998) + "FINAL instruction crosses boundary"));
+    const original = structuredClone(messages);
+    const next = await started(h, messages, 3, h.settings);
+    assert.equal(first.connection.closed, true);
+    assert.equal(h.connections[2].closed, true);
+    assert.notEqual(next.connection.sessionId, first.connection.sessionId);
+    assert.deepEqual(readFileSync(h.databases[0]), oldBytes);
+    const rows = importedRows(h.databases[1]);
+    assert.deepEqual(rows.map(row => row.step_type), [14, 15, 14, 15, 14]);
+    assert.equal(nativeField(rows[0].step_payload, 19, 2).toString(), "prior");
+    assert.equal(nativeField(rows[3].step_payload, 20, 1).toString(), "first answer");
+    assert.equal(nativeField(rows[4].step_payload, 19, 2).toString() + next.connection.prompts[0].params.prompt[0].text, messages.at(-1).content);
+    next.connection.chunk("second answer"); next.connection.finish();
+    const answer = await next.stream.result();
+    assert.equal(answer.stopReason, "stop");
+    assert.deepEqual(messages, original);
+    h.bridge.settle();
+    const ledger = [...messages, answer];
+    assert.equal(saved.historyLength, ledger.length);
+    assert.equal(saved.historyKey, createHash("sha256").update(JSON.stringify(ledger.map(({ role, content, toolCallId, toolName, isError }) => ({ role, content, toolCallId, toolName, isError })))).digest("hex"));
+    h.bridge.reset(); h.bridge.restore(saved);
+    const resumed = await started(h, [...ledger, user("follow up")], 4, h.settings);
+    assert.equal(resumed.connection.sessionId, next.connection.sessionId);
+    assert.equal(h.databases.length, 2);
+    assert.deepEqual(resumed.connection.prompts[0].params.prompt, [{ type: "text", text: "follow up" }]);
+    resumed.connection.chunk("done"); resumed.connection.finish();
+    assert.equal((await resumed.stream.result()).stopReason, "stop");
+  }
+});
+
+test("independent imports reject the old cap instead of silently windowing history", async (t) => {
+  const h = importFixture(t, { independent: true });
+  const messages = [user("old"), { role: "assistant", content: [{ type: "text", text: "a".repeat(400000) }], stopReason: "stop" },
+    user("recent"), { role: "assistant", content: [{ type: "text", text: "b".repeat(100000) }], stopReason: "stop" }, user("summarize")];
+  const original = structuredClone(messages);
+  const answer = await h.stream(messages, h.settings).result();
+  assert.equal(answer.errorMessage, "Antigravity prompt is too long. Shorten the input or use another model.");
+  assert.equal(ai.isContextOverflow(answer), true);
+  assert.equal(h.connections.length, 0);
+  assert.deepEqual(messages, original);
+});
+
 test("imports the whole prefix once after writer stop and sends only the new user suffix", async (t) => {
   const stopped = deferred(), notices = [];
   let saved;
@@ -186,7 +284,7 @@ test("imports the whole prefix once after writer stop and sends only the new use
   stopped.resolve();
   await until(() => h.connections[1]?.prompts.length);
   const initial = h.connections[0], resumed = h.connections[1];
-  assert.deepEqual(notices, [{ userTruncated: 1, toolResultsTruncated: 1, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 1 }]);
+  assert.deepEqual(notices, [{ userTruncated: 0, toolResultsTruncated: 1, earlierMessagesOmitted: 0, intermediateMessagesOmitted: 0, toolImagesOmitted: 1 }]);
   assert.deepEqual(initial.calls.map(x => x.method), ["session/new", "session/close"]);
   assert.deepEqual(initial.tools, []);
   assert.deepEqual(initial.calls[0].params.mcpServers, []);
@@ -194,7 +292,7 @@ test("imports the whole prefix once after writer stop and sends only the new use
   await assert.rejects(initial.handlers.tool("echo", { value: "must not execute" }), /history setup cannot execute tools/);
   assert.deepEqual(resumed.tools, [tool]);
   assert.equal(initial.prompts.length, 0);
-  assert.deepEqual(importedRows(h.databases[0]).map(row => row.step_type), [14, 15, 15, 132]);
+  assert.deepEqual(importedRows(h.databases[0]).map(row => row.step_type), [14, 14, 15, 15, 132]);
   assert.equal(resumed.calls[0].method, "session/resume");
   assert.equal(resumed.sessionId, initial.sessionId);
   assert.deepEqual(initial.profile, { ...resumed.profile, historyTarget: true });
@@ -560,7 +658,7 @@ test("failed worker resume retains imported resources without fallback or a pare
   assert.equal(h.connections.length, 2);
   assert.equal(h.connections[1].profile.historyTarget, undefined);
   assert.equal(h.connections[1].prompts.length, 0);
-  assert.equal(importedRows(h.databases[0]).length, 2);
+  assert.equal(importedRows(h.databases[0]).length, 3);
   assert.equal(readdirSync(h.root).length, 1);
 });
 
@@ -708,6 +806,45 @@ test("unavailable native tool usage stops before delivering a Pi tool", async (t
   assert.equal(answer.stopReason, "aborted");
   assert.equal(answer.content.some(block => block.type === "toolCall"), false);
   assert.equal(connection.closed, true);
+});
+
+test("unknown or truncated native context stops before a Pi tool can execute", async (t) => {
+  for (const status of ["unknown", "truncated"]) {
+    const h = harness(t, undefined, {}, { toolIntegrity: { status } });
+    const { stream, connection } = await started(h, [user("tool")]);
+    await assert.rejects(connection.handlers.tool("echo", { value: "side effect" }), status === "truncated" ? /prompt is too long/ : /native context unavailable/);
+    const answer = await stream.result();
+    assert.equal(answer.stopReason, "aborted");
+    assert.equal(answer.content.some(block => block.type === "toolCall"), false);
+    assert.equal(answer.usage.totalTokens, 1, "retain measured usage despite integrity failure");
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+    assert.equal(connection.closed, true);
+    assert.equal(connection.prompts.length, 1);
+  }
+});
+
+test("late integrity failure cannot return a summary or replay a completed native attempt", async (t) => {
+  for (const status of ["unknown", "truncated"]) for (const mode of ["ordinary", "independent", "after-tool"]) {
+    const h = harness(t, undefined, {}, { independent: mode === "independent", lastIntegrity: { status } });
+    const messages = [user("summary")], first = await started(h, messages);
+    let stream = first.stream;
+    if (mode === "after-tool") {
+      const reply = first.connection.handlers.tool("echo", { value: "done" });
+      const answer = await stream.result();
+      stream = h.stream([...messages, answer, { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }] }]);
+      await reply;
+    }
+    first.connection.chunk("Visible answer"); first.connection.finish();
+    const answer = await stream.result();
+    assert.equal(answer.stopReason, "aborted", `${status}/${mode}`);
+    assert.equal(answer.content[0].text, "Visible answer");
+    assert.ok(answer.usage.antigravity);
+    assert.equal(ai.isRetryableAssistantError(answer), false);
+    assert.equal(ai.isContextOverflow(answer, model.contextWindow), false);
+    assert.equal(first.connection.prompts.length, 1);
+    assert.equal(h.connections.length, 1);
+  }
 });
 
 test("text and thinking chunks have balanced events and native usage is independent of quota", { timeout: 3000 }, async (t) => {
@@ -1028,21 +1165,20 @@ test("changed history uses a new session and failed prompts discard the checkpoi
   assert.equal(next.connection.prompts.length, 1);
 });
 
-test("oversized actual UTF-8 input fails without prompting or retrying", async (t) => {
-  for (const messages of [
-    [user("x".repeat(184_998) + "界")],
-    [user("x".repeat(184_999)), user("y")],
-    [user("x".repeat(100_000)), user("y".repeat(90_000))],
-    [user("x".repeat(185_000)), { role: "assistant", content: [{ type: "text", text: "y".repeat(185_000) }], stopReason: "stop" }, user("z".repeat(185_001))],
+test("oversized mixed images and full-history overflow fail before opening a target", async (t) => {
+  for (const independent of [false, true]) for (const messages of [
+    [user([{ type: "text", text: "x".repeat(185001) }, { type: "image", mimeType: "image/png", data: "AA==" }])],
+    [user("x".repeat(185000)), { role: "assistant", content: [{ type: "text", text: "y".repeat(185000) }], stopReason: "stop" }, user("z".repeat(185001))],
+    [user("x".repeat(500001))],
   ]) {
-    const h = harness(t);
-    const answer = await h.stream(messages).result();
+    const h = importFixture(t, { independent });
+    const answer = await h.stream(messages, h.settings).result();
     assert.equal(answer.stopReason, "error");
-    assert.equal(answer.errorMessage, "Antigravity input exceeds 185 KB. Shorten the input or use another model.");
-    assert.equal(ai.isContextOverflow(answer), false);
+    assert.equal(answer.errorMessage, "Antigravity prompt is too long. Shorten the input or use another model.");
+    assert.equal(ai.isContextOverflow(answer), true);
     assert.equal(ai.isRetryableAssistantError(answer), false);
-    assert.equal(h.connections.reduce((sum, connection) => sum + connection.prompts.length, 0), 0);
-    assert.equal(h.connections.every(connection => connection.closed), true);
+    assert.equal(h.connections.length, 0);
+    assert.equal(h.databases.length, 0);
   }
 });
 
@@ -1375,7 +1511,7 @@ test("failed current image validation does not notify losses from the imported h
   messages.at(-1).content = [{ type: "image", mimeType: "image/png", data: "AA==" }];
   const result = await h.stream(messages, h.settings).result();
   assert.match(result.errorMessage, /does not support image prompts/);
-  assert.equal(importedRows(h.databases[0]).length, 2);
+  assert.equal(importedRows(h.databases[0]).length, 3);
   assert.equal(h.connections[1].prompts.length, 0);
 });
 
@@ -1485,18 +1621,17 @@ for (const disableContinuation of [false, true]) test(`${disableContinuation ? "
   const assistant = await first.result(), call = assistant.content.find(block => block.type === "toolCall");
   for (const outcome of ["stop", "error", "aborted"]) {
     const controller = new AbortController(), id = disableContinuation ? owner : randomUUID();
-    const auxiliary = request(id, [user(outcome === "error" ? "x".repeat(185001) : "auxiliary request")], { signal: controller.signal, disableContinuation });
+    const auxiliary = request(id, [user("auxiliary request")], { signal: controller.signal, disableContinuation });
     assert.equal(instances.length, 2 + ["stop", "error", "aborted"].indexOf(outcome));
     const temporary = instances.at(-1);
     assert.equal(temporary.options.piSessionId(), id);
     assert.equal(temporary.options.independent, true);
     assert.equal(globalThis[Symbol.for("pi-custom:antigravity-bridges")].has(id), disableContinuation);
     for (const hook of ["save", "claim", "onImport"]) assert.equal(temporary.options[hook], undefined);
-    if (outcome !== "error") {
-      await until(() => temporary.connections[0]?.prompts.length);
-      if (outcome === "aborted") controller.abort();
-      else { temporary.connections[0].chunk("auxiliary answer"); temporary.connections[0].finish(); }
-    }
+    await until(() => temporary.connections[0]?.prompts.length);
+    if (outcome === "error") temporary.connections[0].prompts[0].reject(new Error("Synthetic backend error"));
+    else if (outcome === "aborted") controller.abort();
+    else { temporary.connections[0].chunk("auxiliary answer"); temporary.connections[0].finish(); }
     assert.equal((await auxiliary.result()).stopReason, outcome);
     await tick();
     assert.equal(temporary.connections[0].closed, true);
