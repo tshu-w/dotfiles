@@ -7,8 +7,12 @@ acceptance run until its oracle is updated. Current offline checks are in
 `tests/antigravity-history.test.cjs`, `tests/antigravity-usage.test.cjs`, and
 `tests/antigravity.test.cjs`.
 
-Current admission sums pi-ai's public `estimateMessageTokens` per projected
-message and uses the full token window: 256,000 for Hydrogen and 512,000 for
+Current admission uses pi-ai's public `estimateMessageTokens` for ASCII and
+counts each non-ASCII Unicode code point as one token in an estimate-only
+projection. Surrogate pairs count once; image estimates, ASCII rounding groups,
+and separate system/tool-schema rounding remain unchanged. Actual request text
+and usage are unchanged. This heuristic is not a proven token upper bound.
+Admission uses the full token window: 256,000 for Hydrogen and 512,000 for
 Neon/Carbon. Pi's default 16,384-token reserve only advances compaction;
 it is not subtracted again during admission. Text is split into 185,000-byte
 UTF-8 blocks without dropping messages; tool-result limits and image placeholders

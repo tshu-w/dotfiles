@@ -26,6 +26,28 @@ const routing = (hasTools: boolean) => hasTools
   : "No Pi tools are available for this request.";
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+function estimateAdmissionTokens(message: any): number {
+  let nonAscii = 0;
+  const ascii = (text: string) => text.replace(/[^\x00-\x7f]/gu, () => { nonAscii++; return ""; });
+  let tokens: number;
+  if (message.role === "system") {
+    tokens = estimateMessageTokens({ ...message, content: ascii(message.content), toolsAdded: undefined });
+    if (message.toolsAdded.length) {
+      // Keep schema punctuation and separate rounding without rewriting JSON keys.
+      tokens += estimateMessageTokens({ role: "user", content: ascii(JSON.stringify(message.toolsAdded)), timestamp: 0 });
+    }
+  } else {
+    const content = typeof message.content === "string" ? ascii(message.content) : message.content.map((block: any) => {
+      if (block.type === "text") return { ...block, text: ascii(block.text) };
+      if (block.type === "toolCall") return { type: "text", text: ascii(block.name + JSON.stringify(block.arguments)) };
+      return block;
+    });
+    tokens = estimateMessageTokens({ ...message, content });
+  }
+  // Only the estimate changes: non-ASCII code points count once, not UTF-16 units.
+  return tokens + nonAscii;
+}
+
 function supportsHistory(version: unknown): boolean {
   if (typeof version !== "string") return false;
   const match = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
@@ -355,10 +377,10 @@ export function createAntigravityBridge(options: {
         .map((block: any) => block.type === "toolCall" ? { ...block, name: `mcp_pi_${block.name}` } : block) }];
       return [message];
     });
-    const estimated = estimateMessageTokens({ role: "system", timestamp: 0,
+    const estimated = estimateAdmissionTokens({ role: "system", timestamp: 0,
       content: [routing(effective.tools.length > 0), systemPrompt].filter(Boolean).join("\n\n"),
       toolsAdded: effective.tools.map(tool => ({ name: `mcp_pi_${tool.name}`, description: tool.description, parameters: tool.parameters })),
-    }) + projected.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+    }) + projected.reduce((sum, message) => sum + estimateAdmissionTokens(message), 0);
     if (estimated > selected.contextWindow) throw new Error(PROMPT_TOO_LONG);
     const requestedRoot = geminiRoot(options.cwd(), settings.env);
     let root: string | undefined;

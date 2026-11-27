@@ -42,8 +42,22 @@ before(async () => {
   model = { ...ai.getModel("anthropic", "claude-haiku-4-5"), id: "gemini-test", provider: "antigravity", api: "antigravity" };
 });
 
+function textInputTokens(text) {
+  return estimateMessageTokens(user(text.replace(/[^\x00-\x7f]/gu, ""))) + [...text].filter(char => char.codePointAt(0) > 127).length;
+}
+
+async function finishAdmission(h, selected, input) {
+  const stream = h.bridge.streamSimple(selected, input, h.settings);
+  let answer;
+  const result = stream.result().then(value => { answer = value; return value; });
+  await until(() => answer || h.connections.some(connection => connection.prompts.length));
+  const active = h.connections.find(connection => connection.prompts.length);
+  if (active) { active.chunk("Done"); active.finish(); }
+  return { answer: await result, active };
+}
+
 function fitInputBudget(unit, tokens) {
-  const count = text => splitPromptText(text).reduce((sum, chunk) => sum + estimateMessageTokens(user(chunk)), 0);
+  const count = text => splitPromptText(text).reduce((sum, chunk) => sum + textInputTokens(chunk), 0);
   let low = 0, high = Math.ceil(tokens * 4 / unit.length);
   assert.ok(count(unit.repeat(high)) > tokens);
   while (low < high) {
@@ -1189,24 +1203,77 @@ test("full calibrated windows admit ASCII and Chinese input without subtracting 
   const { catalogModel } = await jiti.import(join(CUSTOM, "antigravity/catalog.ts"));
   const systemTokens = estimateMessageTokens({ role: "system", content: "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.\n\nUse Pi tools only.",
     toolsAdded: [{ ...tool, name: "mcp_pi_echo" }], timestamp: 0 });
-  for (const id of ["gemini-4-hydrogen", "gemini-4-neon"]) for (const unit of ["x", "汉字🧪"]) {
+  for (const id of ["gemini-4-hydrogen", "gemini-4-neon", "gemini-4-carbon"]) for (const unit of ["x", "汉字🧪"]) {
     const selected = { ...model, id, contextWindow: catalogModel(id).contextWindow };
     assert.equal(SettingsManager.inMemory({}).getCompactionSettings(selected).reserveTokens, 16384);
     const text = fitInputBudget(unit, selected.contextWindow - systemTokens);
     const h = importFixture(t, { independent: unit !== "x" });
     const input = value => ai.normalizeContext({ systemPrompt: "Use Pi tools only.", tools: [tool], messages: [user(value)] });
-    const stream = h.bridge.streamSimple(selected, input(text), h.settings);
-    await until(() => h.connections[1]?.prompts.length);
-    const active = h.connections[1];
+    const { answer, active } = await finishAdmission(h, selected, input(text));
+    assert.equal(answer.stopReason, "stop");
     const chunks = [...importedRows(h.databases[0]).map(row => nativeField(row.step_payload, 19, 2).toString()), active.prompts[0].params.prompt[0].text];
     assert.equal(chunks.join(""), text);
-    active.chunk("Done"); active.finish();
-    assert.equal((await stream.result()).stopReason, "stop");
-    const over = await h.bridge.streamSimple(selected, input(text + "x"), h.settings).result();
+    const rejected = importFixture(t, { independent: unit !== "x" });
+    const { answer: over } = await finishAdmission(rejected, selected, input(text + "x"));
     assert.equal(over.errorMessage, "Antigravity prompt is too long. Shorten the input or use another model.");
     assert.equal(ai.isContextOverflow(over), true);
-    assert.equal(h.connections.length, 2);
-    assert.equal(active.prompts.length, 1);
+    assert.equal(rejected.connections.length, 0);
+    assert.equal(rejected.databases.length, 0);
+  }
+});
+
+test("non-ASCII admission counts Unicode code points once and preserves mixed text", async (t) => {
+  const systemTokens = estimateMessageTokens({ role: "system", content: "No Pi tools are available for this request.", timestamp: 0 });
+  for (const [text, tokens] of [["🧪".repeat(1000), 1000], ["𠀀".repeat(1000), 1000], ["a".repeat(4588) + "汉".repeat(9889), 11200]]) {
+    assert.equal(textInputTokens(text), tokens);
+    for (const overflow of [false, true]) {
+      const h = importFixture(t);
+      const input = ai.normalizeContext({ messages: [user(text)] });
+      const original = structuredClone(input);
+      const { answer, active } = await finishAdmission(h, { ...model, contextWindow: systemTokens + tokens - Number(overflow) }, input);
+      assert.deepEqual(input, original);
+      if (overflow) {
+        assert.equal(ai.isContextOverflow(answer), true);
+        assert.equal(h.connections.length, 0);
+      } else {
+        assert.equal(answer.stopReason, "stop");
+        assert.deepEqual(active.prompts[0].params.prompt, [{ type: "text", text }]);
+      }
+    }
+  }
+});
+
+test("non-ASCII system, schema and tool arguments keep JSON keys and separate message rounding", async (t) => {
+  const systemPrompt = "系统🧪xyz";
+  const declaration = { ...tool, description: "工具𠀀", parameters: { type: "object", properties: {
+    "甲": { type: "string", description: "一" }, "乙": { type: "string", description: "二" },
+  } } };
+  const args = { "甲": "𠀀", "乙": "🙂", nested: { "甲": 1, "乙": 2 } };
+  const call = { role: "assistant", content: [{ type: "text", text: "说明🧪" }, { type: "toolCall", id: "past", name: "echo", arguments: args }], stopReason: "toolUse", timestamp: 0 };
+  const result = { role: "toolResult", toolCallId: "past", toolName: "echo", isError: false, content: [{ type: "text", text: "结果𠀀" }], timestamp: 0 };
+  const current = [{ type: "text", text: "总结🙂" }, { type: "image", mimeType: "image/png", data: "AA==" }];
+  const input = ai.normalizeContext({ systemPrompt, tools: [declaration], messages: [user("prior"), call, result, user(current)] });
+  const original = structuredClone(input);
+  const systemText = "Use only the Pi tools exposed through MCP. Short tool names in the following instructions refer to their mcp_pi_<name> counterparts.\n\n" + systemPrompt;
+  const schemaText = JSON.stringify([{ ...declaration, name: "mcp_pi_echo" }]);
+  const budget = textInputTokens(systemText) + textInputTokens(schemaText) + textInputTokens("prior")
+    + textInputTokens("说明🧪" + "mcp_pi_echo" + JSON.stringify(args)) + textInputTokens("结果𠀀")
+    + estimateMessageTokens(user([{ type: "text", text: "" }, current[1]])) + 3;
+  for (const overflow of [false, true]) {
+    const h = importFixture(t, { independent: true });
+    const { answer, active } = await finishAdmission(h, { ...model, contextWindow: budget - Number(overflow) }, input);
+    assert.deepEqual(input, original);
+    if (overflow) {
+      assert.equal(ai.isContextOverflow(answer), true);
+      assert.equal(h.connections.length, 0);
+      assert.equal(h.databases.length, 0);
+    } else {
+      assert.equal(answer.stopReason, "stop");
+      assert.deepEqual(active.prompts[0].params.prompt, current);
+      const row = importedRows(h.databases[0]).find(row => row.step_type === 15);
+      assert.deepEqual(JSON.parse(nativeField(row.step_payload, 20, 7, 3).toString()), args);
+      assert.ok(active.calls[0].params._meta.antigravity.systemPrompt.append.endsWith(systemPrompt));
+    }
   }
 });
 
