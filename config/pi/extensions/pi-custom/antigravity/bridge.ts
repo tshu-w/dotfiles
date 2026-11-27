@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { createRequire } from "node:module";
+import { createRequire, findPackageJSON } from "node:module";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { getPackageDir } from "@earendil-works/pi-coding-agent";
 import {
   createAssistantMessageEventStream, getCurrentSystemMessage, getCurrentTools, getSystemMessageText,
   type AssistantMessage, type AssistantMessageEventStream, type Model, type SimpleStreamOptions, type TranscriptContext,
@@ -13,8 +15,10 @@ import { createNativeUsageReader, type NativeUsageSnapshot } from "./usage.js";
 import { rewriteToolReferences } from "../tool-references.js";
 import { withoutPiDefaults } from "../system-prompt.js";
 
-// Pi aliases the package root to a file; use its models entry to locate the exported estimator.
-const { estimateMessageTokens } = createRequire(import.meta.resolve("@earendil-works/pi-ai/models"))("./utils/estimate.js");
+// Resolve the public export from Pi's canonical package, outside extension aliases.
+const aiPackage = findPackageJSON("@earendil-works/pi-ai", pathToFileURL(join(getPackageDir(), "package.json")))!;
+const estimateExport = JSON.parse(readFileSync(aiPackage, "utf8")).exports["./utils/*"].import.replace("*", "estimate");
+const { estimateMessageTokens } = createRequire(aiPackage)(estimateExport);
 
 export const PROVIDER_ID = "antigravity";
 const routing = (hasTools: boolean) => hasTools

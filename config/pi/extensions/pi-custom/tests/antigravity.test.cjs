@@ -15,7 +15,6 @@ const { createJiti } = require(join(PI_PACKAGE, "node_modules/jiti/lib/jiti.cjs"
 const jiti = createJiti(__filename, {
   alias: {
     "@earendil-works/pi-ai/compat": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
-    "@earendil-works/pi-ai/models": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/models.js"),
     "@earendil-works/pi-ai": join(PI_PACKAGE, "node_modules/@earendil-works/pi-ai/dist/compat.js"),
     "@earendil-works/pi-coding-agent": join(PI_PACKAGE, "dist/index.js"),
   },
