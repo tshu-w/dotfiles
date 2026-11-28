@@ -776,10 +776,12 @@ function registerCustomSettings(
 // exits normally — resume manually with `pi -c`.
 
 /** The `pi` on PATH, which an update points at the new install; the running one may have been removed. */
-function piOnPath(): string | undefined {
-  for (const dir of (process.env.PATH ?? "").split(":")) {
+export function piOnPath(path = process.env.PATH ?? ""): string | undefined {
+  for (const dir of path.split(":")) {
     const candidate = join(dir, "pi");
     try {
+      // A directory named pi also passes X_OK.
+      if (!statSync(candidate).isFile()) continue;
       accessSync(candidate, constants.X_OK);
       return candidate;
     } catch {}

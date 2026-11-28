@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { test, before } = require("node:test");
 const { execFileSync } = require("node:child_process");
-const { mkdtempSync, realpathSync, utimesSync, writeFileSync, existsSync } = require("node:fs");
+const { chmodSync, mkdirSync, mkdtempSync, realpathSync, utimesSync, writeFileSync, existsSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { dirname, join } = require("node:path");
 // Keep the once-per-process orphan cleanup away from the real state directory.
@@ -49,4 +49,15 @@ test("only git package clones with local work are reported", async () => {
   for (const repo of ["dirty", "clean"]) execFileSync("git", ["init", "-q", join(root, "host", "owner", repo)]);
   writeFileSync(join(root, "host", "owner", "dirty", "notes.txt"), "local work");
   assert.deepEqual(await custom.findDirtyGitPackages(root), ["owner/dirty"]);
+});
+
+test("/restart skips a directory named pi on PATH", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pi-custom-path-"));
+  const shadow = join(directory, "shadow"), bin = join(directory, "bin");
+  mkdirSync(join(shadow, "pi"), { recursive: true });
+  mkdirSync(bin);
+  writeFileSync(join(bin, "pi"), "#!/bin/sh\n");
+  chmodSync(join(bin, "pi"), 0o755);
+  assert.equal(custom.piOnPath(`${shadow}:${bin}`), join(bin, "pi"));
+  assert.equal(custom.piOnPath(shadow), undefined);
 });
