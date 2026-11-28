@@ -737,15 +737,15 @@ test("native final usage separates current occupancy from raw cumulative input a
     inputTokens: 5198, cachedReadTokens: 935, outputTokens: 81, thoughtTokens: 42, totalTokens: 6214,
   }, _meta: { quota: { token_count: { input_tokens: null, output_tokens: null } } } });
   const answer = await stream.result();
-  assert.deepEqual([answer.usage.input, answer.usage.cacheRead, answer.usage.output, answer.usage.totalTokens], [2224, 935, 10, 3159]);
+  assert.deepEqual([answer.usage.input, answer.usage.cacheRead, answer.usage.output, answer.usage.totalTokens], [2214, 935, 10, 3159]);
   assert.deepEqual(answer.usage.antigravity.raw, { input: 5198, output: 81, cacheRead: 935, cacheWrite: 0 });
-  assert.equal(answer.usage.input + answer.usage.cacheRead, answer.usage.totalTokens);
   assert.deepEqual(answer.usage.antigravity.acp, { inputTokens: 5198, outputTokens: 81, cachedReadTokens: 935, cachedWriteTokens: null, thoughtTokens: 42, totalTokens: 6214 });
 });
 
 test("Pi compacts successful over-window occupancy without replaying the completed turn", async () => {
   const { AgentSession } = await jiti.import(join(PI_PACKAGE, "dist/core/agent-session.js"));
-  for (const used of [256000, 256001]) {
+  for (const [used, expected] of [[256000, []], [256001, [{ reason: "threshold", willRetry: false }]],
+    [256011, [{ reason: "overflow", willRetry: false }]]]) {
     const selected = { ...model, contextWindow: 256000 }, calls = [];
     const session = {
       model: selected,
@@ -756,9 +756,9 @@ test("Pi compacts successful over-window occupancy without replaying the complet
       _runAutoCompaction: async (reason, willRetry) => { calls.push({ reason, willRetry }); return false; },
     };
     const answer = { role: "assistant", provider: model.provider, model: model.id, stopReason: "stop", timestamp: 1,
-      usage: { input: used - 935, cacheRead: 935, output: 10, cacheWrite: 0, totalTokens: used } };
+      usage: { input: used - 935 - 10, cacheRead: 935, output: 10, cacheWrite: 0, totalTokens: used } };
     assert.equal(await AgentSession.prototype._checkCompaction.call(session, answer), false);
-    assert.deepEqual(calls, used === 256000 ? [] : [{ reason: "overflow", willRetry: false }]);
+    assert.deepEqual(calls, expected);
   }
 });
 
@@ -776,39 +776,36 @@ test("independent usage remains raw when Pi combines split-summary results", asy
   assert.equal(combined.antigravity, undefined);
 });
 
-test("multiple tools in one native generation share occupancy without duplicating raw accounting", async (t) => {
-  const firstRow = { index: 0, input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 };
-  const lastRow = { index: 2, input: 2214, output: 10, cacheRead: 935, cacheWrite: 0 };
-  const h = harness(t, undefined, {}, { toolUsage: firstRow, lastUsage: lastRow,
-    generations: [firstRow, { index: 1, input: 100, output: 2, cacheRead: 50, cacheWrite: 0 }, lastRow] });
+test("native tool rounds report each generation once to Pi cache-miss detection", async (t) => {
+  const toolRow = { index: 0, input: 106312, output: 1700, cacheRead: 0, cacheWrite: 0 };
+  const hidden = { index: 1, input: 100, output: 2, cacheRead: 50, cacheWrite: 0 };
+  const lastRow = { index: 2, input: 2874, output: 50, cacheRead: 106313, cacheWrite: 0 };
+  const h = harness(t, undefined, {}, { toolUsage: toolRow, lastUsage: lastRow, generations: [toolRow, hidden, lastRow] });
   const messages = [user("two tools")], { stream, connection } = await started(h, messages);
   const replies = [connection.handlers.tool("echo", { value: "first" }), connection.handlers.tool("echo", { value: "second" })];
+  const answers = [];
   let current = stream;
-  const raw = [];
   for (let index = 0; index < 2; index++) {
     const answer = await current.result();
-    raw.push(answer.usage.antigravity.raw);
-    assert.equal(answer.stopReason, "toolUse");
-    assert.equal(answer.usage.totalTokens, 3055);
-    assert.equal(answer.usage.input + answer.usage.cacheRead, 3055);
+    answers.push(answer);
     messages.push(answer, { role: "toolResult", toolCallId: answer.content[0].id, toolName: "echo", content: [{ type: "text", text: "done" }] });
     current = h.stream(messages);
     await replies[index];
   }
-  connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 3159 } });
-  connection.chunk("done");
-  connection.finish({ stopReason: "end_turn", usage: { inputTokens: 5298, outputTokens: 83, cachedReadTokens: 935, cachedWriteTokens: 0 } });
-  const final = await current.result();
-  assert.equal(final.stopReason, "stop");
-  raw.push(final.usage.antigravity.raw);
-  assert.deepEqual(raw, [
-    { input: 2984, output: 71, cacheRead: 0, cacheWrite: 0 },
+  connection.handlers.update({ sessionId: connection.sessionId, update: { sessionUpdate: "usage_update", used: 109237 } });
+  connection.chunk("done"); connection.finish();
+  answers.push(await current.result());
+  assert.deepEqual(answers.map(answer => [answer.usage.input, answer.usage.cacheRead, answer.usage.output, answer.usage.totalTokens]),
+    [[106312, 0, 1700, 108012], [0, 0, 0, 0], [2874, 106313, 50, 109237]]);
+  assert.deepEqual(answers.map(answer => answer.usage.antigravity.raw), [
+    { input: 106312, output: 1700, cacheRead: 0, cacheWrite: 0 },
     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    { input: 2314, output: 12, cacheRead: 985, cacheWrite: 0 },
+    { input: 2974, output: 52, cacheRead: 106363, cacheWrite: 0 },
   ]);
-  assert.equal(final.usage.input + final.usage.cacheRead, 3159);
-  assert.equal(final.usage.output, 10);
-  assert.equal(final.usage.antigravity.acp.cachedReadTokens, 935, "ambiguous ACP cache scope does not replace per-generation accounting");
+  const { collectCacheMisses } = await jiti.import(join(PI_PACKAGE, "dist/core/cache-stats.js"));
+  const previous = { ...answers[2], usage: { ...answers[2].usage, input: 1600, cacheRead: 106000 } };
+  const entries = [previous, ...answers].map(message => ({ type: "message", message }));
+  assert.deepEqual([...collectCacheMisses(entries, { getModel: () => undefined }).values()].map(miss => miss.missedTokens), [106312]);
   assert.equal(connection.prompts.length, 1);
 });
 
@@ -1047,7 +1044,7 @@ test("text and thinking chunks have balanced events and native usage is independ
   const answer = await stream.result();
   assert.equal(answer.stopReason, "stop");
   assert.deepEqual(answer.content, [{ type: "thinking", thinking: "plan" }, { type: "text", text: "hello back" }]);
-  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.cacheRead, answer.usage.cacheWrite, answer.usage.totalTokens], [26, 10, 4, 0, 30]);
+  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.cacheRead, answer.usage.cacheWrite, answer.usage.totalTokens], [16, 10, 4, 0, 30]);
   const events = []; for await (const event of stream) events.push(event.type);
   assert.deepEqual(events, ["start", "thinking_start", "thinking_delta", "thinking_delta", "thinking_end", "text_start", "text_delta", "text_delta", "text_end", "done"]);
 });
@@ -1067,8 +1064,7 @@ test("last valid prompt usage update sets occupancy without changing cumulative 
   connection.chunk("compacted");
   connection.finish({ stopReason: "end_turn", usage: { inputTokens: 513807, outputTokens: 120, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 0, totalTokens: 513927 } });
   const answer = await stream.result();
-  assert.equal(answer.usage.input, 17341);
-  assert.equal(answer.usage.input + answer.usage.cacheRead, answer.usage.totalTokens);
+  assert.deepEqual([answer.usage.input, answer.usage.output, answer.usage.totalTokens], [17221, 120, 17341]);
   assert.deepEqual(answer.usage.antigravity.raw, { input: 513807, output: 120, cacheRead: 0, cacheWrite: 0 });
   update(800000);
   const next = h.stream([...history, answer, user("next")]);
@@ -1077,7 +1073,7 @@ test("last valid prompt usage update sets occupancy without changing cumulative 
   connection.finish({ stopReason: "end_turn", usage: { inputTokens: 20, outputTokens: 5 } });
   const continued = await next.result();
   assert.equal(continued.usage.totalTokens, 25);
-  assert.equal(continued.usage.input, 25);
+  assert.equal(continued.usage.input, 20);
   assert.equal(continued.usage.output, 5);
 });
 

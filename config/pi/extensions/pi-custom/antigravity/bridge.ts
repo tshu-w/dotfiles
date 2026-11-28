@@ -279,16 +279,13 @@ export function createAntigravityBridge(options: {
       || (publishedGeneration !== undefined && snapshot.generationIndex <= publishedGeneration))) {
       throw new Error("Antigravity native usage unavailable");
     }
+    // Later tool calls from an already published generation have no request of their own.
+    const current = options.independent ? delta : snapshot.generationIndex === publishedGeneration
+      ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : snapshot;
     Object.assign(output!.usage, {
-      ...(options.independent ? {
-        ...delta, totalTokens: delta.input + delta.output + delta.cacheRead + delta.cacheWrite,
-      } : {
-        input: snapshot.totalTokens - snapshot.cacheRead, output: snapshot.output,
-        cacheRead: snapshot.cacheRead, cacheWrite: snapshot.cacheWrite, totalTokens: snapshot.totalTokens,
-      }),
-      antigravity: { raw: delta, last: {
-        input: snapshot.input, output: snapshot.output, cacheRead: snapshot.cacheRead, cacheWrite: snapshot.cacheWrite,
-      }, source, ...(acp ? { acp } : {}) },
+      input: current.input, output: current.output, cacheRead: current.cacheRead, cacheWrite: current.cacheWrite,
+      totalTokens: current.input + current.output + current.cacheRead + current.cacheWrite,
+      antigravity: { raw: delta, source, ...(acp ? { acp } : {}) },
     });
     reportedUsage = raw;
     publishedGeneration = snapshot.generationIndex;

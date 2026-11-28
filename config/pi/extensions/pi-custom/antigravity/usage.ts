@@ -5,8 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 export type NativeGenerationUsage = { index: number; input: number; output: number; cacheRead: number; cacheWrite: number };
 export type NativeContextIntegrity = { status: "intact" | "unknown" }
   | { status: "truncated"; generationIndex: number; reason: "max_token_limit" };
-// input/output are native per-generation counters. Core context input is
-// totalTokens - cacheRead, not this raw input counter.
 export type NativeUsageSnapshot = Omit<NativeGenerationUsage, "index"> & {
   generationIndex: number;
   totalTokens: number;

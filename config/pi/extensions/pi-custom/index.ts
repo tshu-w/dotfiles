@@ -440,7 +440,7 @@ export function registerFooter(pi: ExtensionAPI, runtime: CustomRuntimeState): v
                   ? entry.usage
                   : undefined;
               if (entry.type === "message" && entry.message?.role === "assistant") {
-                const latest = u?.antigravity ? u.antigravity.last : u;
+                const latest = u?.antigravity?.last ?? u;
                 const promptTokens = (latest?.input ?? 0) + (latest?.cacheRead ?? 0) + (latest?.cacheWrite ?? 0);
                 latestCacheHitRate = promptTokens > 0 ? ((latest?.cacheRead ?? 0) / promptTokens) * 100 : undefined;
               }
